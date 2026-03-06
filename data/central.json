@@ -1,0 +1,179 @@
+{
+  "pedidos": [
+    {
+      "id": "A-839316-0",
+      "restaurante": "RHK Asadero Restaurant",
+      "restauranteDireccion": "Calle Bolívar, Piñas",
+      "clienteNombre": "Mi casa",
+      "clienteDireccion": "Calle Sucre, Piñas",
+      "clienteTelefono": "",
+      "items": [
+        "1× Pollo a la brasa (1/2)"
+      ],
+      "total": 10.05,
+      "estado": "esperando_rider",
+      "riderId": null,
+      "hora": "19:17",
+      "timestamp": 1772237839537,
+      "distancia": "—"
+    },
+    {
+      "id": "A-0664",
+      "restaurante": "RHK Asadero Restaurant",
+      "restauranteDireccion": "Calle Bolívar, Piñas",
+      "clienteNombre": "Mi casa",
+      "clienteDireccion": "Calle Sucre, Piñas",
+      "clienteTelefono": "",
+      "items": [
+        "1× Pollo a la brasa (1/2)"
+      ],
+      "total": 10.05,
+      "estado": "esperando_rider",
+      "riderId": null,
+      "hora": "16:44",
+      "timestamp": 1772228690909,
+      "distancia": "—"
+    },
+    {
+      "id": "P001",
+      "restaurante": "Rincón del Sabor",
+      "restauranteDireccion": "Av. 9 de Octubre y Sucre",
+      "clienteNombre": "Ana Torres",
+      "clienteDireccion": "Calle Pichincha #45, Piñas",
+      "clienteTelefono": "+593987654321",
+      "items": [
+        "1× Seco de Pollo",
+        "1× Jugo de naranja"
+      ],
+      "total": 9.5,
+      "estado": "esperando_rider",
+      "riderId": null,
+      "hora": "14:35",
+      "timestamp": 1772226344408,
+      "distancia": "1.2 km"
+    },
+    {
+      "id": "P002",
+      "restaurante": "Grill 51 Fast Food",
+      "restauranteDireccion": "Calle 9 de Octubre, Piñas",
+      "clienteNombre": "Luis Mendoza",
+      "clienteDireccion": "Urb. Los Pinos, Casa 12",
+      "clienteTelefono": "+593998877665",
+      "items": [
+        "2× Hamburguesa Classic",
+        "2× Gaseosa"
+      ],
+      "total": 11,
+      "estado": "asignado",
+      "riderId": "r1",
+      "hora": "14:20",
+      "timestamp": 1772225624408,
+      "distancia": "0.8 km"
+    },
+    {
+      "id": "P003",
+      "restaurante": "Julieta Wines & Coffee",
+      "restauranteDireccion": "Parque Central, Piñas",
+      "clienteNombre": "María Salinas",
+      "clienteDireccion": "Av. Los Ceibos, Piñas",
+      "clienteTelefono": "+593991234567",
+      "items": [
+        "1× Latte Grande",
+        "2× Croissant"
+      ],
+      "total": 7.5,
+      "estado": "en_camino",
+      "riderId": "r3",
+      "hora": "14:10",
+      "timestamp": 1772225024408,
+      "distancia": "1.5 km"
+    },
+    {
+      "id": "P004",
+      "restaurante": "RHK Asadero",
+      "restauranteDireccion": "Sector La Cadena, Piñas",
+      "clienteNombre": "Pedro Gómez",
+      "clienteDireccion": "Barrio La Esperanza",
+      "clienteTelefono": "+593987001122",
+      "items": [
+        "1× Pollo a la brasa entero"
+      ],
+      "total": 14,
+      "estado": "esperando_rider",
+      "riderId": null,
+      "hora": "14:38",
+      "timestamp": 1772226464408,
+      "distancia": "2.1 km"
+    },
+    {
+      "id": "P005",
+      "restaurante": "Rincón del Sabor",
+      "restauranteDireccion": "Av. 9 de Octubre y Sucre",
+      "clienteNombre": "Carlos Ríos",
+      "clienteDireccion": "Sector El Paraíso",
+      "clienteTelefono": "+593976543210",
+      "items": [
+        "2× Caldo de gallina",
+        "1× Arroz con leche"
+      ],
+      "total": 8,
+      "estado": "entregado",
+      "riderId": "r2",
+      "hora": "13:50",
+      "timestamp": 1772223824408,
+      "distancia": "3.0 km"
+    }
+  ],
+  "riders": [
+    {
+      "id": "r1",
+      "nombre": "Carlos M.",
+      "inicial": "C",
+      "telefono": "+593987111222",
+      "estado": "disponible",
+      "carrerasHoy": 5,
+      "calificacion": 4.8,
+      "color": "bg-blue-500"
+    },
+    {
+      "id": "r2",
+      "nombre": "Diego F.",
+      "inicial": "D",
+      "telefono": "+593987333444",
+      "estado": "disponible",
+      "carrerasHoy": 3,
+      "calificacion": 4.6,
+      "color": "bg-purple-500"
+    },
+    {
+      "id": "r3",
+      "nombre": "Marcos T.",
+      "inicial": "M",
+      "telefono": "+593987555666",
+      "estado": "ocupado",
+      "carrerasHoy": 7,
+      "calificacion": 4.9,
+      "color": "bg-green-500"
+    },
+    {
+      "id": "r4",
+      "nombre": "Andrés P.",
+      "inicial": "A",
+      "telefono": "+593987777888",
+      "estado": "ausente",
+      "carrerasHoy": 2,
+      "calificacion": 4.5,
+      "color": "bg-orange-500"
+    },
+    {
+      "id": "r5",
+      "nombre": "Luis S.",
+      "inicial": "L",
+      "telefono": "+593987999000",
+      "estado": "fuera_servicio",
+      "carrerasHoy": 0,
+      "calificacion": 4.7,
+      "color": "bg-red-500"
+    }
+  ]
+}

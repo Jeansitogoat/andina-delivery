@@ -1,0 +1,99 @@
+{
+  "carreras": [
+    {
+      "id": "c001",
+      "pedidoId": "A87654321",
+      "restaurante": "Rincón del Sabor",
+      "restauranteDireccion": "Av. 9 de Octubre y Sucre",
+      "clienteNombre": "Ana Torres",
+      "clienteDireccion": "Calle Pichincha #45, Piñas",
+      "clienteTelefono": "+593987654321",
+      "total": 12.5,
+      "propina": 1,
+      "codigoVerificacion": "874321",
+      "estado": "asignada",
+      "hora": "14:32",
+      "distancia": "1.2 km",
+      "items": [
+        "1× Seco de Pollo",
+        "1× Jugo de naranja",
+        "1× Arroz extra"
+      ]
+    },
+    {
+      "id": "c002",
+      "pedidoId": "A12398765",
+      "restaurante": "Grill 51 Fast Food",
+      "restauranteDireccion": "Calle 9 de Octubre, Piñas",
+      "clienteNombre": "Luis Mendoza",
+      "clienteDireccion": "Urb. Los Pinos, Casa 12",
+      "clienteTelefono": "+593998877665",
+      "total": 9,
+      "propina": 0.5,
+      "codigoVerificacion": "123987",
+      "estado": "en_camino",
+      "hora": "14:15",
+      "distancia": "0.8 km",
+      "items": [
+        "2× Hamburguesa Grill Classic",
+        "2× Gaseosa 500ml"
+      ]
+    }
+  ],
+  "historial": [
+    {
+      "id": "h001",
+      "pedidoId": "A00011111",
+      "restaurante": "Rincón del Sabor",
+      "restauranteDireccion": "",
+      "clienteNombre": "Pedro Gómez",
+      "clienteDireccion": "Barrio La Esperanza",
+      "clienteTelefono": "",
+      "total": 8.5,
+      "propina": 1.5,
+      "codigoVerificacion": "",
+      "estado": "entregada",
+      "hora": "11:20",
+      "distancia": "1.5 km",
+      "items": [
+        "1× Caldo de res"
+      ]
+    },
+    {
+      "id": "h002",
+      "pedidoId": "A00022222",
+      "restaurante": "Grill 51 Fast Food",
+      "restauranteDireccion": "",
+      "clienteNombre": "María Salinas",
+      "clienteDireccion": "Av. Los Ceibos",
+      "clienteTelefono": "",
+      "total": 11,
+      "propina": 1,
+      "codigoVerificacion": "",
+      "estado": "entregada",
+      "hora": "12:45",
+      "distancia": "2.1 km",
+      "items": [
+        "2× Combo BBQ Smoke"
+      ]
+    },
+    {
+      "id": "h003",
+      "pedidoId": "A00033333",
+      "restaurante": "Andina Express",
+      "restauranteDireccion": "",
+      "clienteNombre": "Carlos Ríos",
+      "clienteDireccion": "Sector El Paraíso",
+      "clienteTelefono": "",
+      "total": 5,
+      "propina": 0,
+      "codigoVerificacion": "",
+      "estado": "entregada",
+      "hora": "13:30",
+      "distancia": "3.0 km",
+      "items": [
+        "Mandado: Farmacia Cruz Roja"
+      ]
+    }
+  ]
+}

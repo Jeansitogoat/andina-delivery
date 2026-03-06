@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Usuarios: cada usuario solo puede leer/escribir su propio documento
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Pedidos: cliente ve sus pedidos, rider ve asignados
+    match /pedidos/{pedidoId} {
+      allow read: if request.auth != null && (
+        resource.data.clienteId == request.auth.uid ||
+        resource.data.riderId == request.auth.uid
+      );
+      allow create: if request.auth != null && request.resource.data.clienteId == request.auth.uid;
+      allow update, delete: if false;
+    }
+    // Comisiones: rider solo ve sus propias ganancias
+    match /comisiones/{comisionId} {
+      allow read: if request.auth != null && resource.data.riderId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+  }
+}

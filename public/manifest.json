@@ -1,0 +1,28 @@
+{
+  "name": "Andina Express",
+  "short_name": "Andina",
+  "description": "Delivery y mandados en Piñas, El Oro. Rápido, fácil y seguro.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#c9960d",
+  "theme_color": "#c40f0f",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo-andina.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-andina.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["food", "shopping", "lifestyle"],
+  "lang": "es",
+  "dir": "ltr",
+  "scope": "/"
+}
