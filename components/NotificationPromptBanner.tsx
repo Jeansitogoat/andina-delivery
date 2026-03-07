@@ -44,7 +44,12 @@ export default function NotificationPromptBanner() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const key = localStorage.getItem(DISMISS_KEY);
+    let key: string | null = null;
+    try {
+      key = localStorage.getItem(DISMISS_KEY);
+    } catch {
+      /* Silencioso en móvil (modo privado, WebView, etc.) */
+    }
     if (!shouldShowBanner(key)) {
       setDismissed(true);
     }
@@ -87,7 +92,11 @@ export default function NotificationPromptBanner() {
   const dismiss = () => {
     setDismissed(true);
     if (typeof window !== 'undefined') {
-      localStorage.setItem(DISMISS_KEY, Date.now().toString());
+      try {
+        localStorage.setItem(DISMISS_KEY, Date.now().toString());
+      } catch {
+        /* Silencioso en móvil */
+      }
     }
   };
 

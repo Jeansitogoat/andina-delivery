@@ -112,9 +112,13 @@ export function useAuth() {
       setState({ user: andinaUser, loading: false });
 
       if (typeof window !== 'undefined') {
-        localStorage.setItem('andina_visitado', '1');
-        if (andinaUser.displayName) {
-          localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
+        try {
+          localStorage.setItem('andina_visitado', '1');
+          if (andinaUser.displayName) {
+            localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
+          }
+        } catch {
+          /* Silencioso en móvil (modo privado, WebView, etc.) */
         }
       }
 
@@ -175,9 +179,13 @@ export function useAuth() {
 
       setState({ user: andinaUser, loading: false });
       if (typeof window !== 'undefined') {
-        localStorage.setItem('andina_visitado', '1');
-        if (andinaUser.displayName) {
-          localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
+        try {
+          localStorage.setItem('andina_visitado', '1');
+          if (andinaUser.displayName) {
+            localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
+          }
+        } catch {
+          /* Silencioso en móvil (modo privado, WebView, etc.) */
         }
       }
       return andinaUser;
@@ -190,8 +198,12 @@ export function useAuth() {
     await signOut(auth);
     setState({ user: null, loading: false });
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('andina_visitado');
-      localStorage.removeItem('andina_usuario_nombre');
+      try {
+        localStorage.removeItem('andina_visitado');
+        localStorage.removeItem('andina_usuario_nombre');
+      } catch {
+        /* Silencioso en móvil (modo privado, WebView, etc.) */
+      }
     }
   }, []);
 
@@ -203,7 +215,11 @@ export function useAuth() {
       const andinaUser = await ensureUserDocument(firebaseUser);
       setState((s) => ({ ...s, user: andinaUser }));
       if (typeof window !== 'undefined' && andinaUser.displayName) {
-        localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
+        try {
+          localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
+        } catch {
+          /* Silencioso en móvil */
+        }
       }
     } catch (err) {
       console.error('Error refrescando usuario', err);

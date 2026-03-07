@@ -68,11 +68,15 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     const unsub = onSnapshot(
       ref,
       (snap) => {
-        const data = snap.data();
-        const arr = data?.addresses;
-        const sid = data?.selectedAddressId;
-        setDirecciones(Array.isArray(arr) ? (arr as DireccionGuardada[]) : []);
-        setSelectedIdState(typeof sid === 'string' ? sid : null);
+        try {
+          const data = snap.data();
+          const arr = data?.addresses;
+          const sid = data?.selectedAddressId;
+          setDirecciones(Array.isArray(arr) ? (arr as DireccionGuardada[]) : []);
+          setSelectedIdState(typeof sid === 'string' ? sid : null);
+        } catch (e) {
+          console.error('addresses snapshot callback', e);
+        }
       },
       (err) => console.error('addresses snapshot', err)
     );
@@ -94,7 +98,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
         } catch {
           /* ignore */
         }
-      });
+      }).catch((err) => console.error('addresses sync saveAddresses', err));
     }
   }, [user?.uid]);
 
@@ -146,7 +150,9 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     (dirs: DireccionGuardada[]) => {
       setDirecciones(dirs);
       if (user?.uid) {
-        saveAddresses(user.uid, dirs);
+        saveAddresses(user.uid, dirs).catch((err) => {
+          console.error('updateDirecciones saveAddresses', err);
+        });
       } else {
         saveToLocalStorage(dirs);
       }
@@ -160,8 +166,13 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       const nueva: DireccionGuardada = { ...d, id };
       setDirecciones((prev) => {
         const next = [...prev, nueva];
-        if (user?.uid) saveAddresses(user.uid, next);
-        else saveToLocalStorage(next);
+        if (user?.uid) {
+          saveAddresses(user.uid, next).catch((err) => {
+            console.error('addDireccion saveAddresses', err);
+          });
+        } else {
+          saveToLocalStorage(next);
+        }
         return next;
       });
       setSelectedId(id);
@@ -173,8 +184,11 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       setDirecciones((prev) => {
         const next = prev.map((d) => ({ ...d, principal: d.id === id }));
-        if (user?.uid) saveAddresses(user.uid, next);
-        else saveToLocalStorage(next);
+        if (user?.uid) {
+          saveAddresses(user.uid, next).catch((err) => console.error('setPrincipal saveAddresses', err));
+        } else {
+          saveToLocalStorage(next);
+        }
         return next;
       });
     },
@@ -185,8 +199,11 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       setDirecciones((prev) => {
         const next = prev.filter((d) => d.id !== id);
-        if (user?.uid) saveAddresses(user.uid, next);
-        else saveToLocalStorage(next);
+        if (user?.uid) {
+          saveAddresses(user.uid, next).catch((err) => console.error('removeDireccion saveAddresses', err));
+        } else {
+          saveToLocalStorage(next);
+        }
         return next;
       });
       if (selectedId === id) setSelectedId(null);

@@ -71,7 +71,12 @@ export default function Home() {
   // Primera visita: redirigir a login si nunca ha visitado (opcional; checkout exige sesión igualmente)
   useEffect(() => {
     if (typeof window === 'undefined' || authLoading) return;
-    const visitado = localStorage.getItem('andina_visitado');
+    let visitado: string | null = null;
+    try {
+      visitado = localStorage.getItem('andina_visitado');
+    } catch {
+      /* Silencioso en móvil (modo privado, WebView, etc.) */
+    }
     if (!visitado && !user) {
       router.replace('/auth');
     }

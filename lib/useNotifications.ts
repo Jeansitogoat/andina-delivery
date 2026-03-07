@@ -12,7 +12,11 @@ const OPTED_OUT_KEY = 'andina_notifications_opted_out';
 
 function getOptedOut(): boolean {
   if (typeof window === 'undefined') return false;
-  return localStorage.getItem(OPTED_OUT_KEY) === '1';
+  try {
+    return localStorage.getItem(OPTED_OUT_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 export function useNotifications(role: NotificationRole) {
@@ -104,7 +108,11 @@ export function useNotifications(role: NotificationRole) {
       setError('Tu navegador no soporta notificaciones');
       return;
     }
-    localStorage.removeItem(OPTED_OUT_KEY);
+    try {
+      localStorage.removeItem(OPTED_OUT_KEY);
+    } catch {
+      /* Silencioso en móvil */
+    }
     setOptedOut(false);
     setLoading(true);
     setError(null);
@@ -150,7 +158,11 @@ export function useNotifications(role: NotificationRole) {
       });
       if (res.ok) {
         if (typeof window !== 'undefined') {
-          localStorage.setItem(OPTED_OUT_KEY, '1');
+          try {
+            localStorage.setItem(OPTED_OUT_KEY, '1');
+          } catch {
+            /* Silencioso en móvil */
+          }
         }
         setOptedOut(true);
         setError(null);

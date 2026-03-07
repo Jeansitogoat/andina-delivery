@@ -18,7 +18,11 @@ export default function FCMAutoRegister() {
   useEffect(() => {
     if (typeof window === 'undefined' || !user || user.rol !== 'cliente') return;
     if (Notification.permission !== 'granted') return;
-    if (localStorage.getItem(OPTED_OUT_KEY) === '1') return;
+    try {
+      if (localStorage.getItem(OPTED_OUT_KEY) === '1') return;
+    } catch {
+      /* Silencioso en móvil (modo privado, WebView, etc.) */
+    }
 
     const tryRegister = async () => {
       try {

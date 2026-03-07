@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import PasswordInput from '@/components/PasswordInput';
@@ -64,6 +64,45 @@ export default function AuthPage() {
     }
   }, [authLoading, user, router]);
 
+  // Procesar resultado de signInWithRedirect (Google en móvil)
+  useEffect(() => {
+    let cancelled = false;
+    const auth = getFirebaseAuth();
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (cancelled || !result?.user) return;
+        const firebaseUser = result.user;
+        const db = getFirestoreDb();
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        let snap = await getDoc(userRef);
+        if (cancelled) return;
+        if (!snap.exists()) {
+          await setDoc(userRef, {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email ?? null,
+            displayName: firebaseUser.displayName ?? null,
+            photoURL: firebaseUser.photoURL ?? null,
+            rol: 'cliente',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          snap = await getDoc(userRef);
+        }
+        if (cancelled) return;
+        const data = snap.exists() ? snap.data() : null;
+        const rol = (data?.rol ?? 'cliente') as import('@/lib/useAuth').UserRole;
+        const localId = data?.localId;
+        redirigirPorRol(rol, localId);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const e = err as { code?: string };
+        if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') return;
+        setErrorForm('Error al iniciar con Google. Intenta de nuevo.');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   function redirigirPorRol(rol: import('@/lib/useAuth').UserRole, localId?: string | null) {
     switch (rol) {
       case 'central':
@@ -85,11 +124,19 @@ export default function AuthPage() {
     }
   }
 
+  function isMobile(): boolean {
+    return typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  }
+
   async function handleGoogle() {
     setErrorForm('');
     setGoogleLoading(true);
     try {
       const auth = getFirebaseAuth();
+      if (isMobile()) {
+        await signInWithRedirect(auth, new GoogleAuthProvider());
+        return;
+      }
       const result = await signInWithPopup(auth, new GoogleAuthProvider());
       const firebaseUser = result.user;
       const db = getFirestoreDb();
@@ -149,14 +196,34 @@ export default function AuthPage() {
     if (code === 'auth/invalid-email') return 'Correo no válido.';
     if (code === 'auth/weak-password') return 'La contraseña debe tener al menos 6 caracteres.';
     if (code === 'auth/operation-not-allowed') return 'Registro deshabilitado. Contacta al administrador.';
-    if (code === 'auth/network-request-failed') return 'Error de conexión. Verifica tu internet.';
-    if (code === 'permission-denied' || msg.includes('permission-denied')) {
-      return 'Error de permisos. Revisa la consola de Firebase.';
+    if (code === 'auth/network-request-failed' || msg.includes('network')) {
+      return 'Error de conexión. Verifica tu internet e inténtalo de nuevo.';
+    }
+    if (code === 'auth/too-many-requests' || msg.includes('too-many-requests')) {
+      return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
+    }
+    if (msg.includes('service-is-currently-unavailable') || msg.includes('unavailable')) {
+      return 'El servicio está ocupado. Espera unos segundos e inténtalo de nuevo.';
+    }
+    if (code === 'permission-denied' || msg.includes('permission-denied') || msg.includes('insufficient permissions')) {
+      return 'Error de permisos. Intenta recargar la página.';
     }
     if (msg.includes('unsupported field value') || msg.includes('undefined')) {
       return 'Error al guardar los datos. Intenta de nuevo o contacta soporte.';
     }
-    return 'Error al registrar. Verifica los datos e intenta de nuevo.';
+    return 'Error al registrar. Verifica los datos e inténtalo de nuevo.';
+  }
+
+  function isRetryableAuthError(err: unknown): boolean {
+    const e = err as { code?: string; message?: string };
+    const code = e?.code ?? '';
+    const msg = String(e?.message ?? '').toLowerCase();
+    return (
+      code === 'auth/network-request-failed' ||
+      code === 'auth/too-many-requests' ||
+      msg.includes('service-is-currently-unavailable') ||
+      msg.includes('unavailable')
+    );
   }
 
   function handleRegistro(e: React.FormEvent) {
@@ -176,17 +243,21 @@ export default function AuthPage() {
     setRegistrando(true);
     const nombreLimpio = registro.nombres.trim();
 
-    registerWithEmail({
-      email: registro.correo.trim(),
-      password: registro.contraseña,
-      displayName: nombreLimpio,
-      telefono: registro.celular.trim(),
-      rol: 'cliente',
-    })
-      .then(() => {
+    const doRegistro = async (attempt: number): Promise<void> => {
+      const params = {
+        email: registro.correo.trim(),
+        password: registro.contraseña,
+        displayName: nombreLimpio,
+        telefono: registro.celular.trim(),
+        rol: 'cliente' as const,
+      };
+      try {
+        await registerWithEmail(params);
         registrandoRef.current = false;
         setRegistrando(false);
+        // Pequeña espera para que el token de auth se propague antes de Firestore
         if (registro.direccion.trim()) {
+          await new Promise((r) => setTimeout(r, 400));
           addDireccion({
             etiqueta: 'casa',
             nombre: 'Mi casa',
@@ -196,13 +267,18 @@ export default function AuthPage() {
           });
         }
         setPaso('registro-exitoso');
-      })
-      .catch((err) => {
+      } catch (err) {
+        if (isRetryableAuthError(err) && attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1500));
+          return doRegistro(attempt + 1);
+        }
         console.error(err);
         registrandoRef.current = false;
         setRegistrando(false);
         setErrorForm(mensajeErrorFirebase(err));
-      });
+      }
+    };
+    doRegistro(0);
   }
 
   function handleRegistroRider(e: React.FormEvent) {
@@ -223,23 +299,30 @@ export default function AuthPage() {
     }
     registrandoRef.current = true;
     setRegistrando(true);
-    registerWithEmail({
-      email: registro.correo.trim(),
-      password: registro.contraseña,
-      displayName: registro.nombres.trim(),
-      rol: 'rider',
-    })
-      .then(() => {
+    const doRegistroRider = async (attempt: number): Promise<void> => {
+      const params = {
+        email: registro.correo.trim(),
+        password: registro.contraseña,
+        displayName: registro.nombres.trim(),
+        rol: 'rider' as const,
+      };
+      try {
+        await registerWithEmail(params);
         registrandoRef.current = false;
         setRegistrando(false);
         setPaso('registro-exitoso-rider');
-      })
-      .catch((err) => {
+      } catch (err) {
+        if (isRetryableAuthError(err) && attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1500));
+          return doRegistroRider(attempt + 1);
+        }
         console.error(err);
         registrandoRef.current = false;
         setRegistrando(false);
         setErrorForm(mensajeErrorFirebase(err));
-      });
+      }
+    };
+    doRegistroRider(0);
   }
 
   function irALoginConEmail(email: string) {

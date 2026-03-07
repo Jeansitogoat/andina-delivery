@@ -73,12 +73,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const unsub = onSnapshot(
       ref,
       (snap) => {
-        const data = snap.data();
-        const c = data?.cart;
-        if (c && Array.isArray(c.stops)) {
-          setCart(c as CartState);
-        } else {
-          setCart({ stops: [] });
+        try {
+          const data = snap.data();
+          const c = data?.cart;
+          if (c && Array.isArray(c.stops)) {
+            setCart(c as CartState);
+          } else {
+            setCart({ stops: [] });
+          }
+        } catch (e) {
+          console.error('cart snapshot callback', e);
         }
       },
       (err) => console.error('cart snapshot', err)
@@ -97,7 +101,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         } catch {
           // ignore
         }
-      });
+      }).catch((err) => console.error('cart sync saveCart', err));
     }
   }, [user?.uid]);
 
@@ -115,7 +119,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setCart((prev) => {
         const next = updater(prev);
         if (user?.uid) {
-          saveCart(user.uid, next);
+          saveCart(user.uid, next).catch((err) => console.error('cart saveCart', err));
         } else {
           saveCartToStorage(next);
         }
