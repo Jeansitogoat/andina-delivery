@@ -40,9 +40,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'title y body requeridos' }, { status: 400 });
     }
     const data = dataPayload && typeof dataPayload === 'object' ? dataPayload : {};
+    let effectiveUid = typeof uid === 'string' && uid.trim() ? uid.trim() : null;
+    if (targetStr === 'user' && !effectiveUid && auth.rol === 'cliente') {
+      effectiveUid = auth.uid;
+    }
     let sent = 0;
-    if (targetStr === 'user' && typeof uid === 'string' && uid.trim()) {
-      const ok = await sendFCMToUser(uid.trim(), title, bodyText, data);
+    if (targetStr === 'user' && effectiveUid) {
+      const ok = await sendFCMToUser(effectiveUid, title, bodyText, data);
       sent = ok ? 1 : 0;
     } else {
       sent = await sendFCMToRole(targetStr as FCMRole, title, bodyText, data);

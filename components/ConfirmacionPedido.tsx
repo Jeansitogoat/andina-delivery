@@ -32,7 +32,7 @@ export default function ConfirmacionPedido({
 }: ConfirmacionPedidoProps) {
   const router = useRouter();
   const [demoToast, setDemoToast] = useState('');
-  const { permission, requestPermission, loading: notifLoading } = useNotifications('user');
+  const { permission, requestPermission, loading: notifLoading, error: notifError } = useNotifications('user');
 
   return (
     <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
@@ -83,7 +83,7 @@ export default function ConfirmacionPedido({
               <Bell className="w-4 h-4 text-dorado-oro" />
               ¿Recibir actualizaciones del pedido?
             </p>
-            <p className="text-xs text-gray-500 mb-3">Te avisaremos cuando esté en preparación y cuando vaya en camino.</p>
+            <p className="text-xs text-gray-500 mb-3">{notifError ?? 'Te avisaremos cuando esté en preparación y cuando vaya en camino.'}</p>
             <button
               type="button"
               onClick={requestPermission}

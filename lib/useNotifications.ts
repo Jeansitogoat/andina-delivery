@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { getFCMToken, setupFCMForegroundListener } from '@/lib/fcm-client';
+import { getFCMTokenWithRetry, setupFCMForegroundListener } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 
 export type NotificationRole = 'central' | 'rider' | 'restaurant' | 'user';
@@ -17,8 +17,12 @@ export function useNotifications(role: NotificationRole) {
     if (!fcmToken) return;
     try {
       const idToken = await getIdToken();
-      if (!idToken) return;
-      await fetch('/api/fcm/register', {
+      if (!idToken) {
+        if (typeof window !== 'undefined') console.warn('[FCM] registerToken: sin sesión (getIdToken null)');
+        setError('Sesión expirada. Recargá la página e intentá de nuevo.');
+        return;
+      }
+      const res = await fetch('/api/fcm/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -26,8 +30,21 @@ export function useNotifications(role: NotificationRole) {
         },
         body: JSON.stringify({ token: fcmToken, role }),
       });
+      if (res.ok) {
+        setError(null);
+        if (typeof window !== 'undefined') console.log('[FCM] Token enviado al servidor');
+        return;
+      }
+      if (!res.ok) {
+        try {
+          const data = (await res.json()) as { error?: string };
+          setError(data?.error ?? 'No se pudo registrar. Intentá de nuevo.');
+        } catch {
+          setError('No se pudo registrar. Intentá de nuevo.');
+        }
+      }
     } catch {
-      // API no disponible o no autorizado; se ignorará
+      setError('No se pudo registrar. Intentá de nuevo.');
     }
   }, [role]);
 
@@ -59,7 +76,11 @@ export function useNotifications(role: NotificationRole) {
       const result = await Notification.requestPermission();
       setPermission(result as NotificationPermission);
       if (result === 'granted') {
-        const token = await getFCMToken();
+        const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 1500 });
+        if (!token) {
+          setError('No se pudo obtener el token de notificaciones. Verificá que NEXT_PUBLIC_FIREBASE_VAPID_KEY esté configurada.');
+          return;
+        }
         await registerToken(token);
       }
     } catch (e) {

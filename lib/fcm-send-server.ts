@@ -33,13 +33,13 @@ export async function sendFCMToRole(
   const dataPayload = data && typeof data === 'object'
     ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
     : {};
+  const fullData = { title, body, ...dataPayload };
   let sent = 0;
   for (const token of tokens) {
     try {
       await messaging.send({
         token,
-        notification: { title, body },
-        data: dataPayload,
+        data: fullData,
       });
       sent++;
     } catch {
@@ -65,19 +65,24 @@ export async function sendFCMToUser(
   const docRef = db.collection(FCM_TOKENS_COLLECTION).doc(`${uid.trim()}_user`);
   const snap = await docRef.get();
   const token = snap.exists ? (snap.data()?.token as string) : null;
-  if (!token?.trim()) return false;
+  if (!token?.trim()) {
+    console.warn('[FCM] No token for user', uid, '- fcm_tokens/', `${uid}_user`);
+    return false;
+  }
   const messaging = getAdminMessaging();
   const dataPayload = data && typeof data === 'object'
     ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
     : {};
+  const fullData = { title, body, ...dataPayload };
   try {
     await messaging.send({
       token: token.trim(),
-      notification: { title, body },
-      data: dataPayload,
+      data: fullData,
     });
+    console.log('[FCM] Sent to user', uid);
     return true;
-  } catch {
+  } catch (e) {
+    console.error('[FCM] sendFCMToUser failed for', uid, e);
     return false;
   }
 }

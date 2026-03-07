@@ -5,19 +5,103 @@
  */
 import { getFirebaseApp } from '@/lib/firebase/client';
 
+const MESSAGING_SW_URL = '/firebase-messaging-sw.js';
+
+/** Registra el SW de FCM si no está registrado y devuelve su registration (necesario para getToken en móvil). */
+async function getMessagingSWRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
+  try {
+    const newReg = await navigator.serviceWorker.register(MESSAGING_SW_URL, { scope: '/' });
+    if (newReg.active && newReg.active.scriptURL.includes('firebase-messaging-sw')) return newReg;
+    if (newReg.waiting) {
+      newReg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      await new Promise<void>((resolve) => {
+        navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+        setTimeout(resolve, 3000);
+      });
+      const after = await navigator.serviceWorker.getRegistration('/');
+      if (after?.active?.scriptURL.includes('firebase-messaging-sw')) return after;
+    }
+    await new Promise<void>((resolve) => {
+      const worker = newReg.installing ?? newReg.waiting;
+      const done = () => {
+        if (newReg.active) resolve();
+      };
+      if (worker) {
+        worker.addEventListener('statechange', done);
+        if (newReg.active) done();
+      }
+      setTimeout(resolve, 5000);
+    });
+    return newReg;
+  } catch (e) {
+    console.warn('[FCM] getMessagingSWRegistration failed', e);
+    return null;
+  }
+}
+
+/** Espera a que el Service Worker esté listo (crítico en móvil). */
+export function waitForServiceWorker(): Promise<void> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return Promise.resolve();
+  }
+  return navigator.serviceWorker.ready.then(() => {});
+}
+
 export async function getFCMToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-  if (!vapidKey?.trim()) return null;
+  if (!vapidKey?.trim()) {
+    if (typeof window !== 'undefined') console.warn('[FCM] getFCMToken: NEXT_PUBLIC_FIREBASE_VAPID_KEY no definida');
+    return null;
+  }
   try {
+    const swReg = await getMessagingSWRegistration();
     const { getMessaging, getToken } = await import('firebase/messaging');
     const app = getFirebaseApp();
     const messaging = getMessaging(app);
-    const token = await getToken(messaging, { vapidKey: vapidKey.trim() });
+    const token = await getToken(messaging, {
+      vapidKey: vapidKey.trim(),
+      ...(swReg ? { serviceWorkerRegistration: swReg } : {}),
+    });
     return token ?? null;
-  } catch {
+  } catch (e) {
+    console.warn('[FCM] getFCMToken failed', e);
     return null;
   }
+}
+
+/**
+ * Obtiene el token FCM esperando primero al SW y reintentando (recomendado en móvil).
+ * En iOS usa más delay inicial y más intentos.
+ */
+export function isIOS(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+export async function getFCMTokenWithRetry(options?: {
+  maxAttempts?: number;
+  delayMs?: number;
+  initialDelayMs?: number;
+}): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const ios = isIOS();
+  const {
+    maxAttempts = ios ? 5 : 3,
+    delayMs = ios ? 2000 : 1500,
+    initialDelayMs = ios ? 2500 : 800,
+  } = options ?? {};
+  await waitForServiceWorker();
+  await new Promise((r) => setTimeout(r, initialDelayMs));
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const token = await getFCMToken();
+    if (token) return token;
+    if (attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return null;
 }
 
 /**

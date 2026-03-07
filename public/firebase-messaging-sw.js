@@ -14,12 +14,40 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+self.addEventListener('message', function (event) {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 messaging.onBackgroundMessage(function (payload) {
   const title = payload.notification?.title || payload.data?.title || 'Andina Delivery';
   const options = {
     body: payload.notification?.body || payload.data?.body || '',
-    icon: '/favicon.ico',
+    icon: '/logo-andina.png',
     data: payload.data || {},
   };
   self.registration.showNotification(title, options);
+});
+
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  var path = (event.notification.data && event.notification.data.pedidoId)
+    ? '/pedido/' + event.notification.data.pedidoId
+    : '/';
+  var fullUrl = new URL(path, self.registration.scope).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i];
+        if (client.url.indexOf(self.registration.scope) === 0 && 'focus' in client) {
+          client.navigate(fullUrl);
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(fullUrl);
+      }
+    })
+  );
 });

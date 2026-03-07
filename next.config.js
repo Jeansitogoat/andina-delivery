@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async redirects() {
+    return [
+      { source: '/favicon.ico', destination: '/logo-andina.png', permanent: false },
+    ];
+  },
   images: {
     remotePatterns: [
       {

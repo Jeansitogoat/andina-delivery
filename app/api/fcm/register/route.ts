@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       uid: auth.uid,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
+    console.log('[FCM] Token registered', docId);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('POST /api/fcm/register', e);

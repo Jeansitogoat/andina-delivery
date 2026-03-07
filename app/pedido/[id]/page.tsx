@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   CheckCircle2,
@@ -116,7 +116,15 @@ export default function SeguimientoPedidoPage({
 }) {
   const router = useRouter();
   const { id } = params;
-  const { permission, requestPermission, loading: notifLoading } = useNotifications('user');
+  const { permission, requestPermission, loading: notifLoading, isSupported } = useNotifications('user');
+  const autoPromptedRef = useRef(false);
+
+  /* Auto-pedir permiso de notificaciones una vez al ver seguimiento del pedido */
+  useEffect(() => {
+    if (permission !== 'default' || !isSupported || autoPromptedRef.current) return;
+    autoPromptedRef.current = true;
+    requestPermission();
+  }, [permission, isSupported, requestPermission]);
 
   /* ── estado desde API (tiempo real) ── */
   const [estadoActual, setEstadoActual] = useState<string>('confirmado');
