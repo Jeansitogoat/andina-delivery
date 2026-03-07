@@ -9,10 +9,10 @@ import LocalLogo from '@/components/LocalLogo';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
+import { useAddresses } from '@/lib/addressesContext';
+import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
+import { haversineKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
-
-const BASE_ENVIO = 1.5;
-const POR_PARADA_ADICIONAL = 0.25;
 
 type StopData = {
   localId: string;
@@ -26,6 +26,8 @@ export default function CarritoPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { cart, hydrated, addItem, removeItem, clearCart } = useCart();
+  const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
+  const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
   const [stopsData, setStopsData] = useState<StopData[]>([]);
   const [loadingStops, setLoadingStops] = useState(true);
@@ -100,9 +102,14 @@ export default function CarritoPage() {
   }, [hydrated, cart.stops]);
 
   const numParadas = stopsData.length;
-  const envioTarifa = numParadas <= 1
-    ? BASE_ENVIO
-    : BASE_ENVIO + (numParadas - 1) * POR_PARADA_ADICIONAL;
+  const firstStop = stopsData[0];
+  const originLatLng = direccionEntregarLatLng ?? userLocationLatLng;
+  const destLatLng = firstStop?.local && typeof firstStop.local.lat === 'number' && typeof firstStop.local.lng === 'number'
+    ? { lat: firstStop.local.lat, lng: firstStop.local.lng }
+    : null;
+  const km = originLatLng && destLatLng ? haversineKm(originLatLng.lat, originLatLng.lng, destLatLng.lat, destLatLng.lng) : null;
+  const baseEnvio = km != null ? getTarifaEnvioPorDistancia(km) : tarifaMinima;
+  const envioTarifa = numParadas <= 1 ? baseEnvio : baseEnvio + (numParadas - 1) * porParadaAdicional;
   const subtotal = stopsData.reduce((s, d) => s + d.subtotal, 0);
   const total = subtotal + envioTarifa;
   const totalCount = stopsData.reduce((s, d) => s + d.enrichedItems.reduce((a, i) => a + i.qty, 0), 0);
@@ -273,7 +280,7 @@ export default function CarritoPage() {
               <span className="font-semibold text-gray-900">${subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Costo de envío</span>
+              <span>{km == null ? 'Costo de envío (desde)' : 'Costo de envío'}</span>
               <span className="font-semibold text-rojo-andino">${envioTarifa.toFixed(2)}</span>
             </div>
             <div className="pt-2 border-t border-gray-100 flex justify-between font-black text-gray-900 text-base">
@@ -288,7 +295,7 @@ export default function CarritoPage() {
           <div className="text-sm text-gray-700">
             <p className="font-semibold">Entrega por Cía. Virgen de la Merced</p>
             <p className="text-gray-500 text-xs mt-0.5">
-              {numParadas > 1 ? `${numParadas} paradas · ` : ''}Envío ${envioTarifa.toFixed(2)}
+              {numParadas > 1 ? `${numParadas} paradas · ` : ''}{km == null ? 'Desde ' : ''}Envío ${envioTarifa.toFixed(2)}
             </p>
           </div>
         </div>

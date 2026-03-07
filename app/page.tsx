@@ -30,6 +30,7 @@ import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import { getIdToken } from '@/lib/authToken';
 import { getEstadoAbierto } from '@/lib/abiertoAhora';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
+import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 
 type CategoryKey = 'all' | 'Restaurantes' | 'Market' | 'Farmacias';
@@ -54,6 +55,7 @@ export default function Home() {
 
   const { locales: localesList, isLoading: loadingLocales } = useLocales(false);
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
+  const { getTarifaEnvioPorDistancia, tarifaMinima } = useTarifasEnvio();
   const { isOpen: fullScreenModalOpen } = useFullScreenModal();
   const originLatLng = direccionEntregarLatLng ?? userLocationLatLng;
 
@@ -145,26 +147,34 @@ export default function Home() {
     }
     if (!user?.uid) return;
     let cancelled = false;
-    getIdToken()
-      .then((token) => {
-        if (!token || cancelled) return null;
-        return fetch('/api/pedidos/mi-activo', {
-          headers: { Authorization: `Bearer ${token}` },
+    const doFetch = () => {
+      getIdToken()
+        .then((token) => {
+          if (!token || cancelled) return null;
+          return fetch('/api/pedidos/mi-activo', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        })
+        .then((res) => (res && res.ok ? res.json() : null))
+        .then((data: { id?: string | null } | null) => {
+          if (cancelled || !data) return;
+          setSeguimientoOrderId(data.id && String(data.id).trim() ? data.id : null);
+        })
+        .catch(() => {
+          if (!cancelled) setSeguimientoOrderId(null);
         });
-      })
-      .then((res) => (res && res.ok ? res.json() : null))
-      .then((data: { id?: string | null } | null) => {
-        if (cancelled || !data) return;
-        setSeguimientoOrderId(data.id && data.id.trim() ? data.id : null);
-      })
-      .catch(() => {
-        if (!cancelled) setSeguimientoOrderId(null);
-      });
+    };
+    doFetch();
     const onFocus = () => fetchSeguimientoOrderId();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchSeguimientoOrderId();
+    };
     window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       cancelled = true;
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [authLoading, user?.rol, user?.uid, fetchSeguimientoOrderId]);
 
@@ -414,6 +424,12 @@ export default function Home() {
                   originLatLng && typeof local.lat === 'number' && typeof local.lng === 'number'
                     ? formatDistanceKm(haversineKm(originLatLng.lat, originLatLng.lng, local.lat, local.lng))
                     : '—';
+                const kmLocal = originLatLng && typeof local.lat === 'number' && typeof local.lng === 'number'
+                  ? haversineKm(originLatLng.lat, originLatLng.lng, local.lat, local.lng)
+                  : null;
+                const envioText = kmLocal != null
+                  ? `$${getTarifaEnvioPorDistancia(kmLocal).toFixed(2)}`
+                  : `Desde $${tarifaMinima.toFixed(2)}`;
                 return (
                 <Link
                   key={local.id}
@@ -476,7 +492,7 @@ export default function Home() {
                       </span>
                       <span className="inline-flex items-center gap-1 text-rojo-andino font-medium">
                         <Truck className="w-3.5 h-3.5" />
-                        $1.50
+                        {envioText}
                       </span>
                     </div>
                   </div>
@@ -487,40 +503,34 @@ export default function Home() {
           )}
         </section>
 
-        {/* Barra carrito flotante (oculta cuando modal Nueva ubicación está abierto) */}
-        {cartCount > 0 && activeLocal && !fullScreenModalOpen && (
-          <div className="fixed bottom-4 left-4 right-4 z-50 max-w-lg mx-auto">
-            <Link
-              href="/carrito"
-              prefetch
-              className="w-full py-4 rounded-3xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold shadow-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] block"
-            >
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-black">
-                {cartCount}
-              </div>
-              <ShoppingBag className="w-5 h-5" />
-              {cartCount} Ver carrito
-            </Link>
+        {/* Barra flotante inferior: Ver seguimiento (si pedido activo) y Ver carrito (si hay items) */}
+        {(seguimientoOrderId && usuarioLogueado) || (cartCount > 0 && activeLocal && !fullScreenModalOpen) ? (
+          <div className="fixed bottom-4 left-4 right-4 z-50 max-w-lg mx-auto flex flex-col gap-3">
+            {seguimientoOrderId && usuarioLogueado && (
+              <Link
+                href={`/pedido/${seguimientoOrderId}`}
+                prefetch
+                className="w-full py-4 rounded-3xl bg-dorado-oro hover:bg-dorado-oro/90 text-gray-900 font-bold shadow-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] block"
+              >
+                <Package className="w-5 h-5" />
+                Ver seguimiento del pedido
+              </Link>
+            )}
+            {cartCount > 0 && activeLocal && !fullScreenModalOpen && (
+              <Link
+                href="/carrito"
+                prefetch
+                className="w-full py-4 rounded-3xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold shadow-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] block"
+              >
+                <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-black">
+                  {cartCount}
+                </div>
+                <ShoppingBag className="w-5 h-5" />
+                {cartCount} Ver carrito
+              </Link>
+            )}
           </div>
-        )}
-
-        {/* Botón flotante "Ver seguimiento del pedido" cuando hay pedido activo (sin depender del carrito) */}
-        {seguimientoOrderId && usuarioLogueado && (
-          <div
-            className={`fixed left-4 right-4 z-50 max-w-lg mx-auto ${
-              cartCount > 0 && activeLocal && !fullScreenModalOpen ? 'bottom-24' : 'bottom-4'
-            }`}
-          >
-            <Link
-              href={`/pedido/${seguimientoOrderId}`}
-              prefetch
-              className="w-full py-4 rounded-3xl bg-dorado-oro hover:bg-dorado-oro/90 text-gray-900 font-bold shadow-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] block"
-            >
-              <Package className="w-5 h-5" />
-              Ver seguimiento del pedido
-            </Link>
-          </div>
-        )}
+        ) : null}
       </div>
 
       {/* Footer */}

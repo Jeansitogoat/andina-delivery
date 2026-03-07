@@ -57,7 +57,7 @@ function primerNombreParaMostrar(displayName?: string | null, email?: string | n
 export default function PerfilPage() {
   const router = useRouter();
   const { user, loading: authLoading, refreshUser, logout } = useAuth();
-  const { clearCart, addItem } = useCart();
+  const { clearCart, replaceCartAndSave } = useCart();
   const { direcciones, updateDirecciones } = useAddresses();
   const { permission, requestPermission, reintentarRegistro, desactivar, loading: notifLoading, error: notifError, isSupported, optedOut } = useNotifications('user');
   const fotoRef = useRef<HTMLInputElement>(null);
@@ -156,6 +156,7 @@ export default function PerfilPage() {
           fecha: formatFecha(p.timestamp || 0),
           restaurante: p.restaurante || '—',
           logoRestaurante: p.localId ? `/logos/${p.localId}.png` : '',
+          localId: p.localId ?? null,
           items: p.items || [],
           total: p.total || 0,
           estado: mapEstadoToHistorial(p.estado || 'confirmado'),
@@ -223,18 +224,18 @@ export default function PerfilPage() {
     });
   }
 
-  function volverAPedir(pedido: PedidoHistorial) {
+  async function volverAPedir(pedido: PedidoHistorial) {
     if (pedido.itemsCart?.localId && Array.isArray(pedido.itemsCart.items) && pedido.itemsCart.items.length > 0) {
-      clearCart();
-      const { localId, items } = pedido.itemsCart;
-      items.forEach((item) => {
-        for (let i = 0; i < item.qty; i++) {
-          addItem(localId, item.id, item.note);
-        }
-      });
+      await replaceCartAndSave([{ localId: pedido.itemsCart.localId, items: pedido.itemsCart.items }]);
       router.push('/carrito');
     } else {
-      router.push('/');
+      // Pedidos antiguos sin itemsCart: ir al menú del local si tenemos localId
+      const localId = pedido.localId || (pedido.logoRestaurante ? pedido.logoRestaurante.replace(/^\/logos\/|\.png$/g, '').trim() : null);
+      if (localId) {
+        router.push(`/restaurante/${localId}`);
+      } else {
+        router.push('/');
+      }
     }
   }
 

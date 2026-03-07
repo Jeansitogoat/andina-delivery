@@ -32,6 +32,7 @@ import PasswordInput from '@/components/PasswordInput';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
+import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 
 interface Solicitud {
   id: string;
@@ -89,7 +90,7 @@ export default function PanelMaestroPage() {
   const [creandoUsuario, setCreandoUsuario] = useState(false);
   const [usuarioCreado, setUsuarioCreado] = useState<{ email: string; password: string; rol: string; localId?: string } | null>(null);
   const [editandoLocal, setEditandoLocal] = useState<Local | null>(null);
-  const [editLocalForm, setEditLocalForm] = useState({ name: '', address: '', telefono: '', time: '', email: '', password: '', logo: '', cover: '' });
+  const [editLocalForm, setEditLocalForm] = useState({ name: '', address: '', telefono: '', time: '', email: '', password: '', logo: '', cover: '', lat: null as number | null, lng: null as number | null });
   const [guardandoLocal, setGuardandoLocal] = useState(false);
   const [borrandoId, setBorrandoId] = useState<string | null>(null);
   const [confirmarAccionLocal, setConfirmarAccionLocal] = useState<{
@@ -151,6 +152,8 @@ export default function PanelMaestroPage() {
     ownerPassword: '',
     ownerName: '',
     ownerPhone: '',
+    lat: null as number | null,
+    lng: null as number | null,
   });
   const [creandoLocalManual, setCreandoLocalManual] = useState(false);
   const [localCreadoResult, setLocalCreadoResult] = useState<{ localId: string; email: string; password: string } | null>(null);
@@ -544,7 +547,7 @@ export default function PanelMaestroPage() {
 
   const handleCrearLocalManual = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { name, address, telefono, time, logo, cover, ownerEmail, ownerPassword, ownerName, ownerPhone } = nuevoLocalManual;
+      const { name, address, telefono, time, logo, cover, ownerEmail, ownerPassword, ownerName, ownerPhone, lat, lng } = nuevoLocalManual;
     if (!name.trim()) {
       showToast('Nombre del local es obligatorio');
       return;
@@ -571,6 +574,8 @@ export default function PanelMaestroPage() {
           ownerName: ownerName.trim() || undefined,
           ownerPhone: ownerPhone.trim() || undefined,
           ownerEmail: ownerEmail.trim() || undefined,
+          lat: lat != null ? lat : undefined,
+          lng: lng != null ? lng : undefined,
         }),
       });
       const dataLocales = await resLocales.json();
@@ -615,6 +620,8 @@ export default function PanelMaestroPage() {
         ownerPassword: '',
         ownerName: '',
         ownerPhone: '',
+        lat: null,
+        lng: null,
       });
       refreshLocales();
     } catch {
@@ -635,6 +642,8 @@ export default function PanelMaestroPage() {
       password: '',
       logo: loc.logo ?? '',
       cover: loc.cover ?? '',
+      lat: typeof loc.lat === 'number' ? loc.lat : null,
+      lng: typeof loc.lng === 'number' ? loc.lng : null,
     });
   };
 
@@ -683,6 +692,8 @@ export default function PanelMaestroPage() {
           time: editLocalForm.time.trim() || undefined,
           logo: editLocalForm.logo || undefined,
           cover: editLocalForm.cover || undefined,
+          lat: editLocalForm.lat != null ? editLocalForm.lat : undefined,
+          lng: editLocalForm.lng != null ? editLocalForm.lng : undefined,
         }),
       });
       if (res.ok) {
@@ -1587,13 +1598,15 @@ export default function PanelMaestroPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Dirección</label>
-                <input
-                  type="text"
+                <CampoUbicacionConMapa
                   value={nuevoLocalManual.address}
-                  onChange={(e) => setNuevoLocalManual((p) => ({ ...p, address: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-rojo-andino"
+                  onChange={(v) => setNuevoLocalManual((p) => ({ ...p, address: v }))}
+                  onCoordsChange={(newLat, newLng) => setNuevoLocalManual((p) => ({ ...p, lat: newLat, lng: newLng }))}
+                  initialLat={nuevoLocalManual.lat}
+                  initialLng={nuevoLocalManual.lng}
+                  label="Dirección"
                   placeholder="Ej. Av. Principal 123"
+                  compact
                 />
               </div>
               <div>
@@ -2189,13 +2202,15 @@ export default function PanelMaestroPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Dirección</label>
-                <input
-                  type="text"
+                <CampoUbicacionConMapa
                   value={editLocalForm.address}
-                  onChange={(e) => setEditLocalForm((f) => ({ ...f, address: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-rojo-andino"
-                  placeholder="Dirección"
+                  onChange={(v) => setEditLocalForm((f) => ({ ...f, address: v }))}
+                  onCoordsChange={(newLat, newLng) => setEditLocalForm((f) => ({ ...f, lat: newLat, lng: newLng }))}
+                  initialLat={editLocalForm.lat}
+                  initialLng={editLocalForm.lng}
+                  label="Dirección"
+                  placeholder="Ej. Av. Principal 123"
+                  compact
                 />
               </div>
               <div>

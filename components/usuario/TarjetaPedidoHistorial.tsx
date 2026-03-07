@@ -15,6 +15,8 @@ export interface PedidoHistorial {
   total: number;
   estado: 'entregado' | 'cancelado' | 'en_camino' | 'preparando';
   tiempo: string;
+  /** ID del local (para fallback "volver a pedir" sin itemsCart) */
+  localId?: string | null;
   /** Para "Volver a pedir" (solo si el pedido se guardó con itemsCart) */
   itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
 }

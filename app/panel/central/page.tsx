@@ -25,6 +25,8 @@ import {
   ShoppingBag,
   LogOut,
   Trash2,
+  DollarSign,
+  Truck,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { sendNotification } from '@/lib/notifications';
@@ -84,7 +86,7 @@ export default function PanelCentralPage() {
   const { permission, requestPermission, loading: notifLoading } = useNotifications('central');
   const [pedidos, setPedidos] = useState<PedidoCentral[]>([]);
   const [riders, setRiders] = useState<RiderCentral[]>([]);
-  const [tab, setTab] = useState<'activos' | 'riders' | 'historial'>('activos');
+  const [tab, setTab] = useState<'activos' | 'riders' | 'historial' | 'tarifas'>('activos');
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState<PedidoCentral | null>(null);
   const [mostrarAsignar, setMostrarAsignar] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -98,6 +100,14 @@ export default function PanelCentralPage() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const prevPedidosCount = useRef(0);
   const [sessionInvalid, setSessionInvalid] = useState(false);
+  const [tarifasTiers, setTarifasTiers] = useState<Array<{ kmMax: number | null; tarifa: number }>>([
+    { kmMax: 2.5, tarifa: 1.5 },
+    { kmMax: 5, tarifa: 2.5 },
+    { kmMax: null, tarifa: 3.5 },
+  ]);
+  const [tarifasPorParada, setTarifasPorParada] = useState(0.25);
+  const [loadingTarifas, setLoadingTarifas] = useState(false);
+  const [guardandoTarifas, setGuardandoTarifas] = useState(false);
 
   const newOrderSound = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {
@@ -120,6 +130,45 @@ export default function PanelCentralPage() {
       router.replace('/auth');
     }
   }, [user, loading, router]);
+
+  /* Cargar tarifas cuando se abre la pestaña Tarifas */
+  useEffect(() => {
+    if (tab !== 'tarifas') return;
+    setLoadingTarifas(true);
+    fetch('/api/config/tarifas')
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data) {
+          if (Array.isArray(data.tiers) && data.tiers.length > 0) {
+            setTarifasTiers(data.tiers);
+          }
+          if (typeof data.porParadaAdicional === 'number') {
+            setTarifasPorParada(data.porParadaAdicional);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTarifas(false));
+  }, [tab]);
+
+  const guardarTarifas = useCallback(async () => {
+    const tok = await getIdToken();
+    if (!tok) return;
+    setGuardandoTarifas(true);
+    try {
+      const res = await fetch('/api/config/tarifas', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ tiers: tarifasTiers, porParadaAdicional: tarifasPorParada }),
+      });
+      if (res.ok) showToast('Tarifas guardadas');
+      else showToast('Error al guardar');
+    } catch {
+      showToast('Error al guardar');
+    } finally {
+      setGuardandoTarifas(false);
+    }
+  }, [tarifasTiers, tarifasPorParada]);
 
   /* Cargar pedidos y riders (token fresco en cada llamada) */
   const cargarDatos = useCallback(async (filtro?: 'hoy' | 'semana' | 'mes') => {
@@ -488,12 +537,13 @@ export default function PanelCentralPage() {
                 { id: 'activos', label: 'Activos (' + pedidosActivos.length + ')', icon: Package },
                 { id: 'riders', label: 'Riders (' + riders.length + ')', icon: Bike },
                 { id: 'historial', label: 'Historial (' + pedidosHistorial.length + ')', icon: History },
+                { id: 'tarifas', label: 'Tarifas', icon: Truck },
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setTab(id as 'activos' | 'riders' | 'historial')}
-                  className={'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ' + (tab === id ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600')}
+                  onClick={() => setTab(id as 'activos' | 'riders' | 'historial' | 'tarifas')}
+                  className={'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all min-w-[80px] ' + (tab === id ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600')}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   {label}
@@ -632,6 +682,88 @@ export default function PanelCentralPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {tab === 'tarifas' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-3xl p-4 shadow-sm">
+                  <p className="text-xs font-semibold text-gray-400 mb-3">TARIFAS DE ENVÍO POR DISTANCIA</p>
+                  <p className="text-sm text-gray-600 mb-4">Estos valores se usan en la app para calcular el costo de envío según la distancia del cliente al restaurante.</p>
+                  {loadingTarifas ? (
+                    <div className="py-8 text-center text-gray-400 text-sm">Cargando...</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {tarifasTiers.map((tier, idx) => (
+                        <div key={idx} className="flex items-center gap-3">
+                          <div className="flex-1 flex gap-2">
+                            <div className="flex-1">
+                              <label className="text-xs text-gray-500 block mb-1">Hasta (km)</label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={tier.kmMax ?? ''}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setTarifasTiers((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...tier, kmMax: v === '' ? null : parseFloat(v) };
+                                    return n;
+                                  });
+                                }}
+                                placeholder="Sin límite"
+                                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-xs text-gray-500 block mb-1">Precio ($)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={tier.tarifa}
+                                onChange={(e) => {
+                                  const v = parseFloat(e.target.value);
+                                  setTarifasTiers((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...tier, tarifa: Number.isNaN(v) ? 0 : v };
+                                    return n;
+                                  });
+                                }}
+                                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          </div>
+                          {tier.kmMax == null && (
+                            <span className="text-xs text-gray-400 mt-6">(más de {tarifasTiers[idx - 1]?.kmMax ?? '0'} km)</span>
+                          )}
+                        </div>
+                      ))}
+                      <div className="flex items-center gap-3 pt-2">
+                        <label className="text-sm font-semibold text-gray-700">Por parada adicional ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={tarifasPorParada}
+                          onChange={(e) => setTarifasPorParada(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-24 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        <span className="text-xs text-gray-400">Se suma por cada local extra en el pedido</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={guardarTarifas}
+                        disabled={guardandoTarifas}
+                        className="w-full py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-bold flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <DollarSign className="w-5 h-5" />
+                        {guardandoTarifas ? 'Guardando...' : 'Guardar tarifas'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

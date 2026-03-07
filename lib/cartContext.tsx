@@ -49,6 +49,9 @@ type CartContextType = {
   addItem: (_localId: string, _itemId: string, _note?: string) => void;
   removeItem: (_itemId: string, _localId?: string) => void;
   clearCart: () => void;
+  replaceCart: (_stops: CartStop[]) => void;
+  /** Reemplaza el carrito y devuelve una promesa que se resuelve cuando se guardó en Firestore. */
+  replaceCartAndSave: (_stops: CartStop[]) => Promise<void>;
   clearStop: (_localId: string) => void;
   setItemNote: (_itemId: string, _note: string, _localId?: string) => void;
   localId: string | null;
@@ -172,6 +175,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     updateCart(() => ({ stops: [] }));
   }, [updateCart]);
 
+  const replaceCart = useCallback(
+    (stops: CartStop[]) => {
+      updateCart(() => ({ stops: stops.map((s) => ({ localId: s.localId, items: [...s.items] })) }));
+    },
+    [updateCart]
+  );
+
+  const replaceCartAndSave = useCallback(
+    async (stops: CartStop[]) => {
+      const next: CartState = { stops: stops.map((s) => ({ localId: s.localId, items: [...s.items] })) };
+      setCart(next);
+      if (user?.uid) {
+        await saveCart(user.uid, next);
+      } else {
+        saveCartToStorage(next);
+      }
+    },
+    [user?.uid]
+  );
+
   const clearStop = useCallback(
     (localId: string) => {
       updateCart((prev) => ({
@@ -211,6 +234,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     addItem,
     removeItem,
     clearCart,
+    replaceCart,
+    replaceCartAndSave,
     clearStop,
     setItemNote,
     localId,

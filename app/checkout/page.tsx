@@ -18,10 +18,13 @@ import {
   Store,
   Package,
   Plus,
+  ExternalLink,
 } from 'lucide-react';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
 import { useAddresses } from '@/lib/addressesContext';
+import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
+import { haversineKm, formatDistanceKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
 import type { Local } from '@/lib/data';
 import AddressSelector from '@/components/AddressSelector';
@@ -48,9 +51,6 @@ function getServiceCost(subtotal: number): number {
   return Math.max(0.10, Math.round(subtotal * 0.02 * 100) / 100);
 }
 
-/** Tarifas multi-parada (plan Andina) */
-const BASE_ENVIO = 1.5;
-const POR_PARADA_ADICIONAL = 0.25;
 
 function ComprobantePreview({ file }: { file: File }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -73,7 +73,8 @@ export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
   const { cart, hydrated, clearCart } = useCart();
   const cartStops = cart.stops;
-  const { direccionEntregar, direcciones, selectedId, addDireccion, userLocationLatLng } = useAddresses();
+  const { direccionEntregar, direcciones, selectedId, addDireccion, direccionEntregarLatLng, userLocationLatLng } = useAddresses();
+  const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
   const [showAgregarDireccion, setShowAgregarDireccion] = useState(false);
   const [payment, setPayment] = useState<'efectivo' | 'transferencia'>('efectivo');
@@ -90,6 +91,9 @@ export default function CheckoutPage() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [isOrdering, setIsOrdering] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
+  const [showModalUbicacion, setShowModalUbicacion] = useState(false);
+  const [envioTarifaPrev, setEnvioTarifaPrev] = useState<number | null>(null);
+  const [tarifaAjustada, setTarifaAjustada] = useState(false);
   /** Datos de transferencia al entrar a comprobante (persistidos para no depender del carrito tras clearCart) */
   const [transferenciaComprobante, setTransferenciaComprobante] = useState<Local['transferencia'] | null>(null);
 
@@ -145,9 +149,15 @@ export default function CheckoutPage() {
   const local = firstStopData?.local ?? null;
   const numParadas = stopsData.length;
   const isPickup = deliveryType === 'pickup';
-  const envioTarifa = isPickup ? 0 : (numParadas <= 1
-    ? BASE_ENVIO
-    : BASE_ENVIO + (numParadas - 1) * POR_PARADA_ADICIONAL);
+  const originLatLng = direccionEntregarLatLng ?? userLocationLatLng;
+  const destLatLng = local && typeof local.lat === 'number' && typeof local.lng === 'number'
+    ? { lat: local.lat, lng: local.lng }
+    : null;
+  const km = !isPickup && originLatLng && destLatLng
+    ? haversineKm(originLatLng.lat, originLatLng.lng, destLatLng.lat, destLatLng.lng)
+    : null;
+  const baseEnvio = km != null ? getTarifaEnvioPorDistancia(km) : tarifaMinima;
+  const envioTarifa = isPickup ? 0 : (numParadas <= 1 ? baseEnvio : baseEnvio + (numParadas - 1) * porParadaAdicional);
   const subtotal = stopsData.reduce((s, d) => s + d.subtotal, 0);
   const propinaEfectiva = isPickup ? 0 : tip;
   const serviceCost = getServiceCost(subtotal);
@@ -164,13 +174,29 @@ export default function CheckoutPage() {
   }, [hydrated, cart.stops.length, confirmed]);
 
   const necesitaDireccion = !isPickup && !direccionEntregar;
-  const puedePedir = allLoaded && user && !authLoading && !isOrdering && !necesitaDireccion;
+  const puedePedir = allLoaded && user && !authLoading && !isOrdering;
+
+  /* Detectar "Tarifa ajustada por distancia" al cambiar dirección */
+  useEffect(() => {
+    if (!isPickup && envioTarifa > 0) {
+      if (envioTarifaPrev != null && Math.abs(envioTarifa - envioTarifaPrev) > 0.001) {
+        setTarifaAjustada(true);
+      }
+      setEnvioTarifaPrev(envioTarifa);
+    } else if (isPickup) {
+      setEnvioTarifaPrev(null);
+      setTarifaAjustada(false);
+    }
+  }, [envioTarifa, envioTarifaPrev, isPickup]);
 
   const handleOrder = async () => {
     if (!allLoaded || stopsData.length === 0) return;
     if (isOrdering || confirmed) return;
     setAuthError(null);
-    if (necesitaDireccion) return;
+    if (necesitaDireccion) {
+      setShowModalUbicacion(true);
+      return;
+    }
     if (!user) {
       setAuthError('Debes iniciar sesión para realizar el pedido.');
       return;
@@ -709,12 +735,28 @@ export default function CheckoutPage() {
             )}
 
             {deliveryType === 'pickup' ? (
-              <div className="border-t border-gray-50 pt-3">
+              <div className="border-t border-gray-50 pt-3 space-y-2">
                 <p className="text-xs text-gray-400 font-medium mb-1">Retirarás en</p>
                 <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
                   <MapPin className="w-4 h-4 text-rojo-andino flex-shrink-0" />
                   {formatDireccionCorta(local?.address ?? '') || 'Dirección del local'}
                 </p>
+                {userLocationLatLng && local && typeof local.lat === 'number' && typeof local.lng === 'number' && (
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <p className="text-xs text-gray-500">
+                      A {formatDistanceKm(haversineKm(userLocationLatLng.lat, userLocationLatLng.lng, local.lat, local.lng))} de ti
+                    </p>
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${local.lat},${local.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-rojo-andino hover:underline"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      ¿Cómo llegar?
+                    </a>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="border-t border-gray-50 pt-3">
@@ -852,10 +894,17 @@ export default function CheckoutPage() {
                 <span className="font-semibold text-gray-900">${subtotal.toFixed(2)}</span>
               </div>
               {!isPickup && (
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Costo de envío</span>
-                  <span className="font-semibold text-gray-900">${shipping.toFixed(2)}</span>
-                </div>
+                <>
+                  {tarifaAjustada && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Tarifa ajustada por distancia
+                    </p>
+                  )}
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Costo de envío</span>
+                    <span className="font-semibold text-gray-900">${shipping.toFixed(2)}</span>
+                  </div>
+                </>
               )}
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Coste de servicio</span>
@@ -906,6 +955,37 @@ export default function CheckoutPage() {
           </button>
         </div>
       </div>
+
+      {showModalUbicacion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-fade-in text-center">
+            <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+              <MapPin className="w-7 h-7 text-amber-600" />
+            </div>
+            <h3 className="font-bold text-lg text-gray-900 mb-2">Necesitamos tu ubicación</h3>
+            <p className="text-sm text-gray-600 mb-5">Para calcular el envío y entrega, agrega o selecciona una dirección.</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowModalUbicacion(false)}
+                className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold text-sm"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowModalUbicacion(false);
+                  setShowAgregarDireccion(true);
+                }}
+                className="flex-1 py-3 rounded-xl bg-rojo-andino text-white font-bold text-sm hover:bg-rojo-andino/90 transition-colors"
+              >
+                Agregar dirección
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAgregarDireccion && (
         <AgregarDireccionModal

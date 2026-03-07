@@ -15,11 +15,15 @@ import {
   ShoppingBag,
   Search,
   MessageCircle,
+  ExternalLink,
 } from 'lucide-react';
 import type { MenuItem } from '@/lib/data';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
 import { useLocal } from '@/lib/useLocal';
+import { useAddresses } from '@/lib/addressesContext';
+import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
+import { haversineKm, formatDistanceKm } from '@/lib/geo';
 import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import ProductDetailSheet from '@/components/ProductDetailSheet';
 import SkeletonRestaurante from '@/components/SkeletonRestaurante';
@@ -37,6 +41,8 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
   const stopForThisLocal = cart.stops.find((s) => s.localId === id);
   const localCartCount = stopForThisLocal ? stopForThisLocal.items.reduce((s, c) => s + c.qty, 0) : 0;
   const { isOpen: fullScreenModalOpen } = useFullScreenModal();
+  const { userLocationLatLng } = useAddresses();
+  const { getTarifaEnvioPorDistancia, tarifaMinima } = useTarifasEnvio();
 
   // Categorías: las del local + las que tengan productos en el menú (ej. "Promociones" creada en el panel)
   const categoriesFromMenu = Array.from(new Set(allItems.map((i) => i.category).filter(Boolean))) as string[];
@@ -205,26 +211,57 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Stats row */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 mb-3">
-              <span className="flex items-center gap-1 font-semibold text-gray-800">
-                <Star className="w-4 h-4 fill-dorado-oro text-dorado-oro" />
-                {local.rating}
-                <span className="font-normal text-gray-500">({local.reviews} opiniones)</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="w-4 h-4 text-gray-400" />
-                {local.time}
-              </span>
-              <span className="flex items-center gap-1 text-rojo-andino font-semibold">
-                <Truck className="w-4 h-4" />
-                Envío $1.50
-              </span>
-            </div>
+            {(() => {
+              const originLat = userLocationLatLng;
+              const kmLocal = originLat && typeof local.lat === 'number' && typeof local.lng === 'number'
+                ? haversineKm(originLat.lat, originLat.lng, local.lat, local.lng)
+                : null;
+              const envioText = kmLocal != null
+                ? `$${getTarifaEnvioPorDistancia(kmLocal).toFixed(2)}`
+                : `Desde $${tarifaMinima.toFixed(2)}`;
+              return (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 mb-3">
+                  <span className="flex items-center gap-1 font-semibold text-gray-800">
+                    <Star className="w-4 h-4 fill-dorado-oro text-dorado-oro" />
+                    {local.rating}
+                    <span className="font-normal text-gray-500">({local.reviews} opiniones)</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    {local.time}
+                  </span>
+                  <span className="flex items-center gap-1 text-rojo-andino font-semibold">
+                    <Truck className="w-4 h-4" />
+                    Envío {envioText}
+                  </span>
+                </div>
+              );
+            })()}
 
             {local.address && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <MapPin className="w-3.5 h-3.5" />
-                {local.address}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {local.address}
+                  </div>
+                  {userLocationLatLng && typeof local.lat === 'number' && typeof local.lng === 'number' && (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${local.lat},${local.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs font-semibold text-rojo-andino hover:underline"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      ¿Cómo llegar?
+                    </a>
+                  )}
+                </div>
+                {userLocationLatLng && typeof local.lat === 'number' && typeof local.lng === 'number' && (
+                  <p className="text-xs text-gray-500">
+                    A {formatDistanceKm(haversineKm(userLocationLatLng.lat, userLocationLatLng.lng, local.lat, local.lng))} de ti
+                  </p>
+                )}
               </div>
             )}
             {local.telefono?.trim() && (

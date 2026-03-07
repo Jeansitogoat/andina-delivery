@@ -21,6 +21,31 @@ function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
+export type TarifaTier = { kmMax: number | null; tarifa: number };
+
+const TIERS_DEFAULT: TarifaTier[] = [
+  { kmMax: 2.5, tarifa: 1.5 },
+  { kmMax: 5, tarifa: 2.5 },
+  { kmMax: null, tarifa: 3.5 },
+];
+
+/**
+ * Obtiene la tarifa de envío por distancia (km) usando tiers.
+ * Si tiers está vacío o km inválido, devuelve la tarifa mínima por defecto (1.50).
+ */
+export function getTarifaEnvioPorDistancia(
+  km: number,
+  tiers: TarifaTier[] = TIERS_DEFAULT
+): number {
+  if (tiers.length === 0) return 1.5;
+  if (typeof km !== 'number' || Number.isNaN(km) || km < 0) return tiers[0]?.tarifa ?? 1.5;
+  for (const t of tiers) {
+    if (t.kmMax == null) return t.tarifa;
+    if (km <= t.kmMax) return t.tarifa;
+  }
+  return tiers[tiers.length - 1]?.tarifa ?? 1.5;
+}
+
 /**
  * Formatea distancia en km a texto corto: "XXX m" o "X.X km".
  */
