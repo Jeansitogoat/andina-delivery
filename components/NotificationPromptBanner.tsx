@@ -102,7 +102,7 @@ export default function NotificationPromptBanner() {
         <div className="flex-1 min-w-0">
           <p className="font-bold text-gray-900 text-sm">Recibe notificaciones</p>
           <p className="text-xs text-gray-500">
-            {notifError ?? (isIOS() ? 'En iPhone: añadí la app a inicio (Compartir → Añadir a pantalla de inicio) y abrila desde el icono.' : 'Te avisaremos del estado de tus pedidos')}
+            {notifError ?? (isIOS() ? 'En iPhone: agrega la app a inicio desde Compartir (↑) o desde el menú (...) → Añadir a pantalla de inicio, y ábrela desde el icono.' : 'Te avisaremos del estado de tus pedidos')}
           </p>
         </div>
         <div className="flex items-center gap-2">

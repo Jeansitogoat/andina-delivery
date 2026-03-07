@@ -51,6 +51,9 @@ export async function GET(
       comprobanteBase64: data.comprobanteBase64 ?? null,
       comprobanteFileName: data.comprobanteFileName ?? null,
       comprobanteMimeType: data.comprobanteMimeType ?? null,
+      ...(data.itemsCart && typeof data.itemsCart === 'object' && data.itemsCart.localId && Array.isArray(data.itemsCart.items)
+        ? { itemsCart: data.itemsCart as PedidoCentral['itemsCart'] }
+        : {}),
     };
     let pedido: PedidoConRider & PedidoPublico = pedidoBase;
     if (data.riderId) {

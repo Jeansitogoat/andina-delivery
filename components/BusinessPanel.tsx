@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { X, ShoppingBag, CheckCircle, Truck, Star, TrendingUp, Phone, ChevronRight, Bell } from 'lucide-react';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { formatDireccionCorta } from '@/lib/formatDireccion';
 
 type OrderStatus = 'nuevo' | 'preparando' | 'listo' | 'entregado';
 
@@ -266,7 +267,7 @@ export default function BusinessPanel({ isOpen, onClose, localName = 'Tu negocio
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-xs text-gray-500">
                         <Truck className="w-3.5 h-3.5 text-dorado-oro" />
-                        <span>{order.direccion}</span>
+                        <span>{formatDireccionCorta(order.direccion)}</span>
                       </div>
                       {cfg.next && (
                         <button

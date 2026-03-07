@@ -53,6 +53,9 @@ export async function GET(request: Request) {
         localId: data.localId ?? null,
         codigoVerificacion: data.codigoVerificacion || '',
         propina: data.propina ?? 0,
+        ...(data.itemsCart && typeof data.itemsCart === 'object' && data.itemsCart.localId && Array.isArray(data.itemsCart.items)
+          ? { itemsCart: data.itemsCart as PedidoCentral['itemsCart'] }
+          : {}),
       };
     });
     return NextResponse.json({ pedidos });

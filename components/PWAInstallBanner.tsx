@@ -115,10 +115,10 @@ export default function PWAInstallBanner() {
             <div className="flex-1 min-w-0">
               <p className="font-bold text-gray-900 text-sm">Añadir Andina a tu iPhone</p>
               <p className="text-xs text-gray-600 mt-1.5">
-                1. Toca <span className="inline-flex items-center justify-center w-6 h-6 rounded bg-gray-200 text-gray-700 font-bold text-[10px]">↑</span> Compartir abajo
+                1. Toca el botón <strong>Compartir</strong> (flecha hacia arriba) o los <strong>tres puntitos</strong> (...) en la barra de abajo
               </p>
               <p className="text-xs text-gray-600 mt-0.5">
-                2. Toca <strong>Añadir a pantalla de inicio</strong>
+                2. Elige <strong>Añadir a pantalla de inicio</strong>
               </p>
             </div>
             <button

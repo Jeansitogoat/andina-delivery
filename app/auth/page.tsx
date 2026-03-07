@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
+import PasswordInput from '@/components/PasswordInput';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
@@ -179,6 +180,7 @@ export default function AuthPage() {
       email: registro.correo.trim(),
       password: registro.contraseña,
       displayName: nombreLimpio,
+      telefono: registro.celular.trim(),
       rol: 'cliente',
     })
       .then(() => {
@@ -295,12 +297,11 @@ export default function AuthPage() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Contraseña</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={login.contraseña}
                   onChange={(e) => setLogin((l) => ({ ...l, contraseña: e.target.value }))}
                   placeholder="Tu contraseña"
-                  className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                  className="px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
                   required
                 />
               </div>
@@ -413,25 +414,23 @@ export default function AuthPage() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Contraseña</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={registro.contraseña}
                   onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
                   placeholder="Mínimo 6 caracteres"
-                  className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                  className="px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
                   required
                   minLength={6}
                 />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Confirmar contraseña</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={registro.confirmarContraseña}
                   onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
                   onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
                   placeholder="Repite tu contraseña"
-                  className={`w-full px-4 py-3.5 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors ${
+                  className={`px-4 py-3.5 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors ${
                     errorConfirmar ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-200 focus:border-dorado-oro focus:ring-dorado-oro/20'
                   }`}
                   required
@@ -595,29 +594,27 @@ export default function AuthPage() {
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Contraseña</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={registro.contraseña}
                 onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
                 placeholder="Mínimo 6 caracteres"
-                className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                className="px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
                 required
                 minLength={6}
               />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Confirmar contraseña</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={registro.confirmarContraseña}
                 onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
                 onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
                 placeholder="Repite tu contraseña"
-              className={`w-full px-4 py-3.5 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors ${
+              className={`px-4 py-3.5 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors ${
                     errorConfirmar ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-200 focus:border-dorado-oro focus:ring-dorado-oro/20'
                   }`}
-                  required
-                />
+                required
+              />
                 {errorConfirmar ? (
                   <div className="space-y-1 mt-1">
                     <p className="text-xs text-red-500 font-medium">{errorConfirmar}</p>

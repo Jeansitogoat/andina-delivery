@@ -7,12 +7,23 @@ import { getFirebaseApp } from '@/lib/firebase/client';
 
 const MESSAGING_SW_URL = '/firebase-messaging-sw.js';
 
+export function isIOS(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/** Timeout para esperar a que el SW de FCM pase a active (iOS necesita más margen). */
+function getSWWaitTimeoutMs(): number {
+  return isIOS() ? 10000 : 5000;
+}
+
 /**
  * Registra el Service Worker de FCM en la ruta /firebase-messaging-sw.js con scope '/' para evitar
  * 404 o rutas incorrectas en Vercel (el SW debe controlar todo el origen).
  */
 async function getMessagingSWRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
+  const timeoutMs = getSWWaitTimeoutMs();
   try {
     const newReg = await navigator.serviceWorker.register(MESSAGING_SW_URL, { scope: '/' });
     if (newReg.active && newReg.active.scriptURL.includes('firebase-messaging-sw')) return newReg;
@@ -34,13 +45,18 @@ async function getMessagingSWRegistration(): Promise<ServiceWorkerRegistration |
         worker.addEventListener('statechange', done);
         if (newReg.active) done();
       }
-      setTimeout(resolve, 5000);
+      setTimeout(resolve, timeoutMs);
     });
     return newReg;
   } catch (e) {
     console.warn('[FCM] getMessagingSWRegistration failed', e);
     return null;
   }
+}
+
+/** Pre-registra el SW de FCM para que esté listo cuando el usuario active notificaciones (p. ej. desde Perfil o Layout). */
+export async function ensureFCMServiceWorkerReady(): Promise<ServiceWorkerRegistration | null> {
+  return getMessagingSWRegistration();
 }
 
 /** Espera a que el Service Worker esté listo (crítico en móvil). */
@@ -59,6 +75,7 @@ export async function getFCMToken(): Promise<string | null> {
     return null;
   }
   try {
+    if ('serviceWorker' in navigator) await navigator.serviceWorker.ready;
     const swReg = await getMessagingSWRegistration();
     if (!swReg) {
       console.error('[FCM] getFCMToken: Service Worker no disponible o falló el registro. Comprueba que /firebase-messaging-sw.js exista y tenga scope "/".');
@@ -91,13 +108,8 @@ export async function getFCMToken(): Promise<string | null> {
 
 /**
  * Obtiene el token FCM esperando primero al SW y reintentando (recomendado en móvil).
- * En iOS usa más delay inicial y más intentos.
+ * En iOS usa más delay inicial y más intentos. Incluye un reintento extra tras 3 s si el bucle no obtuvo token.
  */
-export function isIOS(): boolean {
-  if (typeof window === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
 export async function getFCMTokenWithRetry(options?: {
   maxAttempts?: number;
   delayMs?: number;
@@ -111,6 +123,7 @@ export async function getFCMTokenWithRetry(options?: {
     initialDelayMs = ios ? 2500 : 800,
   } = options ?? {};
   await waitForServiceWorker();
+  await getMessagingSWRegistration();
   await new Promise((r) => setTimeout(r, initialDelayMs));
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const token = await getFCMToken();
@@ -119,7 +132,9 @@ export async function getFCMTokenWithRetry(options?: {
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
-  return null;
+  await new Promise((r) => setTimeout(r, 3000));
+  const token = await getFCMToken();
+  return token ?? null;
 }
 
 /**

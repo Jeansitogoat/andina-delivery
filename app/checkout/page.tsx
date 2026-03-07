@@ -17,6 +17,7 @@ import {
   Clock,
   Store,
   Package,
+  Plus,
 } from 'lucide-react';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
@@ -24,7 +25,9 @@ import { useAddresses } from '@/lib/addressesContext';
 import { getIdToken } from '@/lib/authToken';
 import type { Local } from '@/lib/data';
 import AddressSelector from '@/components/AddressSelector';
+import AgregarDireccionModal from '@/components/usuario/AgregarDireccionModal';
 import LocalLogo from '@/components/LocalLogo';
+import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import {
   generateVerificationCode,
@@ -70,8 +73,9 @@ export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
   const { cart, hydrated, clearCart } = useCart();
   const cartStops = cart.stops;
-  const { direccionEntregar, direcciones, selectedId } = useAddresses();
+  const { direccionEntregar, direcciones, selectedId, addDireccion, userLocationLatLng } = useAddresses();
   const [pageVisible, setPageVisible] = useState(false);
+  const [showAgregarDireccion, setShowAgregarDireccion] = useState(false);
   const [payment, setPayment] = useState<'efectivo' | 'transferencia'>('efectivo');
   const [tip, setTip] = useState(1.0);
   const [confirmed, setConfirmed] = useState(false);
@@ -244,6 +248,14 @@ export default function CheckoutPage() {
           ...(batchIdBase && batchLeaderLocalId != null
             ? { batchId: batchIdBase, batchIndex: index, batchLeaderLocalId }
             : {}),
+          itemsCart: (() => {
+            const cartStop = cart.stops.find((s) => s.localId === stop.localId);
+            if (!cartStop?.items?.length) return undefined;
+            return {
+              localId: stop.localId,
+              items: cartStop.items.map((i) => ({ id: i.id, qty: i.qty, ...(i.note ? { note: i.note } : {}) })),
+            };
+          })(),
         }),
       });
       fetchPromises.push(res);
@@ -701,7 +713,7 @@ export default function CheckoutPage() {
                 <p className="text-xs text-gray-400 font-medium mb-1">Retirarás en</p>
                 <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
                   <MapPin className="w-4 h-4 text-rojo-andino flex-shrink-0" />
-                  {local?.address ?? 'Dirección del local'}
+                  {formatDireccionCorta(local?.address ?? '') || 'Dirección del local'}
                 </p>
               </div>
             ) : (
@@ -711,6 +723,19 @@ export default function CheckoutPage() {
                   Dirección de entrega
                 </p>
                 <AddressSelector dark />
+                {direcciones.length === 0 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mt-2">
+                    No tienes direcciones guardadas. Agrega una para que te podamos entregar.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAgregarDireccion(true)}
+                  className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-rojo-andino/40 bg-rojo-andino/5 text-rojo-andino font-semibold text-sm hover:bg-rojo-andino/10 transition-colors"
+                >
+                  <Plus className="w-4 h-4 flex-shrink-0" />
+                  {direcciones.length === 0 ? 'Agregar mi dirección' : 'Agregar nueva dirección'}
+                </button>
               </div>
             )}
           </div>
@@ -881,6 +906,18 @@ export default function CheckoutPage() {
           </button>
         </div>
       </div>
+
+      {showAgregarDireccion && (
+        <AgregarDireccionModal
+          onClose={() => setShowAgregarDireccion(false)}
+          onGuardar={(d) => {
+            addDireccion(d);
+            setShowAgregarDireccion(false);
+          }}
+          telefonoUsuario={user?.telefono ?? null}
+          initialLatLng={userLocationLatLng}
+        />
+      )}
     </main>
   );
 }

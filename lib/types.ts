@@ -37,6 +37,8 @@ export interface PedidoCentral {
   batchLeaderLocalId?: string | null;
   /** 'delivery' = entrega a domicilio (pasa por central/riders), 'pickup' = retiro en local */
   deliveryType?: 'delivery' | 'pickup';
+  /** Para "Volver a pedir": estructura del carrito al momento del pedido (opcional) */
+  itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
 }
 
 export interface RiderCentral {

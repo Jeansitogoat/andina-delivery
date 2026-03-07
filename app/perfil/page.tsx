@@ -18,6 +18,7 @@ import { useCart } from '@/lib/useCart';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
 import { useNotifications } from '@/lib/useNotifications';
+import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseStorage, getFirestoreDb } from '@/lib/firebase/client';
 import { getFirebaseAuth } from '@/lib/firebase/client';
@@ -56,9 +57,9 @@ function primerNombreParaMostrar(displayName?: string | null, email?: string | n
 export default function PerfilPage() {
   const router = useRouter();
   const { user, loading: authLoading, refreshUser, logout } = useAuth();
-  const { clearCart } = useCart();
+  const { clearCart, addItem } = useCart();
   const { direcciones, updateDirecciones } = useAddresses();
-  const { permission, requestPermission, desactivar, loading: notifLoading, error: notifError, isSupported, optedOut } = useNotifications('user');
+  const { permission, requestPermission, reintentarRegistro, desactivar, loading: notifLoading, error: notifError, isSupported, optedOut } = useNotifications('user');
   const fotoRef = useRef<HTMLInputElement>(null);
 
   const [tab, setTab] = useState<TabPerfil>('historial');
@@ -75,9 +76,16 @@ export default function PerfilPage() {
   const [confirmarDesactivarNotif, setConfirmarDesactivarNotif] = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [tokenRegistrado, setTokenRegistrado] = useState<boolean | null>(null);
+  const [reintentandoNotif, setReintentandoNotif] = useState(false);
+  const [refreshNotifStatus, setRefreshNotifStatus] = useState(0);
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    ensureFCMServiceWorkerReady();
   }, []);
 
   // Ver si el usuario tiene token FCM registrado (para mostrar "Token registrado" en notificaciones)
@@ -101,7 +109,7 @@ export default function PerfilPage() {
       })
       .catch(() => { if (!cancelled) setTokenRegistrado(false); });
     return () => { cancelled = true; };
-  }, [user, permission, optedOut, notifLoading]);
+  }, [user, permission, optedOut, notifLoading, refreshNotifStatus]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -140,10 +148,11 @@ export default function PerfilPage() {
         if (res == null) return { pedidos: [] };
         return res.ok ? res.json() : { pedidos: [] };
       })
-      .then((data: { pedidos?: Array<{ id: string; restaurante: string; items: string[]; total: number; timestamp: number; estado: string; localId?: string }> }) => {
+      .then((data: { pedidos?: Array<{ id: string; restaurante: string; items: string[]; total: number; timestamp: number; estado: string; localId?: string; itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] } }> }) => {
         if (cancelled) return;
         const list: PedidoHistorial[] = (data.pedidos || []).map((p) => ({
           id: `#${p.id}`,
+          orderId: p.id,
           fecha: formatFecha(p.timestamp || 0),
           restaurante: p.restaurante || '—',
           logoRestaurante: p.localId ? `/logos/${p.localId}.png` : '',
@@ -151,6 +160,7 @@ export default function PerfilPage() {
           total: p.total || 0,
           estado: mapEstadoToHistorial(p.estado || 'confirmado'),
           tiempo: '—',
+          ...(p.itemsCart && p.itemsCart.localId && Array.isArray(p.itemsCart.items) ? { itemsCart: p.itemsCart } : {}),
         }));
         setHistorial(list);
       })
@@ -213,8 +223,19 @@ export default function PerfilPage() {
     });
   }
 
-  function volverAPedir(_pedido: PedidoHistorial) {
-    router.push('/');
+  function volverAPedir(pedido: PedidoHistorial) {
+    if (pedido.itemsCart?.localId && Array.isArray(pedido.itemsCart.items) && pedido.itemsCart.items.length > 0) {
+      clearCart();
+      const { localId, items } = pedido.itemsCart;
+      items.forEach((item) => {
+        for (let i = 0; i < item.qty; i++) {
+          addItem(localId, item.id, item.note);
+        }
+      });
+      router.push('/carrito');
+    } else {
+      router.push('/');
+    }
   }
 
   const pedidosEntregados = historial.filter((p) => p.estado === 'entregado').length;
@@ -469,7 +490,7 @@ export default function PerfilPage() {
                     ? tokenRegistrado === true
                       ? 'Activadas · Token registrado (recibirás avisos de pedidos)'
                       : tokenRegistrado === false
-                        ? 'Activadas · No se registró el token (tocá Activar de nuevo o recargá)'
+                        ? 'Activadas · No se pudo completar el registro.'
                         : 'Activadas · Te avisamos del estado de tus pedidos'
                     : notifError
                       ? notifError
@@ -481,13 +502,30 @@ export default function PerfilPage() {
                 </p>
                 <div className="mt-3 flex items-center gap-3 flex-wrap">
                   {permission === 'granted' && !optedOut ? (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmarDesactivarNotif(true)}
-                      className="text-xs font-semibold text-red-500 hover:underline"
-                    >
-                      Desactivar
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmarDesactivarNotif(true)}
+                        className="text-xs font-semibold text-red-500 hover:underline"
+                      >
+                        Desactivar
+                      </button>
+                      {tokenRegistrado === false && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setReintentandoNotif(true);
+                            const ok = await reintentarRegistro();
+                            setRefreshNotifStatus((n) => n + 1);
+                            setReintentandoNotif(false);
+                          }}
+                          disabled={reintentandoNotif}
+                          className="text-sm font-semibold text-rojo-andino hover:underline disabled:opacity-70"
+                        >
+                          {reintentandoNotif ? 'Reintentando…' : 'Reintentar'}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <button
                       type="button"

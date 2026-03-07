@@ -227,6 +227,7 @@ export async function POST(request: Request) {
       deliveryType?: 'delivery' | 'pickup';
       paymentMethod?: 'efectivo' | 'transferencia';
       paymentConfirmed?: boolean;
+      itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
     };
 
     const { id, restaurante, items, total, localId: bodyLocalId } = body;
@@ -326,6 +327,16 @@ export async function POST(request: Request) {
     }
     if (typeof body.serviceCost === 'number' && !Number.isNaN(body.serviceCost)) {
       docData.serviceCost = body.serviceCost;
+    }
+    if (body.itemsCart && typeof body.itemsCart === 'object' && body.itemsCart.localId && Array.isArray(body.itemsCart.items)) {
+      docData.itemsCart = {
+        localId: String(body.itemsCart.localId),
+        items: body.itemsCart.items.map((i) => ({
+          id: String(i.id),
+          qty: Number(i.qty) || 1,
+          ...(typeof i.note === 'string' ? { note: i.note } : {}),
+        })),
+      };
     }
     await docRef.set(docData);
 

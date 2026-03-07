@@ -1,10 +1,13 @@
 'use client';
 
-import { ShoppingBag, ChevronRight, CheckCircle, XCircle } from 'lucide-react';
+import { ShoppingBag, ChevronRight, CheckCircle, XCircle, Package } from 'lucide-react';
+import Link from 'next/link';
 import LocalLogo from '@/components/LocalLogo';
 
 export interface PedidoHistorial {
   id: string;
+  /** Id real del pedido (sin #) para links a /pedido/[id] */
+  orderId: string;
   fecha: string;
   restaurante: string;
   logoRestaurante: string;
@@ -12,6 +15,8 @@ export interface PedidoHistorial {
   total: number;
   estado: 'entregado' | 'cancelado' | 'en_camino' | 'preparando';
   tiempo: string;
+  /** Para "Volver a pedir" (solo si el pedido se guardó con itemsCart) */
+  itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
 }
 
 interface TarjetaPedidoHistorialProps {
@@ -88,6 +93,16 @@ export default function TarjetaPedidoHistorial({ pedido, onVolverAPedir }: Tarje
           Volver a pedir
           <ChevronRight className="w-4 h-4" />
         </button>
+      )}
+      {!entregado && !cancelado && (
+        <Link
+          href={`/pedido/${pedido.orderId}`}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-dorado-oro/10 hover:bg-dorado-oro/20 border-t border-gray-100 text-gray-900 font-semibold text-sm transition-colors"
+        >
+          <Package className="w-4 h-4" />
+          Ver seguimiento
+          <ChevronRight className="w-4 h-4" />
+        </Link>
       )}
     </div>
   );

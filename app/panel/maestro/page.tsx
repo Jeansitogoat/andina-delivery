@@ -28,8 +28,10 @@ import { useAuth } from '@/lib/useAuth';
 import { getIdToken } from '@/lib/authToken';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
+import PasswordInput from '@/components/PasswordInput';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { formatDireccionCorta } from '@/lib/formatDireccion';
 
 interface Solicitud {
   id: string;
@@ -1412,7 +1414,7 @@ export default function PanelMaestroPage() {
                             <p className="text-xs text-gray-500">
                               {sol.nombre} {sol.apellido} · {sol.tipoNegocio}
                             </p>
-                            <p className="text-xs text-gray-400 mt-0.5">{sol.direccion}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{formatDireccionCorta(sol.direccion)}</p>
                             <p className="text-xs text-gray-400">{sol.email} · {sol.telefonoLocal}</p>
                           </div>
                           <button
@@ -2252,11 +2254,10 @@ export default function PanelMaestroPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Contraseña (mín. 6 caracteres)</label>
-                    <input
-                      type="password"
+                    <PasswordInput
                       value={editLocalForm.password}
                       onChange={(e) => setEditLocalForm((f) => ({ ...f, password: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-rojo-andino"
+                      className="px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-rojo-andino"
                       placeholder="Mínimo 6 caracteres"
                     />
                   </div>

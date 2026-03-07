@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { MapPin, Plus, Trash2, Home, Briefcase, Star } from 'lucide-react';
+import { formatDireccionCorta } from '@/lib/formatDireccion';
 
 export interface DireccionGuardada {
   id: string;
@@ -96,7 +97,7 @@ export default function SeccionDirecciones({ direcciones, onActualizar }: Props)
                     </span>
                   )}
                 </div>
-                {dir.detalle && <p className="text-xs text-gray-400">{dir.detalle}</p>}
+                {dir.detalle && <p className="text-xs text-gray-400">{formatDireccionCorta(dir.detalle)}</p>}
                 {dir.referencia && <p className="text-xs text-gray-500 mt-0.5 italic">Ref: {dir.referencia}</p>}
                 {!dir.principal && (
                   <button

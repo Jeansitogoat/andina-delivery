@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { MapPin, ChevronDown, Plus, AlertCircle } from 'lucide-react';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
+import { formatDireccionCorta } from '@/lib/formatDireccion';
 import AgregarDireccionModal from '@/components/usuario/AgregarDireccionModal';
 
 interface AddressSelectorProps {
@@ -35,7 +36,7 @@ export default function AddressSelector({ className = '', dark = false }: Addres
         className={`flex items-center gap-2 text-sm font-medium transition-colors ${dark ? 'text-gray-700 hover:text-gray-900' : 'text-white/95 hover:text-white'}`}
       >
         <MapPin className="w-4 h-4 text-dorado-oro flex-shrink-0" />
-        <span>Entregar en: {direccionEntregar || 'Agrega una dirección'}</span>
+        <span>Entregar en: {formatDireccionCorta(direccionEntregar) || 'Agrega una dirección'}</span>
         <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -65,7 +66,7 @@ export default function AddressSelector({ className = '', dark = false }: Addres
               }`}
             >
               <MapPin className="w-4 h-4 text-dorado-oro flex-shrink-0" />
-              <span className="truncate">{dir.nombre} · {dir.detalle}</span>
+              <span className="truncate">{dir.nombre} · {formatDireccionCorta(dir.detalle)}</span>
             </button>
           ))}
           <button

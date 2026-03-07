@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -26,6 +26,7 @@ import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
 import { useLocales } from '@/lib/useLocales';
 import { useAddresses } from '@/lib/addressesContext';
+import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import { getIdToken } from '@/lib/authToken';
 import { getEstadoAbierto } from '@/lib/abiertoAhora';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
@@ -53,6 +54,7 @@ export default function Home() {
 
   const { locales: localesList, isLoading: loadingLocales } = useLocales(false);
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
+  const { isOpen: fullScreenModalOpen } = useFullScreenModal();
   const originLatLng = direccionEntregarLatLng ?? userLocationLatLng;
 
   function primerNombreParaMostrar(displayName?: string | null, email?: string | null): string {
@@ -119,15 +121,33 @@ export default function Home() {
   }, [banners.length, carruselIntervalSeconds]);
 
   // Botón flotante "Ver seguimiento del pedido": solo para clientes con pedido activo (no entregado)
+  const fetchSeguimientoOrderId = useCallback(() => {
+    if (typeof window === 'undefined' || user?.rol !== 'cliente' || !user?.uid) return;
+    getIdToken()
+      .then((token) => {
+        if (!token) return null;
+        return fetch('/api/pedidos/mi-activo', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      })
+      .then((res) => (res && res.ok ? res.json() : null))
+      .then((data: { id?: string | null } | null) => {
+        if (!data) return;
+        setSeguimientoOrderId(data.id && data.id.trim() ? data.id : null);
+      })
+      .catch(() => setSeguimientoOrderId(null));
+  }, [user?.rol, user?.uid]);
+
   useEffect(() => {
-    if (typeof window === 'undefined' || user?.rol !== 'cliente') {
+    if (authLoading || typeof window === 'undefined' || user?.rol !== 'cliente') {
       setSeguimientoOrderId(null);
       return;
     }
+    if (!user?.uid) return;
     let cancelled = false;
     getIdToken()
       .then((token) => {
-        if (!token || cancelled) return;
+        if (!token || cancelled) return null;
         return fetch('/api/pedidos/mi-activo', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -140,8 +160,13 @@ export default function Home() {
       .catch(() => {
         if (!cancelled) setSeguimientoOrderId(null);
       });
-    return () => { cancelled = true; };
-  }, [user?.rol]);
+    const onFocus = () => fetchSeguimientoOrderId();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [authLoading, user?.rol, user?.uid, fetchSeguimientoOrderId]);
 
   const filteredLocales = useMemo(() => {
     let list = localesList.filter((l) => l.status !== 'suspended');
@@ -462,9 +487,9 @@ export default function Home() {
           )}
         </section>
 
-        {/* Barra carrito flotante */}
-        {cartCount > 0 && activeLocal && (
-          <div className="fixed bottom-4 left-4 right-4 z-20 max-w-lg mx-auto">
+        {/* Barra carrito flotante (oculta cuando modal Nueva ubicación está abierto) */}
+        {cartCount > 0 && activeLocal && !fullScreenModalOpen && (
+          <div className="fixed bottom-4 left-4 right-4 z-50 max-w-lg mx-auto">
             <Link
               href="/carrito"
               prefetch
@@ -474,14 +499,18 @@ export default function Home() {
                 {cartCount}
               </div>
               <ShoppingBag className="w-5 h-5" />
-              Ver carrito · {activeLocal.name}
+              {cartCount} Ver carrito
             </Link>
           </div>
         )}
 
-        {/* Botón flotante "Ver seguimiento del pedido" cuando no hay carrito pero sí pedido activo */}
-        {cartCount === 0 && seguimientoOrderId && usuarioLogueado && (
-          <div className="fixed bottom-4 left-4 right-4 z-20 max-w-lg mx-auto">
+        {/* Botón flotante "Ver seguimiento del pedido" cuando hay pedido activo (sin depender del carrito) */}
+        {seguimientoOrderId && usuarioLogueado && (
+          <div
+            className={`fixed left-4 right-4 z-50 max-w-lg mx-auto ${
+              cartCount > 0 && activeLocal && !fullScreenModalOpen ? 'bottom-24' : 'bottom-4'
+            }`}
+          >
             <Link
               href={`/pedido/${seguimientoOrderId}`}
               prefetch

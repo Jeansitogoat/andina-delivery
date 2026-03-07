@@ -26,14 +26,14 @@ export function useNotifications(role: NotificationRole) {
     setOptedOut(getOptedOut());
   }, []);
 
-  const registerToken = useCallback(async (fcmToken: string | null) => {
-    if (!fcmToken) return;
+  const registerToken = useCallback(async (fcmToken: string | null, silent = false): Promise<boolean> => {
+    if (!fcmToken) return false;
     try {
       const idToken = await getIdToken();
       if (!idToken) {
         if (typeof window !== 'undefined') console.warn('[FCM] registerToken: sin sesión (getIdToken null)');
-        setError('Sesión expirada. Recargá la página e intentá de nuevo.');
-        return;
+        if (!silent) setError('Sesión expirada. Recargá la página e intentá de nuevo.');
+        return false;
       }
       const res = await fetch('/api/fcm/register', {
         method: 'POST',
@@ -47,16 +47,18 @@ export function useNotifications(role: NotificationRole) {
         lastRegisteredTokenRef.current = fcmToken;
         setError(null);
         if (typeof window !== 'undefined') console.log('[FCM] Token enviado al servidor');
-        return;
+        return true;
       }
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       const errMsg = data?.error ?? 'No se pudo registrar. Intentá de nuevo.';
-      setError(errMsg);
+      if (!silent) setError(errMsg);
       if (typeof errMsg === 'string' && /unregistered|invalid|token|inválido/.test(errMsg.toLowerCase())) {
         lastRegisteredTokenRef.current = null;
       }
+      return false;
     } catch {
-      setError('No se pudo registrar. Intentá de nuevo.');
+      if (!silent) setError('No se pudo registrar. Intentá de nuevo.');
+      return false;
     }
   }, [role]);
 
@@ -85,7 +87,7 @@ export function useNotifications(role: NotificationRole) {
         if (!token) return;
         if (lastRegisteredTokenRef.current !== token) {
           lastRegisteredTokenRef.current = null;
-          registerToken(token);
+          registerToken(token, true);
         }
       });
     };
@@ -109,13 +111,15 @@ export function useNotifications(role: NotificationRole) {
     try {
       const result = await Notification.requestPermission();
       setPermission(result as NotificationPermission);
+      if (result === 'denied') {
+        setError('Rechazaste las notificaciones. Podés activarlas después en la configuración del navegador.');
+        return;
+      }
       if (result === 'granted') {
-        const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 1500 });
-        if (!token) {
-          setError('No se pudo obtener el token de notificaciones. Verificá que NEXT_PUBLIC_FIREBASE_VAPID_KEY esté configurada.');
-          return;
+        const token = await getFCMTokenWithRetry();
+        if (token) {
+          await registerToken(token, true);
         }
-        await registerToken(token);
       }
     } catch {
       setError('No se pudo activar las notificaciones');
@@ -123,6 +127,14 @@ export function useNotifications(role: NotificationRole) {
       setLoading(false);
     }
   }, [registerToken]);
+
+  /** Reintenta obtener el token FCM y registrarlo (sin pedir permiso). Para el botón "Reintentar" cuando permission ya es granted. */
+  const reintentarRegistro = useCallback(async (): Promise<boolean> => {
+    if (permission !== 'granted' || optedOut) return false;
+    const token = await getFCMTokenWithRetry();
+    if (!token) return false;
+    return registerToken(token, true);
+  }, [permission, optedOut, registerToken]);
 
   const desactivar = useCallback(async () => {
     try {
@@ -157,6 +169,7 @@ export function useNotifications(role: NotificationRole) {
     isSupported,
     optedOut,
     requestPermission,
+    reintentarRegistro,
     desactivar,
     registerToken,
   };

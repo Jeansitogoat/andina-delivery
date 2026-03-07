@@ -20,6 +20,7 @@ import type { MenuItem } from '@/lib/data';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
 import { useLocal } from '@/lib/useLocal';
+import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import ProductDetailSheet from '@/components/ProductDetailSheet';
 import SkeletonRestaurante from '@/components/SkeletonRestaurante';
 import LocalLogo from '@/components/LocalLogo';
@@ -35,6 +36,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
   const notFound = !!error || (!loading && !local);
   const stopForThisLocal = cart.stops.find((s) => s.localId === id);
   const localCartCount = stopForThisLocal ? stopForThisLocal.items.reduce((s, c) => s + c.qty, 0) : 0;
+  const { isOpen: fullScreenModalOpen } = useFullScreenModal();
 
   // Categorías: las del local + las que tengan productos en el menú (ej. "Promociones" creada en el panel)
   const categoriesFromMenu = Array.from(new Set(allItems.map((i) => i.category).filter(Boolean))) as string[];
@@ -397,8 +399,8 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
         </div>
       </main>
 
-      {/* === BARRA FLOTANTE CARRITO === */}
-      {localCartCount > 0 && (
+      {/* === BARRA FLOTANTE CARRITO (oculta cuando modal Nueva ubicación está abierto) === */}
+      {localCartCount > 0 && !fullScreenModalOpen && (
         <div
           className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50 via-gray-50/95 to-transparent"
           style={{ animation: 'slideUp 0.3s ease-out' }}

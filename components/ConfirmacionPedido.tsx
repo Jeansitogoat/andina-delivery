@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { CheckCircle2, Clock, Truck, Bell } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
+import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { sendNotification, showLocalNotification, canShowLocalNotification, DEMO_NEED_PERMISSION_MESSAGE } from '@/lib/notifications';
 
 export interface ItemConfirmado {
@@ -60,7 +61,7 @@ export default function ConfirmacionPedido({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-gray-900">Cía. Virgen de la Merced</p>
-            <p className="text-xs text-gray-500 mt-0.5">Tu pedido está en camino · {direccionEntregar}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Tu pedido está en camino · {formatDireccionCorta(direccionEntregar)}</p>
           </div>
         </div>
 

@@ -3,7 +3,9 @@ import { SWRConfig } from 'swr';
 import './globals.css';
 import { AddressesProvider } from '@/lib/addressesContext';
 import { CartProvider } from '@/lib/cartContext';
+import { FullScreenModalProvider } from '@/lib/FullScreenModalContext';
 import AuthSplashGate from '@/components/AuthSplashGate';
+import FCMAutoRegister from '@/components/FCMAutoRegister';
 import PWAInstallBanner from '@/components/PWAInstallBanner';
 import NotificationPromptBanner from '@/components/NotificationPromptBanner';
 
@@ -16,6 +18,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: '#c40f0f',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -35,9 +41,12 @@ export default function RootLayout({
         <SWRConfig value={{ revalidateOnFocus: false, dedupingInterval: 30000 }}>
           <AddressesProvider>
             <CartProvider>
-              <AuthSplashGate>{children}</AuthSplashGate>
+              <FullScreenModalProvider>
+                <AuthSplashGate>{children}</AuthSplashGate>
+                <FCMAutoRegister />
               <PWAInstallBanner />
-              <NotificationPromptBanner />
+                <NotificationPromptBanner />
+              </FullScreenModalProvider>
             </CartProvider>
           </AddressesProvider>
         </SWRConfig>

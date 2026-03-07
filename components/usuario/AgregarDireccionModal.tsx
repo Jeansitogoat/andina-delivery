@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import { MapPin, Home, Briefcase, X, ExternalLink, Phone } from 'lucide-react';
 import type { DireccionGuardada } from './SeccionDirecciones';
 
@@ -19,6 +20,12 @@ type Props = {
 };
 
 export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsuario, initialLatLng }: Props) {
+  const { register, unregister } = useFullScreenModal();
+  useEffect(() => {
+    register();
+    return () => unregister();
+  }, [register, unregister]);
+
   const [etiqueta, setEtiqueta] = useState<DireccionGuardada['etiqueta']>('casa');
   const [nombre, setNombre] = useState('');
   const [detalle, setDetalle] = useState('');
@@ -72,10 +79,9 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/50 sm:items-center sm:justify-center">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50 p-4">
       <div
-        className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
-        style={{ animation: 'slideUp 0.3s ease-out forwards' }}
+        className="bg-white w-full max-w-lg rounded-3xl max-h-[90vh] overflow-y-auto shadow-2xl animate-fade-in"
       >
         <div className="sticky top-0 bg-white px-4 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-bold text-lg text-gray-900">Nueva ubicación</h2>
@@ -196,7 +202,7 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
             </p>
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-2 pt-2 pb-8 sm:pb-4">
             <button
               type="button"
               onClick={onClose}

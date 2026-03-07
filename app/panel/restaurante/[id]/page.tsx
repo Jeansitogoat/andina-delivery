@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import NavPanel from '@/components/panel/NavPanel';
 import BotonPedirRider from '@/components/panel/BotonPedirRider';
+import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { getSafeImageSrc, getSafeDataUrl } from '@/lib/validImageUrl';
 import { useNotifications } from '@/lib/useNotifications';
 type PendingTransferOrder = {
@@ -597,7 +598,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
                       <span className="font-bold text-gray-900 text-sm">{order.orderNum}</span>
-                      <p className="text-xs text-gray-500 mt-0.5">${order.total.toFixed(2)} · {order.direccion}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">${order.total.toFixed(2)} · {formatDireccionCorta(order.direccion)}</p>
                     </div>
                     <button
                       type="button"
@@ -800,7 +801,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                             <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t border-gray-50">
                               <div className="flex items-center gap-2 text-xs text-gray-500">
                                 <Truck className="w-4 h-4 text-dorado-oro" />
-                                <span className="truncate max-w-[180px]">{order.deliveryType === 'pickup' ? 'Retiro en local' : order.direccion}</span>
+                                <span className="truncate max-w-[180px]">{order.deliveryType === 'pickup' ? 'Retiro en local' : formatDireccionCorta(order.direccion)}</span>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 {order.deliveryType === 'pickup' && order.status === 'listo' && (

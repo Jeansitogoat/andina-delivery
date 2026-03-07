@@ -128,6 +128,7 @@ export function useAuth() {
       email: string;
       password: string;
       displayName?: string;
+      telefono?: string;
       rol?: UserRole;
       localId?: string;
     }): Promise<AndinaUser> => {
@@ -138,10 +139,12 @@ export function useAuth() {
       const db = getFirestoreDb();
       const rol: UserRole = params.rol ?? 'cliente';
 
+      const telefonoTrim = params.telefono?.trim() || null;
       const andinaUser: AndinaUser = {
         uid: user.uid,
         email: user.email,
         displayName: params.displayName ?? user.displayName ?? null,
+        telefono: telefonoTrim ?? null,
         rol,
         localId: params.localId ?? null,
         riderStatus: rol === 'rider' ? 'pending' : undefined,
@@ -157,6 +160,7 @@ export function useAuth() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
+      if (telefonoTrim) docData.telefono = telefonoTrim;
       if (rol === 'rider') {
         docData.riderStatus = 'pending';
       }

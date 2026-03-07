@@ -22,6 +22,7 @@ import {
 } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import NavPanel from '@/components/panel/NavPanel';
+import PasswordInput from '@/components/PasswordInput';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseAuth, getFirebaseStorage } from '@/lib/firebase/client';
 import type { Local } from '@/lib/data';
@@ -609,35 +610,32 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
             <form onSubmit={handleCambiarPassword} className="px-4 pb-4 space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Contraseña actual</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={passwordActual}
                   onChange={(e) => setPasswordActual(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
                   autoComplete="current-password"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Nueva contraseña (mín. 6)</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={passwordNueva}
                   onChange={(e) => setPasswordNueva(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
                   autoComplete="new-password"
                   minLength={6}
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Confirmar nueva contraseña</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={passwordNuevaConfirm}
                   onChange={(e) => setPasswordNuevaConfirm(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
                   autoComplete="new-password"
                   minLength={6}
                 />
