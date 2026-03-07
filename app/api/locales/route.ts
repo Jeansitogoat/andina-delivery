@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     const getCached = unstable_cache(
       () => fetchLocalesData(incluirSuspendidos),
       ['locales', incluirSuspendidos ? 'suspendidos' : 'activos'],
-      { revalidate: CACHE_REVALIDATE }
+      { revalidate: CACHE_REVALIDATE, tags: ['locales'] }
     );
     const data = await getCached();
 

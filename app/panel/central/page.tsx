@@ -6,17 +6,14 @@ import { getIdToken } from '@/lib/authToken';
 import {
   ArrowLeft,
   Bike,
-  MapPin,
   Phone,
   Clock,
   CheckCircle2,
   AlertCircle,
   Package,
-  ChevronDown,
   X,
   Search,
   Bell,
-  BarChart2,
   History,
   Users,
   UserCheck,
@@ -25,13 +22,12 @@ import {
   Check,
   Filter,
   RefreshCw,
-  Loader2,
   ShoppingBag,
   LogOut,
   Trash2,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
-import { sendNotification, showLocalNotification, canShowLocalNotification, DEMO_NEED_PERMISSION_MESSAGE } from '@/lib/notifications';
+import { sendNotification } from '@/lib/notifications';
 import { useAuth } from '@/lib/useAuth';
 import type { EstadoPedido, EstadoRider, PedidoCentral, RiderCentral } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
@@ -98,7 +94,7 @@ export default function PanelCentralPage() {
   const [nuevoPedidoId, setNuevoPedidoId] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [filtroHistorial, setFiltroHistorial] = useState<'hoy' | 'semana' | 'mes'>('hoy');
-  const toastTimer = useRef<NodeJS.Timeout | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const prevPedidosCount = useRef(0);
   const [sessionInvalid, setSessionInvalid] = useState(false);
@@ -107,6 +103,7 @@ export default function PanelCentralPage() {
   function playNewOrderSound() {
     try {
       if (!newOrderSound.current) newOrderSound.current = new Audio('/sounds/new-order.mp3');
+      newOrderSound.current.volume = 1.0;
       newOrderSound.current.play().catch(() => {});
     } catch {
       // ignorar
@@ -146,7 +143,7 @@ export default function PanelCentralPage() {
           estadosVisiblesCentral.includes((p.estado || 'confirmado') as EstadoPedido)
         );
         const nuevosEsperando = pedidosCentral.filter((p) => p.estado === 'esperando_rider').length;
-        if (nuevosEsperando > 0 && pedidosCentral.length > prevPedidosCount.current && prevPedidosCount.current > 0) {
+        if (nuevosEsperando > 0 && pedidosCentral.length > prevPedidosCount.current) {
           const nuevo = pedidosCentral.find((p) => p.estado === 'esperando_rider');
           if (nuevo) {
             setNuevoPedidoId(nuevo.id);

@@ -22,7 +22,6 @@ import NavPanel from '@/components/panel/NavPanel';
 import BotonPedirRider from '@/components/panel/BotonPedirRider';
 import { getSafeImageSrc, getSafeDataUrl } from '@/lib/validImageUrl';
 import { useNotifications } from '@/lib/useNotifications';
-import { sendNotification, showLocalNotification, canShowLocalNotification, DEMO_NEED_PERMISSION_MESSAGE } from '@/lib/notifications';
 type PendingTransferOrder = {
   orderId: string;
   orderNum: string;
@@ -88,7 +87,7 @@ export default function PanelRestauranteIdPage({ params }: { params: { id: strin
   const [local, setLocal] = useState<Local | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [newOrderToast, setNewOrderToast] = useState<string | null>(null);
+  const [newOrderToast, _setNewOrderToast] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(false);
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferOrder[]>([]);
   const [comprobanteExpandido, setComprobanteExpandido] = useState<string | null>(null);
@@ -109,6 +108,7 @@ export default function PanelRestauranteIdPage({ params }: { params: { id: strin
   function playNewOrderSound() {
     try {
       if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/new-order.mp3');
+      newOrderSoundRef.current.volume = 1.0;
       newOrderSoundRef.current.play().catch(() => {});
     } catch {
       // ignorar
@@ -150,7 +150,7 @@ export default function PanelRestauranteIdPage({ params }: { params: { id: strin
         deliveryType: p.deliveryType === 'pickup' ? 'pickup' : 'delivery',
       }));
       const newIds = new Set(list.map((o) => o.id));
-      if (prevOrderIdsRef.current.size > 0 && list.some((o) => !prevOrderIdsRef.current.has(o.id))) {
+      if (list.some((o) => !prevOrderIdsRef.current.has(o.id))) {
         playNewOrderSound();
       }
       prevOrderIdsRef.current = newIds;

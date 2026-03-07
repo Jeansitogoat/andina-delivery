@@ -22,7 +22,6 @@ import {
 import AddressSelector from '@/components/AddressSelector';
 import SkeletonLocales from '@/components/SkeletonLocales';
 import LocalLogo from '@/components/LocalLogo';
-import { type Local } from '@/lib/data';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
 import { useLocales } from '@/lib/useLocales';
@@ -45,7 +44,7 @@ const DIRECCIONES_EJEMPLO = ['Calle Sucre', 'Sector La Cadena', 'Frente al Parqu
 export default function Home() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { cart, cartCount, localId: cartLocalId } = useCart();
+  const { cartCount, localId: cartLocalId } = useCart();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<CategoryKey>('all');
   const [bannerIndex, setBannerIndex] = useState(0);

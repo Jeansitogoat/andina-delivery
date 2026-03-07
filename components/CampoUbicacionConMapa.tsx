@@ -8,9 +8,9 @@ const MapPicker = dynamic(() => import('./usuario/MapPicker'), { ssr: false });
 
 type Props = {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (_value: string) => void;
   /** Se invoca al geocodificar o al elegir un punto en el mapa. */
-  onCoordsChange?: (lat: number, lng: number) => void;
+  onCoordsChange?: (_lat: number, _lng: number) => void;
   /** Coordenadas iniciales (p. ej. al editar un local que ya tiene lat/lng). */
   initialLat?: number | null;
   initialLng?: number | null;

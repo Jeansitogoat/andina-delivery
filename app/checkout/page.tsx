@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -19,11 +18,11 @@ import {
   Store,
   Package,
 } from 'lucide-react';
-import type { Local } from '@/lib/data';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
 import { useAddresses } from '@/lib/addressesContext';
 import { getIdToken } from '@/lib/authToken';
+import type { Local } from '@/lib/data';
 import AddressSelector from '@/components/AddressSelector';
 import LocalLogo from '@/components/LocalLogo';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
@@ -49,7 +48,6 @@ function getServiceCost(subtotal: number): number {
 /** Tarifas multi-parada (plan Andina) */
 const BASE_ENVIO = 1.5;
 const POR_PARADA_ADICIONAL = 0.25;
-const MANDADO_EXTRA = 1; // +$1 cuando haya parada tipo mandado
 
 function ComprobantePreview({ file }: { file: File }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -829,18 +827,13 @@ export default function CheckoutPage() {
                 <span className="font-semibold text-gray-900">${subtotal.toFixed(2)}</span>
               </div>
               {!isPickup && (
-                <>
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>Costo de envío</span>
-                <span className="font-semibold text-gray-900">${shipping.toFixed(2)}</span>
-              </div>
-              <p className="text-xs text-gray-500">
-                Tarifas: 1 parada $1.50 · 2 paradas $1.75 · 3 paradas $2.00 · Mandado +$1.00
-              </p>
-                </>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Costo de envío</span>
+                  <span className="font-semibold text-gray-900">${shipping.toFixed(2)}</span>
+                </div>
               )}
               <div className="flex justify-between text-sm text-gray-600">
-                <span>Coste de servicio (2%, mín. $0.10)</span>
+                <span>Coste de servicio</span>
                 <span className="font-semibold text-gray-900">${serviceCost.toFixed(2)}</span>
               </div>
               {!isPickup && tip > 0 && (

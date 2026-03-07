@@ -16,7 +16,7 @@ function ScrollAlInicio() {
 function TransicionPagina({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
-  const [displayedPath, setDisplayedPath] = useState(pathname);
+  const [_displayedPath, setDisplayedPath] = useState(pathname);
   const [content, setContent] = useState(children);
   const prevPath = useRef(pathname);
 

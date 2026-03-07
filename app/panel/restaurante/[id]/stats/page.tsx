@@ -26,7 +26,7 @@ export default function PanelStatsIdPage({ params }: { params: { id: string } })
   const [statsLoading, setStatsLoading] = useState(true);
   const [adminConfig, setAdminConfig] = useState<{ cuenta: string; banco: string; whatsappAdmin: string } | null>(null);
   const [localName, setLocalName] = useState('');
-  const [copiadoCuenta, setCopiadoCuenta] = useState(false);
+  const [_copiadoCuenta, setCopiadoCuenta] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +124,7 @@ export default function PanelStatsIdPage({ params }: { params: { id: string } })
   const datosIngresos = s?.datosIngresos ?? (periodo === 'mes' ? [0, 0, 0, 0] : [0, 0, 0, 0, 0, 0, 0]);
   const labels = periodo === 'mes' ? ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'] : LABELS_SEMANA;
   const maxPedidos = Math.max(...datosPedidos, 1);
-  const maxIngresos = Math.max(...datosIngresos, 1);
+  const _maxIngresos = Math.max(...datosIngresos, 1);
 
   return (
     <>

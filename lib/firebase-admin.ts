@@ -2,7 +2,6 @@
  * Firebase Admin SDK para uso en API routes (Firestore, Auth).
  * Usa FIREBASE_SERVICE_ACCOUNT_PATH (ruta al JSON) o FIREBASE_SERVICE_ACCOUNT_JSON.
  */
-/* eslint-disable @typescript-eslint/no-require-imports */
 const admin = require('firebase-admin') as typeof import('firebase-admin');
 const fs = require('fs') as typeof import('fs');
 const path = require('path') as typeof import('path');

@@ -7,7 +7,7 @@ const PIÑAS_CENTER = { lat: -3.681, lng: -79.681 };
 export interface MapPickerProps {
   lat?: number | null;
   lng?: number | null;
-  onSelect: (lat: number, lng: number, address?: string) => void;
+  onSelect: (_lat: number, _lng: number, _address?: string) => void;
   className?: string;
 }
 
@@ -104,6 +104,7 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
         markerRef.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- init map once; lat/lng/onSelect used inside async callback
   }, []);
 
   return (

@@ -54,49 +54,57 @@ export default function TerminosPage() {
           </section>
 
           <section>
-            <h2 className="text-gray-900 font-bold text-base mb-2">4. Pedidos y pagos</h2>
+            <h2 className="text-gray-900 font-bold text-base mb-2">4. Tarifas y costos</h2>
+            <ul className="list-disc pl-5 space-y-1 mb-4">
+              <li>Tarifas de envío: 1 parada $1.50, 2 paradas $1.75, 3 paradas $2.00, mandado +$1.00.</li>
+              <li>Coste de servicio: 2% del subtotal, mínimo $0.10.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-gray-900 font-bold text-base mb-2">5. Pedidos y pagos</h2>
             <p>
               Los pedidos quedan confirmados según lo indicado en la Plataforma. Los precios mostrados incluyen los aplicables por el establecimiento; los costos de envío y/o propina se informan antes de confirmar. El usuario puede pagar en efectivo o por transferencia según las opciones habilitadas. La facturación, cuando aplique, puede ser emitida por el establecimiento o según la normativa vigente.
             </p>
           </section>
 
           <section>
-            <h2 className="text-gray-900 font-bold text-base mb-2">5. Cancelaciones y reembolsos</h2>
+            <h2 className="text-gray-900 font-bold text-base mb-2">6. Cancelaciones y reembolsos</h2>
             <p>
               Las cancelaciones por parte del cliente deben realizarse según los plazos y condiciones indicados en la Plataforma. Los establecimientos y Andina pueden cancelar pedidos por causas de fuerza mayor, falta de stock o incumplimiento. Las políticas de reembolso se aplican según el método de pago y las condiciones del establecimiento; en caso de fallo imputable a la Plataforma, se evaluará la devolución conforme a la ley.
             </p>
           </section>
 
           <section>
-            <h2 className="text-gray-900 font-bold text-base mb-2">6. Entrega</h2>
+            <h2 className="text-gray-900 font-bold text-base mb-2">7. Entrega</h2>
             <p>
               Los tiempos de entrega son estimados y pueden variar por factores ajenos a Andina. El usuario debe facilitar una dirección y datos de contacto correctos y estar disponible para recibir el pedido. Andina no se hace responsable de retrasos debidos a causas externas (tráfico, clima, disponibilidad del destinatario, etc.). En retiro en local, el cliente es responsable de recoger su pedido en el establecimiento indicado.
             </p>
           </section>
 
           <section>
-            <h2 className="text-gray-900 font-bold text-base mb-2">7. Propiedad intelectual</h2>
+            <h2 className="text-gray-900 font-bold text-base mb-2">8. Propiedad intelectual</h2>
             <p>
               La marca Andina, el diseño de la Plataforma y los contenidos propios son de titularidad de sus respectivos titulares. Queda prohibida la reproducción, distribución o uso comercial no autorizado de dichos elementos.
             </p>
           </section>
 
           <section>
-            <h2 className="text-gray-900 font-bold text-base mb-2">8. Limitación de responsabilidad</h2>
+            <h2 className="text-gray-900 font-bold text-base mb-2">9. Limitación de responsabilidad</h2>
             <p>
               La Plataforma se ofrece &quot;tal cual&quot;. Andina no será responsable por daños indirectos, lucro cesante o consecuentes derivados del uso o la imposibilidad de uso del servicio, salvo en los casos en que la ley exija lo contrario. La responsabilidad frente al producto entregado (calidad, composición) corresponde al establecimiento que lo elabora o vende.
             </p>
           </section>
 
           <section>
-            <h2 className="text-gray-900 font-bold text-base mb-2">9. Modificaciones</h2>
+            <h2 className="text-gray-900 font-bold text-base mb-2">10. Modificaciones</h2>
             <p>
               Andina se reserva el derecho de modificar estos Términos y Condiciones. Los cambios serán notificados mediante publicación en la Plataforma o por medios adecuados. El uso continuado del servicio tras la entrada en vigor de las modificaciones implica la aceptación de las mismas.
             </p>
           </section>
 
           <section>
-            <h2 className="text-gray-900 font-bold text-base mb-2">10. Ley aplicable y foro</h2>
+            <h2 className="text-gray-900 font-bold text-base mb-2">11. Ley aplicable y foro</h2>
             <p>
               Para cualquier controversia derivada de estos términos o del uso de la Plataforma, será aplicable la legislación de la República del Ecuador. Las partes se someten a los tribunales competentes de Piñas, El Oro.
             </p>

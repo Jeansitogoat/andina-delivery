@@ -8,9 +8,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ batchId: string }> }
 ) {
-  let auth: { uid: string; rol: string };
   try {
-    auth = await requireAuth(request, ['rider', 'maestro']);
+    await requireAuth(request, ['rider', 'maestro']);
   } catch (r) {
     if (r instanceof Response) return r;
     throw r;

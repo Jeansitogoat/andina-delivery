@@ -28,7 +28,7 @@ function MenuForm({
 }: {
   editing: MenuItem | null;
   categories: string[];
-  onSave: (item: Partial<MenuItem> & { name: string; price: number; category: string }) => void;
+  onSave: (_payload: Partial<MenuItem> & { name: string; price: number; category: string }) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(editing?.name ?? '');
@@ -184,7 +184,7 @@ export default function PanelMenuIdPage({ params }: { params: { id: string } }) 
   const [guardado, setGuardado] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
   const [deletingItem, setDeletingItem] = useState<MenuItem | null>(null);
-  const guardadoTimer = useRef<NodeJS.Timeout | null>(null);
+  const guardadoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;

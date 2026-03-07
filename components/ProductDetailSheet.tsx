@@ -11,8 +11,8 @@ interface ProductDetailSheetProps {
   localId: string;
   currentQty: number;
   onClose: () => void;
-  onAdd: (localId: string, itemId: string, note?: string) => void;
-  onRemove: (itemId: string) => void;
+  onAdd: (_localId: string, _itemId: string, _note?: string) => void;
+  onRemove: (_itemId: string) => void;
   cerrado?: boolean;
   cerradoMensaje?: string;
   cerradoAbreA?: string;

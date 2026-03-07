@@ -16,7 +16,7 @@ export interface PedidoHistorial {
 
 interface TarjetaPedidoHistorialProps {
   pedido: PedidoHistorial;
-  onVolverAPedir: (pedido: PedidoHistorial) => void;
+  onVolverAPedir: (_pedido: PedidoHistorial) => void;
 }
 
 export default function TarjetaPedidoHistorial({ pedido, onVolverAPedir }: TarjetaPedidoHistorialProps) {

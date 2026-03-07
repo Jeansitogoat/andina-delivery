@@ -27,7 +27,7 @@ const HORARIOS_DEFAULT = [
 ];
 
 export default function PanelPerfilRestaurantePage() {
-  const router = useRouter();
+  const _router = useRouter();
   const logoRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
 

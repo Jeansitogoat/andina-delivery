@@ -3,7 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import type { PedidoCentral } from '@/lib/types';
-import { sendFCMToUser } from '@/lib/fcm-send-server';
+import { sendFCMToUser, sendFCMToRole } from '@/lib/fcm-send-server';
 
 type PedidoConRider = PedidoCentral & { riderNombre?: string; riderRating?: number | null };
 
@@ -204,9 +204,26 @@ export async function PATCH(
       }
     }
 
+    // Notificar a central cuando pedido pasa a esperando_rider
+    if (body.estado === 'esperando_rider') {
+      try {
+        const restaurante = (data.restaurante as string) || 'Restaurante';
+        const clienteNombre = (data.clienteNombre as string) || 'Cliente';
+        await sendFCMToRole(
+          'central',
+          'Nuevo pedido esperando rider',
+          `${restaurante} · ${clienteNombre}`,
+          { pedidoId: id, localId: String(pedidoLocalId ?? '') }
+        );
+      } catch {
+        // ignorar
+      }
+    }
+
     const clienteId = data.clienteId ?? null;
     if (body.estado !== undefined && clienteId && typeof clienteId === 'string') {
       const messages: Record<string, { title: string; body: string }> = {
+        confirmado: { title: '¡Pedido confirmado!', body: 'El restaurante aceptó tu pedido.' },
         preparando: { title: 'Tu pedido se está preparando', body: 'El restaurante está cocinando.' },
         listo: { title: 'Tu pedido está listo', body: 'Pronto saldrá hacia ti.' },
         esperando_rider: { title: 'Tu pedido está listo', body: 'Estamos buscando un repartidor.' },

@@ -11,18 +11,20 @@ const ICONOS = { casa: Home, trabajo: Briefcase, otro: MapPin };
 
 type Props = {
   onClose: () => void;
-  onGuardar: (d: Omit<DireccionGuardada, 'id'>) => void;
+  onGuardar: (_d: Omit<DireccionGuardada, 'id'>) => void;
   /** Teléfono del usuario (para mostrar y no pedirlo de nuevo) */
   telefonoUsuario?: string | null;
+  /** Ubicación actual del usuario para centrar el mapa al abrir */
+  initialLatLng?: { lat: number; lng: number } | null;
 };
 
-export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsuario }: Props) {
+export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsuario, initialLatLng }: Props) {
   const [etiqueta, setEtiqueta] = useState<DireccionGuardada['etiqueta']>('casa');
   const [nombre, setNombre] = useState('');
   const [detalle, setDetalle] = useState('');
   const [referencia, setReferencia] = useState('');
-  const [lat, setLat] = useState<number | null>(null);
-  const [lng, setLng] = useState<number | null>(null);
+  const [lat, setLat] = useState<number | null>(initialLatLng?.lat ?? null);
+  const [lng, setLng] = useState<number | null>(initialLatLng?.lng ?? null);
   const [buscando, setBuscando] = useState(false);
 
   function abrirEnMapa() {

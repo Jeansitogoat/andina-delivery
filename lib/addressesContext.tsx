@@ -16,16 +16,16 @@ const ZONA_PINAS = ['Piñas', 'piñas', 'Sector La Cadena', 'Parque Central', 'A
 type AddressesContextType = {
   direcciones: DireccionGuardada[];
   selectedId: string | null;
-  setSelectedId: (id: string | null) => void;
+  setSelectedId: (_id: string | null) => void;
   direccionEntregar: string;
   /** Coordenadas de la dirección de entrega (seleccionada o principal) para cálculo de distancia. */
   direccionEntregarLatLng: { lat: number; lng: number } | null;
   /** Ubicación actual del dispositivo (si el usuario dio permiso). Fallback para distancia si no hay dirección con coords. */
   userLocationLatLng: { lat: number; lng: number } | null;
-  addDireccion: (d: Omit<DireccionGuardada, 'id'>) => void;
-  updateDirecciones: (dirs: DireccionGuardada[]) => void;
-  setPrincipal: (id: string) => void;
-  removeDireccion: (id: string) => void;
+  addDireccion: (_d: Omit<DireccionGuardada, 'id'>) => void;
+  updateDirecciones: (_dirs: DireccionGuardada[]) => void;
+  setPrincipal: (_id: string) => void;
+  removeDireccion: (_id: string) => void;
   estaLejos: boolean;
 };
 
@@ -47,7 +47,9 @@ function saveToLocalStorage(dirs: DireccionGuardada[]) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dirs));
-  } catch (_) {}
+  } catch {
+    /* ignore */
+  }
 }
 
 export function AddressesProvider({ children }: { children: React.ReactNode }) {
@@ -89,7 +91,9 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
         try {
           localStorage.removeItem(STORAGE_KEY);
           localStorage.removeItem(SELECTED_KEY);
-        } catch (_) {}
+        } catch {
+          /* ignore */
+        }
       });
     }
   }, [user?.uid]);

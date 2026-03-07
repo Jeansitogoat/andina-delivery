@@ -19,7 +19,6 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
-import { sendNotification, showLocalNotification, canShowLocalNotification, DEMO_NEED_PERMISSION_MESSAGE } from '@/lib/notifications';
 import { getIdToken } from '@/lib/authToken';
 
 /* ─────────────── tipos ─────────────── */

@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { Star, Clock, Truck, MapPin, ShoppingBag, Search } from 'lucide-react';
 import type { Local } from '@/lib/data';
 import LocalLogo from '@/components/LocalLogo';
@@ -8,7 +7,7 @@ import LocalLogo from '@/components/LocalLogo';
 interface Props {
   local: Local;
   search: string;
-  onSearch: (v: string) => void;
+  onSearch: (_v: string) => void;
 }
 
 export default function InfoLocal({ local, search, onSearch }: Props) {

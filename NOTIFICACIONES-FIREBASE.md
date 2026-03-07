@@ -12,8 +12,8 @@ El frontend y el backend están conectados a FCM. Para que las push funcionen en
   - Permiso, registro de token en `POST /api/fcm/register` y envío con `sendNotification()` → `POST /api/fcm/send`.
 
 - **Backend**
-  - `POST /api/fcm/register`: recibe `{ token, role }` y guarda en `data/fcm-tokens.json` (por token, actualizando `role` y `updatedAt`).
-  - `POST /api/fcm/send`: recibe `{ target, title, body, data? }`, lee los tokens del `target` en `data/fcm-tokens.json` y envía con Firebase Admin SDK a cada token.
+  - `POST /api/fcm/register`: recibe `{ token, role }` y guarda en Firestore (colección `fcm_tokens`).
+  - `POST /api/fcm/send`: recibe `{ target, title, body, data? }`, lee los tokens del `target` y envía con Firebase Admin SDK.
 
 ---
 
@@ -49,7 +49,30 @@ El frontend y el backend están conectados a FCM. Para que las push funcionen en
 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Frontend (build/runtime) | No se obtiene token FCM; no hay registro ni push en el dispositivo. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Backend (servidor) | No se envían push; la API responde OK con `sent: 0`. |
 
-Con ambas configuradas, el flujo es: el usuario activa notificaciones → se obtiene el token → se registra en `/api/fcm/register` → cuando la app llama a `sendNotification()`, el backend envía el push con FCM.
+Con ambas configuradas, el flujo es: el usuario activa notificaciones → se obtiene el token → se registra en `/api/fcm/register` → cuando la app llama a `sendNotification()` o el backend actualiza un pedido, se envía el push con FCM.
+
+---
+
+## Puesta en producción (Vercel)
+
+Para que las notificaciones funcionen en producción:
+
+1. **Variables de entorno en Vercel**  
+   - `NEXT_PUBLIC_FIREBASE_VAPID_KEY`: copia la clave de Firebase Console → Cloud Messaging → Web Push certificates.  
+   - `FIREBASE_SERVICE_ACCOUNT_JSON`: el JSON completo de la cuenta de servicio (una sola línea).
+
+2. **Dominios autorizados**  
+   - En Firebase Console → Autenticación → Configuración → Dominios autorizados, añade tu dominio de producción (ej. `andina-delivery.vercel.app`).
+
+3. **Checklist rápido**  
+   | Requisito | Comprobar |
+   |-----------|-----------|
+   | VAPID en Vercel | Sí |
+   | Service account JSON en Vercel | Sí |
+   | Dominio en Firebase Auth | Sí |
+   | Usuarios activan notificaciones | Cliente: página del pedido; Paneles: botón en header |
+
+Sin `NEXT_PUBLIC_FIREBASE_VAPID_KEY` o `FIREBASE_SERVICE_ACCOUNT_JSON` en producción, **las push nunca llegarán** aunque la app funcione con normalidad.
 
 ---
 

@@ -10,7 +10,7 @@ const TIP_OPTIONS = [
 
 interface Props {
   propina: number;
-  onSeleccionar: (v: number) => void;
+  onSeleccionar: (_v: number) => void;
 }
 
 export default function SeccionPropina({ propina, onSeleccionar }: Props) {

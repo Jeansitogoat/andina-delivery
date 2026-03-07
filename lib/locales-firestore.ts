@@ -80,7 +80,7 @@ export async function setLocalInFirestore(
   menu: MenuItem[]
 ): Promise<void> {
   const db = getAdminFirestore();
-  const { id, ...rest } = local;
+  const { id: _id, ...rest } = local;
   const payload = stripUndefined({
     ...rest,
     menu,

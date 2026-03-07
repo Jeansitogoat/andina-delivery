@@ -33,7 +33,6 @@ import {
   Camera,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
-import { sendNotification, showLocalNotification, canShowLocalNotification, DEMO_NEED_PERMISSION_MESSAGE } from '@/lib/notifications';
 import { useAuth } from '@/lib/useAuth';
 import type { EstadoCarrera, EstadoRider, CarreraRider } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
@@ -74,6 +73,8 @@ const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg:
   fuera_servicio: { label: 'Fuera de servicio', dot: 'bg-red-400', bg: 'bg-red-500' },
 };
 
+const ESTADOS_ACTIVOS = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'] as const;
+
 /* ─────────────── componente ─────────────── */
 export default function PanelRiderPage() {
   const router = useRouter();
@@ -101,6 +102,7 @@ export default function PanelRiderPage() {
   function playNewCarreraSound() {
     try {
       if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/new-order.mp3');
+      newOrderSoundRef.current.volume = 1.0;
       newOrderSoundRef.current.play().catch(() => {});
     } catch {
       // ignorar
@@ -130,7 +132,6 @@ export default function PanelRiderPage() {
   }, [user, loading, router]);
 
   /* Suscripción en tiempo real: activos (solo no entregados) + historial (últimos 20 entregados) para optimizar lecturas */
-  const ESTADOS_ACTIVOS = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'] as const;
   useEffect(() => {
     if (typeof window === 'undefined' || !user?.uid || (user.rol !== 'rider' && user.rol !== 'maestro')) return;
     const db = getFirestoreDb();
@@ -144,7 +145,7 @@ export default function PanelRiderPage() {
     const unsubActivas = onSnapshot(qActivas, (snap) => {
       const activas: CarreraRider[] = snap.docs.map((d) => docToCarrera({ id: d.id, data: () => d.data() }));
       const newIds = new Set(activas.map((c) => c.id));
-      if (prevCarreraIdsRef.current.size > 0 && activas.some((c) => !prevCarreraIdsRef.current.has(c.id))) {
+      if (activas.some((c) => !prevCarreraIdsRef.current.has(c.id))) {
         playNewCarreraSound();
       }
       prevCarreraIdsRef.current = newIds;

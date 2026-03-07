@@ -97,7 +97,7 @@ export default function CarritoPage() {
       .finally(() => {
         if (!cancelled) setLoadingStops(false);
       });
-  }, [cart.stops]);
+  }, [hydrated, cart.stops]);
 
   const numParadas = stopsData.length;
   const envioTarifa = numParadas <= 1

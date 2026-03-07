@@ -67,7 +67,7 @@ export function useNotifications(role: NotificationRole) {
     } finally {
       setLoading(false);
     }
-  }, [role, registerToken]);
+  }, [registerToken]);
 
   const isSupported = typeof window !== 'undefined' && 'Notification' in window;
 

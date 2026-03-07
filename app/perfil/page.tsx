@@ -54,7 +54,7 @@ function primerNombreParaMostrar(displayName?: string | null, email?: string | n
 
 export default function PerfilPage() {
   const router = useRouter();
-  const { user, loading: authLoading, refreshUser } = useAuth();
+  const { user, loading: authLoading, refreshUser, logout } = useAuth();
   const { clearCart } = useCart();
   const { direcciones, updateDirecciones } = useAddresses();
   const fotoRef = useRef<HTMLInputElement>(null);
@@ -179,12 +179,14 @@ export default function PerfilPage() {
   }
 
   function cerrarSesion() {
-    localStorage.removeItem('andina_visitado');
-    clearCart();
-    router.replace('/auth');
+    setConfirmarCierre(false);
+    logout().then(() => {
+      clearCart();
+      router.replace('/auth');
+    });
   }
 
-  function volverAPedir(pedido: PedidoHistorial) {
+  function volverAPedir(_pedido: PedidoHistorial) {
     router.push('/');
   }
 

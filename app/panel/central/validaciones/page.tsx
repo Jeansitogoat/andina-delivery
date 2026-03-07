@@ -6,8 +6,6 @@ import { ArrowLeft, UserCheck, Bike, UserX, Loader2, CheckCircle2, XCircle, Ban 
 import { useAuth } from '@/lib/useAuth';
 import { getIdToken } from '@/lib/authToken';
 
-const CENTRAL_NAME = 'Central Virgen de la Merced';
-
 interface RiderRow {
   uid: string;
   email: string | null;

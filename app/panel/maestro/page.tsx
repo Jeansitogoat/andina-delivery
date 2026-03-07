@@ -3,11 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
   Store,
   ExternalLink,
   RefreshCw,
-  CheckCircle2,
   Building2,
   UserPlus,
   Loader2,
@@ -21,7 +19,6 @@ import {
   CreditCard,
   Check,
   LogOut,
-  ShoppingBag,
   Camera,
   ImageIcon,
 } from 'lucide-react';
@@ -47,6 +44,25 @@ interface Solicitud {
   direccion: string;
   tipoNegocio: string;
   localId?: string;
+}
+
+/** Logo de local con fallback si la imagen falla (corrupt/truncated), evita errores en consola. */
+function LocaleLogoWithFallback({ logo }: { logo: string | undefined }) {
+  const [loadError, setLoadError] = useState(false);
+  const safeSrc = getSafeImageSrc(logo);
+  if (!safeSrc || loadError) {
+    return (
+      <div className="w-14 h-14 rounded-xl bg-gray-100 flex-shrink-0 flex items-center justify-center border border-gray-100">
+        <Store className="w-7 h-7 text-gray-400" />
+      </div>
+    );
+  }
+  return (
+    <div className="w-14 h-14 rounded-xl bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-100">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={safeSrc} alt="" className="w-full h-full object-cover" onError={() => setLoadError(true)} />
+    </div>
+  );
 }
 
 export default function PanelMaestroPage() {
@@ -727,6 +743,7 @@ export default function PanelMaestroPage() {
       if (res.ok) {
         setLocales((prev) => prev.filter((l) => l.id !== localId));
         showToast('Local eliminado');
+        refreshLocales();
       } else {
         const data = await res.json();
         showToast(data.error || 'Error al eliminar');
@@ -1511,46 +1528,51 @@ export default function PanelMaestroPage() {
         {seccionActiva === 'locales' && (
         <>
         {/* Crear local (manual) — para casos WhatsApp, etc. */}
-        <section className="mb-6">
-          <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2 mb-3">
-            <Store className="w-5 h-5 text-dorado-oro" />
-            Crear local (manual)
-          </h2>
-          <p className="text-sm text-gray-500 mb-3">
-            Para negocios que te contactan por WhatsApp u otro medio. Creás el local y las credenciales; después configurás menú y fotos desde el panel del restaurante.
-          </p>
-          {localCreadoResult ? (
-            <div className="bg-white rounded-2xl p-4 shadow-sm border border-green-100">
-              <p className="font-bold text-green-700 mb-2">Local creado</p>
-              <p className="text-sm text-gray-600 mb-2">
-                Entrega estas credenciales al dueño. Luego podés configurar menú y fotos desde el panel del restaurante.
+        <section className="mb-8">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-rojo-andino/5 to-dorado-oro/5 px-5 py-4 border-b border-gray-100">
+              <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                <Store className="w-5 h-5 text-rojo-andino" />
+                Crear local
+              </h2>
+              <p className="text-sm text-gray-600 mt-0.5">
+                Para negocios por WhatsApp u otro medio. Creás el local y las credenciales; después configurás menú desde el panel del restaurante.
               </p>
-              {localCreadoResult.email && (
-                <div className="bg-gray-50 rounded-xl p-3 mb-3 text-sm font-mono space-y-1">
-                  <p><span className="text-gray-500">Correo:</span> {localCreadoResult.email}</p>
-                  <p><span className="text-gray-500">Contraseña:</span> {localCreadoResult.password}</p>
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => router.push(`/panel/restaurante/${localCreadoResult.localId}`)}
-                  className="px-4 py-2 rounded-xl bg-rojo-andino text-white text-sm font-semibold hover:bg-rojo-andino/90 flex items-center gap-2"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Ir al panel del restaurante
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLocalCreadoResult(null)}
-                  className="px-4 py-2 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50"
-                >
-                  Crear otro local
-                </button>
-              </div>
             </div>
-          ) : (
-            <form onSubmit={handleCrearLocalManual} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-4">
+            {localCreadoResult ? (
+              <div className="p-5">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <p className="font-bold text-green-800 mb-1">Local creado</p>
+                  <p className="text-sm text-green-700 mb-3">
+                    Entrega estas credenciales al dueño. Luego podés configurar menú y fotos desde el panel del restaurante.
+                  </p>
+                  {localCreadoResult.email && (
+                    <div className="bg-white rounded-lg p-3 mb-3 text-sm font-mono space-y-1 border border-green-100">
+                      <p><span className="text-gray-500">Correo:</span> <span className="text-gray-900">{localCreadoResult.email}</span></p>
+                      <p><span className="text-gray-500">Contraseña:</span> <span className="text-gray-900">{localCreadoResult.password}</span></p>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/panel/restaurante/${localCreadoResult.localId}`)}
+                      className="px-4 py-2.5 rounded-xl bg-rojo-andino text-white text-sm font-semibold hover:bg-rojo-andino/90 flex items-center gap-2 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Ir al panel del restaurante
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLocalCreadoResult(null)}
+                      className="px-4 py-2.5 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
+                    >
+                      Crear otro local
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+            <form onSubmit={handleCrearLocalManual} className="p-5 space-y-5">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre del local</label>
                 <input
@@ -1667,28 +1689,30 @@ export default function PanelMaestroPage() {
               <button
                 type="submit"
                 disabled={creandoLocalManual}
-                className="w-full py-3 rounded-xl bg-rojo-andino text-white font-bold disabled:opacity-70 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl bg-rojo-andino text-white font-bold text-base hover:bg-rojo-andino/90 disabled:opacity-70 flex items-center justify-center gap-2 transition-colors shadow-lg shadow-rojo-andino/20"
               >
-                {creandoLocalManual ? <Loader2 className="w-4 h-4 animate-spin" /> : <Store className="w-4 h-4" />}
+                {creandoLocalManual ? <Loader2 className="w-5 h-5 animate-spin" /> : <Store className="w-5 h-5" />}
                 {creandoLocalManual ? 'Creando...' : 'Crear local'}
               </button>
             </form>
-          )}
+            )}
+          </div>
         </section>
 
         {/* Locales */}
         <section>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-dorado-oro" />
-              Locales ({locales.length})
+              <Building2 className="w-5 h-5 text-rojo-andino" />
+              Locales
+              <span className="text-gray-500 font-normal text-base">({locales.length})</span>
             </h2>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleMigrarLocales}
                 disabled={migrandoLocales}
-                className="px-3 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-semibold hover:bg-amber-200 disabled:opacity-60 flex items-center gap-1.5"
+                className="px-3 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-semibold hover:bg-amber-200 disabled:opacity-60 flex items-center gap-1.5 transition-colors"
                 title="Migrar locales del archivo a la base de datos (ejecutar una sola vez)"
               >
                 {migrandoLocales ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -1698,7 +1722,8 @@ export default function PanelMaestroPage() {
                 type="button"
                 onClick={refreshLocales}
                 disabled={localesLoading}
-                className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-60"
+                className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-60 transition-colors"
+                title="Actualizar lista"
               >
                 <RefreshCw className={`w-4 h-4 ${localesLoading ? 'animate-spin' : ''}`} />
               </button>
@@ -1706,16 +1731,18 @@ export default function PanelMaestroPage() {
           </div>
 
           {localesLoading ? (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
-              <p className="text-gray-500">Cargando locales...</p>
+            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
+              <Loader2 className="w-8 h-8 animate-spin text-rojo-andino/50 mx-auto mb-3" />
+              <p className="text-gray-500 text-sm">Cargando locales...</p>
             </div>
           ) : locales.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
-              <Building2 className="w-10 h-10 text-gray-200 mx-auto mb-2" />
-              <p className="font-bold text-gray-400">No hay locales activos</p>
+            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
+              <Building2 className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+              <p className="font-bold text-gray-400">No hay locales</p>
+              <p className="text-sm text-gray-400 mt-1">Creá uno desde el formulario de arriba.</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {localesPaginados.map((loc) => {
                 const isSuspended = loc.status === 'suspended';
                 const solAprobada = solicitudes.find((s) => s.localId === loc.id && s.status === 'approved');
@@ -1723,21 +1750,22 @@ export default function PanelMaestroPage() {
                 return (
                   <div
                     key={loc.id}
-                    className={`bg-white rounded-2xl p-4 shadow-sm border flex flex-col gap-3 ${isSuspended ? 'border-red-100 opacity-70' : 'border-gray-100'}`}
+                    className={`bg-white rounded-2xl p-4 shadow-sm border transition-shadow hover:shadow-md flex flex-col sm:flex-row sm:items-center gap-4 ${isSuspended ? 'border-red-100 opacity-80' : 'border-gray-100'}`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-4">
+                      <LocaleLogoWithFallback logo={loc.logo} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-bold text-gray-900 truncate">{loc.name}</p>
                           {isSuspended && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">Suspendido</span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500">{loc.id}</p>
-                        {loc.address && <p className="text-xs text-gray-400 truncate">{loc.address}</p>}
+                        <p className="text-xs text-gray-500 font-mono">{loc.id}</p>
+                        {loc.address && <p className="text-xs text-gray-400 truncate mt-0.5">{loc.address}</p>}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
                       <button
                         type="button"
                         onClick={() => router.push(`/panel/restaurante/${loc.id}`)}
@@ -1887,7 +1915,10 @@ export default function PanelMaestroPage() {
                 {bannerForm.imageUrl && (
                   <div className="mt-2 rounded-xl overflow-hidden border border-gray-200" style={{ aspectRatio: '3/1', maxHeight: 120 }}>
                     {getSafeImageSrc(bannerForm.imageUrl) ? (
-                      <img src={getSafeImageSrc(bannerForm.imageUrl)} alt="Vista previa" className="w-full h-full object-cover" />
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={getSafeImageSrc(bannerForm.imageUrl)} alt="Vista previa" className="w-full h-full object-cover" />
+                      </>
                     ) : (
                       <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-sm">Imagen no válida</div>
                     )}
@@ -2011,7 +2042,10 @@ export default function PanelMaestroPage() {
                   <li key={b.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
                     <div className="w-24 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-100" style={{ aspectRatio: '3/1' }}>
                       {getSafeImageSrc(b.imageUrl) ? (
-                        <img src={getSafeImageSrc(b.imageUrl)} alt={b.alt} className="w-full h-full object-cover" />
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={getSafeImageSrc(b.imageUrl)} alt={b.alt} className="w-full h-full object-cover" />
+                        </>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Sin imagen</div>
                       )}

@@ -4,7 +4,7 @@ interface Props {
   categorias: string[];
   activa: string;
   tabsRef: React.RefObject<HTMLDivElement>;
-  onSeleccionar: (cat: string) => void;
+  onSeleccionar: (_cat: string) => void;
 }
 
 export default function TabsMenu({ categorias, activa, tabsRef, onSeleccionar }: Props) {

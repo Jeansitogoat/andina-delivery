@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { getLocalFromFirestore, updateLocalInFirestore } from '@/lib/locales-firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { normalizeDataUrl, isValidImageUrl } from '@/lib/validImageUrl';
+import { revalidateTag } from 'next/cache';
 
 export async function GET(
   _request: Request,
@@ -165,6 +166,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Local no encontrado' }, { status: 404 });
     }
     await ref.delete();
+    revalidateTag('locales');
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/locales/[id]', e);

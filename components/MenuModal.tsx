@@ -37,8 +37,8 @@ interface MenuModalProps {
   local: LocalInfo;
   items: MenuItem[];
   cart: { id: string; qty: number }[];
-  onAdd: (id: string) => void;
-  onRemove: (id: string) => void;
+  onAdd: (_id: string) => void;
+  onRemove: (_id: string) => void;
   onCheckout: () => void;
   reviewsList?: Review[];
 }
@@ -52,8 +52,8 @@ function ItemCard({
 }: {
   item: MenuItem;
   qty: number;
-  onAdd: (id: string) => void;
-  onRemove: (id: string) => void;
+  onAdd: (_id: string) => void;
+  onRemove: (_id: string) => void;
   compact?: boolean;
 }) {
   return (

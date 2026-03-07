@@ -150,7 +150,7 @@ export function getEstadoAbierto(local: Local, now: Date = new Date()): EstadoAb
 /**
  * Para ordenar: abiertos primero, luego cerrados.
  */
-export function sortLocalesAbiertosPrimero(locales: Local[], getEstado: (l: Local) => EstadoAbierto): Local[] {
+export function sortLocalesAbiertosPrimero(locales: Local[], getEstado: (_l: Local) => EstadoAbierto): Local[] {
   return [...locales].sort((a, b) => {
     const ea = getEstado(a);
     const eb = getEstado(b);

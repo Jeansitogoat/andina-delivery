@@ -46,11 +46,11 @@ type CartContextType = {
   cart: CartState;
   cartCount: number;
   hydrated: boolean;
-  addItem: (localId: string, itemId: string, note?: string) => void;
-  removeItem: (itemId: string, localId?: string) => void;
+  addItem: (_localId: string, _itemId: string, _note?: string) => void;
+  removeItem: (_itemId: string, _localId?: string) => void;
   clearCart: () => void;
-  clearStop: (localId: string) => void;
-  setItemNote: (itemId: string, note: string, localId?: string) => void;
+  clearStop: (_localId: string) => void;
+  setItemNote: (_itemId: string, _note: string, _localId?: string) => void;
   localId: string | null;
   items: CartItem[];
 };
@@ -91,7 +91,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       saveCart(user.uid, local).then(() => {
         try {
           localStorage.removeItem(STORAGE_KEY);
-        } catch (_) {}
+        } catch {
+          // ignore
+        }
       });
     }
   }, [user?.uid]);
@@ -106,7 +108,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateCart = useCallback(
-    (updater: (prev: CartState) => CartState) => {
+    (updater: (_prev: CartState) => CartState) => {
       setCart((prev) => {
         const next = updater(prev);
         if (user?.uid) {

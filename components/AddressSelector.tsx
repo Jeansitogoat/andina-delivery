@@ -13,7 +13,7 @@ interface AddressSelectorProps {
 }
 
 export default function AddressSelector({ className = '', dark = false }: AddressSelectorProps) {
-  const { direcciones, selectedId, setSelectedId, direccionEntregar, addDireccion, estaLejos } = useAddresses();
+  const { direcciones, selectedId, setSelectedId, direccionEntregar, addDireccion, estaLejos, userLocationLatLng } = useAddresses();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -87,6 +87,7 @@ export default function AddressSelector({ className = '', dark = false }: Addres
           onClose={() => setShowModal(false)}
           onGuardar={addDireccion}
           telefonoUsuario={user?.telefono ?? null}
+          initialLatLng={userLocationLatLng}
         />
       )}
     </div>

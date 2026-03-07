@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, Plus, Pencil, Trash2, Home, Briefcase, Star } from 'lucide-react';
+import { MapPin, Plus, Trash2, Home, Briefcase, Star } from 'lucide-react';
 
 export interface DireccionGuardada {
   id: string;
@@ -23,7 +23,7 @@ const ICONOS_ETIQUETA = {
 
 interface Props {
   direcciones: DireccionGuardada[];
-  onActualizar: (dirs: DireccionGuardada[]) => void;
+  onActualizar: (_dirs: DireccionGuardada[]) => void;
 }
 
 export default function SeccionDirecciones({ direcciones, onActualizar }: Props) {

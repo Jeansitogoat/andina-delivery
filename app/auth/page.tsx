@@ -5,23 +5,19 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { Mail, Phone, ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { getFirestoreDb } from '@/lib/firebase/client';
 
-type Paso = 'login' | 'registro' | 'registro-rider' | 'registro-exitoso' | 'registro-exitoso-rider' | 'telefono' | 'codigo';
+type Paso = 'login' | 'registro' | 'registro-rider' | 'registro-exitoso' | 'registro-exitoso-rider';
 
 export default function AuthPage() {
   const router = useRouter();
   const { addDireccion } = useAddresses();
   const { user, loading: authLoading, loginWithEmail, registerWithEmail, logout } = useAuth();
   const [paso, setPaso] = useState<Paso>('login');
-  const [telefono, setTelefono] = useState('');
-  const [codigo, setCodigo] = useState('');
-  const [enviando, setEnviando] = useState(false);
-  const [verificando, setVerificando] = useState(false);
   const [registro, setRegistro] = useState({
     nombres: '',
     correo: '',
@@ -42,10 +38,13 @@ export default function AuthPage() {
     registro.contraseña !== registro.confirmarContraseña && registro.confirmarContraseña.length > 0;
   const errorConfirmar = errorForm || (contraseñasNoCoinciden ? 'Las contraseñas no coinciden' : '');
 
-  // Si ya está logueado como central, rider, local o maestro, redirigir a su panel
+  // Si ya está logueado, redirigir: clientes al home, otros a su panel (así el botón Atrás no muestra login)
   useEffect(() => {
     if (typeof window === 'undefined' || authLoading || !user) return;
-    if (user.rol === 'cliente') return;
+    if (user.rol === 'cliente') {
+      router.replace('/');
+      return;
+    }
     switch (user.rol) {
       case 'central':
         router.replace('/panel/central');
@@ -122,26 +121,6 @@ export default function AuthPage() {
     }
   }
 
-  function handleEnviarCodigo(e: React.FormEvent) {
-    e.preventDefault();
-    if (!telefono.trim()) return;
-    setEnviando(true);
-    setTimeout(() => {
-      setEnviando(false);
-      setPaso('codigo');
-    }, 1200);
-  }
-
-  function handleVerificarCodigo(e: React.FormEvent) {
-    e.preventDefault();
-    if (codigo.length !== 6) return;
-    setVerificando(true);
-    setTimeout(() => {
-      setVerificando(false);
-      router.push('/');
-    }, 1000);
-  }
-
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setErrorForm('');
@@ -202,7 +181,7 @@ export default function AuthPage() {
       displayName: nombreLimpio,
       rol: 'cliente',
     })
-      .then((andinaUser) => {
+      .then(() => {
         registrandoRef.current = false;
         setRegistrando(false);
         if (registro.direccion.trim()) {
@@ -354,14 +333,6 @@ export default function AuthPage() {
                   </svg>
                 )}
                 {googleLoading ? 'Conectando...' : 'Continuar con Google'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaso('telefono')}
-                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl border-2 border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
-              >
-                <Phone className="w-5 h-5" />
-                Continuar con teléfono
               </button>
             </div>
 
@@ -708,80 +679,6 @@ export default function AuthPage() {
     );
   }
 
-  if (paso === 'telefono') {
-    return (
-      <main className="min-h-screen bg-gray-50 flex flex-col">
-        <header className="bg-white border-b border-gray-100 p-4">
-          <button type="button" onClick={() => setPaso('login')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-            <ArrowLeft className="w-5 h-5" />
-            <span className="font-semibold">Volver</span>
-          </button>
-        </header>
-        <div className="flex-1 flex flex-col items-center justify-center px-6">
-          <div className="w-16 h-16 rounded-full bg-dorado-oro/20 flex items-center justify-center mb-6">
-            <Phone className="w-8 h-8 text-dorado-oro" />
-          </div>
-          <h1 className="text-xl font-black text-gray-900 text-center mb-2">Tu número de teléfono</h1>
-          <p className="text-gray-500 text-sm text-center mb-8">Te enviaremos un código de verificación</p>
-          <form onSubmit={handleEnviarCodigo} className="w-full max-w-sm space-y-4">
-            <input
-              type="tel"
-              value={telefono}
-              onChange={(e) => setTelefono(e.target.value)}
-              placeholder="09X XXX XXXX"
-              className="w-full px-4 py-4 rounded-2xl border border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-dorado-oro/50 focus:border-dorado-oro"
-              required
-            />
-            <button
-              type="submit"
-              disabled={enviando}
-              className="w-full py-4 rounded-2xl bg-dorado-oro hover:bg-dorado-oro/90 text-gray-900 font-bold disabled:opacity-70 flex items-center justify-center gap-2"
-            >
-              {enviando ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-              {enviando ? 'Enviando...' : 'Enviar código'}
-            </button>
-          </form>
-        </div>
-      </main>
-    );
-  }
-
-  // paso === 'codigo'
-  return (
-    <main className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-100 p-4">
-        <button type="button" onClick={() => setPaso('telefono')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-          <ArrowLeft className="w-5 h-5" />
-          <span className="font-semibold">Volver</span>
-        </button>
-      </header>
-      <div className="flex-1 flex flex-col items-center justify-center px-6">
-        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-6">
-          <Mail className="w-8 h-8 text-green-600" />
-        </div>
-        <h1 className="text-xl font-black text-gray-900 text-center mb-2">Código de verificación</h1>
-        <p className="text-gray-500 text-sm text-center mb-8">Ingresa el código de 6 dígitos que enviamos a {telefono || 'tu teléfono'}</p>
-        <form onSubmit={handleVerificarCodigo} className="w-full max-w-sm space-y-4">
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={6}
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
-            placeholder="000000"
-            className="w-full px-4 py-4 rounded-2xl border border-gray-200 text-gray-900 text-center text-2xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-dorado-oro/50"
-            required
-          />
-          <button
-            type="submit"
-            disabled={verificando || codigo.length !== 6}
-            className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold disabled:opacity-70 flex items-center justify-center gap-2"
-          >
-            {verificando ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-            {verificando ? 'Verificando...' : 'Verificar'}
-          </button>
-        </form>
-      </div>
-    </main>
-  );
+  // Fallback: nunca alcanzado si paso es válido
+  return null;
 }

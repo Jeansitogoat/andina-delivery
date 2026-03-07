@@ -16,7 +16,7 @@ import {
   Search,
   MessageCircle,
 } from 'lucide-react';
-import type { MenuItem, Review } from '@/lib/data';
+import type { MenuItem } from '@/lib/data';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
 import { useLocal } from '@/lib/useLocal';
@@ -30,7 +30,7 @@ export default function RestaurantePage({ params }: { params: { id: string } }) 
   const { id } = params;
   const router = useRouter();
   const { user } = useAuth();
-  const { cart, cartCount, addItem, removeItem } = useCart();
+  const { cart, addItem, removeItem } = useCart();
   const { local, menu: allItems, reviews, isLoading: loading, error } = useLocal(id);
   const notFound = !!error || (!loading && !local);
   const stopForThisLocal = cart.stops.find((s) => s.localId === id);
@@ -57,6 +57,7 @@ export default function RestaurantePage({ params }: { params: { id: string } }) 
   useEffect(() => {
     if (categories.length && activeCategory === VER_TODO) return;
     if (categories.length) setActiveCategory((prev) => (prev === VER_TODO || categories.includes(prev) ? prev : categories[0]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync only when local/items change to avoid category reset loops
   }, [local?.id, allItems.length]);
 
   useEffect(() => {
