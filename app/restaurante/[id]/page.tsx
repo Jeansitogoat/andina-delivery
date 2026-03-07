@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { use, useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,8 +26,8 @@ import LocalLogo from '@/components/LocalLogo';
 import { getEstadoAbierto } from '@/lib/abiertoAhora';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 
-export default function RestaurantePage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function RestaurantePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
   const { user } = useAuth();
   const { cart, addItem, removeItem } = useCart();

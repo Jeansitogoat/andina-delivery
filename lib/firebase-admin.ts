@@ -1,26 +1,27 @@
 /**
  * Firebase Admin SDK para uso en API routes (Firestore, Auth).
- * Usa FIREBASE_SERVICE_ACCOUNT_PATH (ruta al JSON) o FIREBASE_SERVICE_ACCOUNT_JSON.
+ * Solo usa FIREBASE_SERVICE_ACCOUNT_JSON (contenido del JSON en una variable de entorno).
  */
 const admin = require('firebase-admin') as typeof import('firebase-admin');
-const fs = require('fs') as typeof import('fs');
-const path = require('path') as typeof import('path');
 
 function loadCredential(): import('firebase-admin').credential.Credential {
-  const jsonPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
   const jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-
-  if (jsonPath?.trim()) {
-    const resolved = path.resolve(process.cwd(), jsonPath);
-    const raw = fs.readFileSync(resolved, 'utf8');
-    const cred = JSON.parse(raw) as object;
-    return admin.credential.cert(cred);
+  if (!jsonStr || typeof jsonStr !== 'string' || !jsonStr.trim()) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON debe estar configurado (contenido del JSON de la cuenta de servicio)');
   }
-  if (jsonStr?.trim()) {
+  try {
     const cred = JSON.parse(jsonStr) as object;
+    if (!cred || typeof cred !== 'object') {
+      throw new Error('JSON inválido');
+    }
     return admin.credential.cert(cred);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('JSON') || msg.includes('parse')) {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON no es un JSON válido: ' + msg);
+    }
+    throw e;
   }
-  throw new Error('FIREBASE_SERVICE_ACCOUNT_PATH o FIREBASE_SERVICE_ACCOUNT_JSON debe estar configurado');
 }
 
 function ensureInit(): void {

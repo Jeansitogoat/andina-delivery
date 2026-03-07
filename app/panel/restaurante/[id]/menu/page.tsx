@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { use, useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { Plus, Pencil, Trash2, ShoppingBag, X, Save, CheckCircle2, Upload, ChevronUp, ChevronDown } from 'lucide-react';
 import NavPanel from '@/components/panel/NavPanel';
@@ -172,8 +172,8 @@ function generateId(localId: string): string {
   return `${localId}-${Date.now().toString(36)}`;
 }
 
-export default function PanelMenuIdPage({ params }: { params: { id: string } }) {
-  const { id: localId } = params;
+export default function PanelMenuIdPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: localId } = use(params);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [pageVisible, setPageVisible] = useState(false);

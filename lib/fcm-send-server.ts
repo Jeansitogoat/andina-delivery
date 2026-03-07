@@ -35,15 +35,22 @@ export async function sendFCMToRole(
     : {};
   const fullData = { title, body, ...dataPayload };
   let sent = 0;
-  for (const token of tokens) {
+  for (const doc of snap.docs) {
+    const token = doc.data().token as string;
+    if (!token?.trim()) continue;
     try {
       await messaging.send({
-        token,
+        token: token.trim(),
         data: fullData,
       });
       sent++;
-    } catch {
-      // token inválido; seguir con el siguiente
+    } catch (e) {
+      const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+      const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+      if (isUnregistered) {
+        await doc.ref.delete();
+        console.log('[FCM] Token eliminado (inválido o no registrado):', doc.id);
+      }
     }
   }
   return sent;
@@ -82,7 +89,14 @@ export async function sendFCMToUser(
     console.log('[FCM] Sent to user', uid);
     return true;
   } catch (e) {
-    console.error('[FCM] sendFCMToUser failed for', uid, e);
+    const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+    const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+    if (isUnregistered) {
+      await docRef.delete();
+      console.log('[FCM] Token eliminado para usuario (inválido o no registrado):', docRef.id);
+    } else {
+      console.error('[FCM] sendFCMToUser failed for', uid, e);
+    }
     return false;
   }
 }

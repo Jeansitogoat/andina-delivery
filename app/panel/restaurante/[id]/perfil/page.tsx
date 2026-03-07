@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { use, useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import {
   Store,
@@ -39,8 +39,8 @@ const HORARIOS_DEFAULT = [
   { dia: 'Domingo', abierto: false, desde: '10:00', hasta: '22:00' },
 ];
 
-export default function PanelPerfilIdPage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const logoRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const codigoRef = useRef<HTMLInputElement>(null);

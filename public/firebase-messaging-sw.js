@@ -1,4 +1,4 @@
-/* Service worker para FCM (Firebase Cloud Messaging). Misma config que lib/firebase/client.ts */
+/* Service worker para FCM. Generado desde variables de entorno - no editar a mano. */
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
 

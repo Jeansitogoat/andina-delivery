@@ -7,7 +7,10 @@ import { getFirebaseApp } from '@/lib/firebase/client';
 
 const MESSAGING_SW_URL = '/firebase-messaging-sw.js';
 
-/** Registra el SW de FCM si no está registrado y devuelve su registration (necesario para getToken en móvil). */
+/**
+ * Registra el Service Worker de FCM en la ruta /firebase-messaging-sw.js con scope '/' para evitar
+ * 404 o rutas incorrectas en Vercel (el SW debe controlar todo el origen).
+ */
 async function getMessagingSWRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
   try {
@@ -50,23 +53,38 @@ export function waitForServiceWorker(): Promise<void> {
 
 export async function getFCMToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-  if (!vapidKey?.trim()) {
-    if (typeof window !== 'undefined') console.warn('[FCM] getFCMToken: NEXT_PUBLIC_FIREBASE_VAPID_KEY no definida');
+  const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
+  if (!vapidKey) {
+    console.error('[FCM] getFCMToken: NEXT_PUBLIC_FIREBASE_VAPID_KEY no definida o vacía. Configurala en .env o en Vercel.');
     return null;
   }
   try {
     const swReg = await getMessagingSWRegistration();
+    if (!swReg) {
+      console.error('[FCM] getFCMToken: Service Worker no disponible o falló el registro. Comprueba que /firebase-messaging-sw.js exista y tenga scope "/".');
+      return null;
+    }
     const { getMessaging, getToken } = await import('firebase/messaging');
     const app = getFirebaseApp();
     const messaging = getMessaging(app);
     const token = await getToken(messaging, {
-      vapidKey: vapidKey.trim(),
-      ...(swReg ? { serviceWorkerRegistration: swReg } : {}),
+      vapidKey,
+      serviceWorkerRegistration: swReg,
     });
     return token ?? null;
   } catch (e) {
-    console.warn('[FCM] getFCMToken failed', e);
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+    const lower = (msg + ' ' + code).toLowerCase();
+    if (lower.includes('permission') || lower.includes('denied') || lower.includes('notification')) {
+      console.error('[FCM] getFCMToken: Error de permisos -', msg, e);
+    } else if (lower.includes('vapid') || lower.includes('key') || lower.includes('invalid') && (lower.includes('key') || lower.includes('vapid'))) {
+      console.error('[FCM] getFCMToken: Error por llave VAPID (revisa NEXT_PUBLIC_FIREBASE_VAPID_KEY) -', msg, e);
+    } else if (lower.includes('service') || lower.includes('worker') || lower.includes('registration') || lower.includes('sw')) {
+      console.error('[FCM] getFCMToken: Error de Service Worker -', msg, e);
+    } else {
+      console.error('[FCM] getFCMToken: Error -', msg, code, e);
+    }
     return null;
   }
 }

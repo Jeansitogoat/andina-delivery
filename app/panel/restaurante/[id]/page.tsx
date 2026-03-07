@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { use, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -79,8 +79,8 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: str
   cancelado: { label: 'Cancelado', color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
 };
 
-export default function PanelRestauranteIdPage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function PanelRestauranteIdPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const { permission, requestPermission, loading: notifLoading } = useNotifications('restaurant');

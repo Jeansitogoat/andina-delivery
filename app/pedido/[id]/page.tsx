@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   CheckCircle2,
@@ -112,10 +112,10 @@ const INDICE_ESTADO_PICKUP: Record<string, number> = {
 export default function SeguimientoPedidoPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
-  const { id } = params;
+  const { id } = use(params);
   const { permission, requestPermission, loading: notifLoading, isSupported } = useNotifications('user');
   const autoPromptedRef = useRef(false);
 

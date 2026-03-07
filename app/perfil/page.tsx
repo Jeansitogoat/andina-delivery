@@ -8,7 +8,7 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import {
   ArrowLeft, Camera, LogOut, ChevronRight, ShoppingBag,
-  History, Settings, Phone, Check, AlertTriangle,
+  History, Settings, Phone, Check, AlertTriangle, Bell,
 } from 'lucide-react';
 import TarjetaPedidoHistorial, {
   type PedidoHistorial,
@@ -17,6 +17,7 @@ import SeccionDirecciones from '@/components/usuario/SeccionDirecciones';
 import { useCart } from '@/lib/useCart';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
+import { useNotifications } from '@/lib/useNotifications';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseStorage, getFirestoreDb } from '@/lib/firebase/client';
 import { getFirebaseAuth } from '@/lib/firebase/client';
@@ -57,6 +58,7 @@ export default function PerfilPage() {
   const { user, loading: authLoading, refreshUser, logout } = useAuth();
   const { clearCart } = useCart();
   const { direcciones, updateDirecciones } = useAddresses();
+  const { permission, requestPermission, desactivar, loading: notifLoading, error: notifError, isSupported, optedOut } = useNotifications('user');
   const fotoRef = useRef<HTMLInputElement>(null);
 
   const [tab, setTab] = useState<TabPerfil>('historial');
@@ -70,11 +72,36 @@ export default function PerfilPage() {
   const [editandoTelefono, setEditandoTelefono] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [confirmarCierre, setConfirmarCierre] = useState(false);
+  const [confirmarDesactivarNotif, setConfirmarDesactivarNotif] = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [tokenRegistrado, setTokenRegistrado] = useState<boolean | null>(null);
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
   }, []);
+
+  // Ver si el usuario tiene token FCM registrado (para mostrar "Token registrado" en notificaciones)
+  useEffect(() => {
+    if (!user || permission !== 'granted' || optedOut) {
+      setTokenRegistrado(null);
+      return;
+    }
+    let cancelled = false;
+    getIdToken()
+      .then((token) => {
+        if (!token || cancelled) return;
+        return fetch('/api/fcm/status', { headers: { Authorization: `Bearer ${token}` } });
+      })
+      .then((res) => {
+        if (!res || cancelled) return res?.json?.();
+        return res.json();
+      })
+      .then((data: { hasToken?: boolean } | undefined) => {
+        if (!cancelled && data && typeof data.hasToken === 'boolean') setTokenRegistrado(data.hasToken);
+      })
+      .catch(() => { if (!cancelled) setTokenRegistrado(false); });
+    return () => { cancelled = true; };
+  }, [user, permission, optedOut, notifLoading]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -432,10 +459,50 @@ export default function PerfilPage() {
 
             {/* Opciones extra */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-4 py-4 border-b border-gray-50">
+                <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-gray-500" />
+                  Notificaciones
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {permission === 'granted' && !optedOut
+                    ? tokenRegistrado === true
+                      ? 'Activadas · Token registrado (recibirás avisos de pedidos)'
+                      : tokenRegistrado === false
+                        ? 'Activadas · No se registró el token (tocá Activar de nuevo o recargá)'
+                        : 'Activadas · Te avisamos del estado de tus pedidos'
+                    : notifError
+                      ? notifError
+                      : notifLoading
+                        ? 'Activando...'
+                        : optedOut
+                          ? 'Desactivadas · Tocá abajo para volver a activar'
+                          : 'Tocá abajo para activar avisos de pedidos'}
+                </p>
+                <div className="mt-3 flex items-center gap-3 flex-wrap">
+                  {permission === 'granted' && !optedOut ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmarDesactivarNotif(true)}
+                      className="text-xs font-semibold text-red-500 hover:underline"
+                    >
+                      Desactivar
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => isSupported && requestPermission()}
+                      disabled={!isSupported || notifLoading}
+                      className="text-sm font-semibold text-rojo-andino hover:underline disabled:opacity-70"
+                    >
+                      {optedOut ? 'Activar notificaciones' : 'Activar notificaciones'}
+                    </button>
+                  )}
+                </div>
+                </div>
               {[
-                { label: 'Notificaciones', sub: 'Pedidos, promociones y más', onClick: () => {} },
-                { label: 'Términos y condiciones', sub: 'Política de uso', onClick: () => {} },
-                { label: 'Política de privacidad', sub: 'Cómo usamos tus datos', onClick: () => {} },
+                { label: 'Términos y condiciones', sub: 'Política de uso', onClick: () => router.push('/terminos') },
+                { label: 'Política de privacidad', sub: 'Cómo usamos tus datos', onClick: () => router.push('/privacidad') },
               ].map(({ label, sub, onClick }) => (
                 <button
                   key={label}
@@ -464,6 +531,40 @@ export default function PerfilPage() {
           </div>
         )}
       </div>
+
+      {/* Modal confirmar desactivar notificaciones */}
+      {confirmarDesactivarNotif && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5">
+          <div
+            className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center"
+            style={{ animation: 'scaleIn 0.25s cubic-bezier(0.34,1.56,0.64,1) forwards' }}
+          >
+            <h3 className="font-black text-lg text-gray-900 mb-1">¿Desactivar notificaciones?</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Dejarás de recibir avisos del estado de tus pedidos en este dispositivo.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmarDesactivarNotif(false)}
+                className="flex-1 py-3.5 rounded-2xl border-2 border-gray-200 text-gray-700 font-bold text-sm hover:bg-gray-50 transition-colors"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setConfirmarDesactivarNotif(false);
+                  await desactivar();
+                }}
+                className="flex-1 py-3.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm transition-colors"
+              >
+                Sí, desactivar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal confirmar cierre de sesión */}
       {confirmarCierre && (

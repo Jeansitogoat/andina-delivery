@@ -61,7 +61,6 @@ export async function PATCH(
       asignadoPor: auth.uid,
     });
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.error('PATCH /api/pedidos/batch/[batchId]/asignar', e);
     return NextResponse.json(
       { error: 'Error al asignar rider al batch' },

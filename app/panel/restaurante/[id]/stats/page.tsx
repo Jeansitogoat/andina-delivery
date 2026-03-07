@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { use, useState, useEffect } from 'react';
 import { TrendingUp, ShoppingBag, Users, DollarSign, Flame, Percent, Loader2, MessageCircle, CreditCard, Copy } from 'lucide-react';
 import NavPanel from '@/components/panel/NavPanel';
 import type { MenuItem } from '@/lib/data';
@@ -15,8 +15,8 @@ interface StatsData {
   topItems?: Array<{ nombre: string; cantidad: number }>;
 }
 
-export default function PanelStatsIdPage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function PanelStatsIdPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [pageVisible, setPageVisible] = useState(false);
   const [periodo, setPeriodo] = useState<'hoy' | 'semana' | 'mes'>('semana');

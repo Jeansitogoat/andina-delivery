@@ -87,7 +87,7 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
         }
 
         if (!cancelled) setLoading(false);
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setError('No se pudo cargar el mapa');
           setLoading(false);
