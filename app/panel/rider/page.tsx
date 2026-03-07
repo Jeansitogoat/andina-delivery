@@ -209,8 +209,31 @@ export default function PanelRiderPage() {
       return;
     }
     cargarCarreras();
-    const interval = setInterval(cargarCarreras, 20000);
-    return () => clearInterval(interval);
+    let t: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (t) return;
+      t = setInterval(cargarCarreras, 20000);
+    };
+    const stopPolling = () => {
+      if (t) {
+        clearInterval(t);
+        t = null;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        cargarCarreras();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [user, filtroHistorial, cargarCarreras, sessionInvalid, router]);
 
   /* Agrupar carreras activas por batch solo cuando hay 2+ pedidos con el mismo batchId (multi-stop real) */

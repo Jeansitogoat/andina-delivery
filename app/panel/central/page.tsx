@@ -220,8 +220,31 @@ export default function PanelCentralPage() {
       return;
     }
     cargarDatos();
-    const interval = setInterval(() => cargarDatos(), 30000);
-    return () => clearInterval(interval);
+    let t: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (t) return;
+      t = setInterval(cargarDatos, 30000);
+    };
+    const stopPolling = () => {
+      if (t) {
+        clearInterval(t);
+        t = null;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        cargarDatos();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [user, filtroHistorial, cargarDatos, sessionInvalid, router]);
 
   function showToast(msg: string) {

@@ -179,8 +179,31 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   useEffect(() => {
     if (!user || (user.rol !== 'local' && user.rol !== 'maestro')) return;
     cargarPedidos();
-    const t = setInterval(cargarPedidos, 10000);
-    return () => clearInterval(t);
+    let t: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (t) return;
+      t = setInterval(cargarPedidos, 18000); // 18s - optimizado
+    };
+    const stopPolling = () => {
+      if (t) {
+        clearInterval(t);
+        t = null;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        cargarPedidos();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [user, id, cargarPedidos]);
 
   const loadEntregados = useCallback(async (cursor?: string | null) => {
@@ -273,8 +296,31 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
 
   useEffect(() => {
     fetchPendingTransfer();
-    const t = setInterval(fetchPendingTransfer, 5000);
-    return () => clearInterval(t);
+    let t: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (t) return;
+      t = setInterval(fetchPendingTransfer, 18000); // 18s - optimizado
+    };
+    const stopPolling = () => {
+      if (t) {
+        clearInterval(t);
+        t = null;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPendingTransfer();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [fetchPendingTransfer]);
 
   const refreshPendingTransfer = fetchPendingTransfer;
