@@ -1,10 +1,11 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import type { Query } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 
 async function backupCollection(name: string, limitDocs?: number) {
   const db = getAdminFirestore();
-  let ref = db.collection(name);
+  let ref: Query = db.collection(name);
   if (typeof limitDocs === 'number' && limitDocs > 0) {
     ref = ref.limit(limitDocs);
   }

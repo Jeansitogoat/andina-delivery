@@ -31,6 +31,7 @@ import {
   ShoppingBag,
   LogOut,
   Camera,
+  MessageCircle,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { useAuth } from '@/lib/useAuth';
