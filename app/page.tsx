@@ -31,6 +31,7 @@ import { getIdToken } from '@/lib/authToken';
 import { getEstadoAbierto } from '@/lib/abiertoAhora';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
+import { usePublicConfig } from '@/lib/PublicConfigContext';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 
 type CategoryKey = 'all' | 'Restaurantes' | 'Market' | 'Farmacias';
@@ -98,25 +99,7 @@ export default function Home() {
     }
   }, [authLoading, user, router]);
 
-  type BannerItem = { id: string; imageUrl: string; alt: string; linkType: string; linkValue: string; order: number };
-  const [banners, setBanners] = useState<BannerItem[]>([]);
-  const [carruselIntervalSeconds, setCarruselIntervalSeconds] = useState(4);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/banners')
-      .then((res) => res.ok ? res.json() : { banners: [], intervalSeconds: 4 })
-      .then((data: { banners: BannerItem[]; intervalSeconds?: number }) => {
-        if (!cancelled && Array.isArray(data.banners)) {
-          setBanners(data.banners);
-        }
-        if (!cancelled && typeof data.intervalSeconds === 'number' && data.intervalSeconds >= 2 && data.intervalSeconds <= 60) {
-          setCarruselIntervalSeconds(Math.round(data.intervalSeconds));
-        }
-      })
-      .catch(() => { if (!cancelled) setBanners([]); });
-    return () => { cancelled = true; };
-  }, []);
+  const { banners, intervalSeconds: carruselIntervalSeconds } = usePublicConfig();
 
   useEffect(() => {
     if (banners.length === 0) return;

@@ -4,6 +4,7 @@ import './globals.css';
 import { AddressesProvider } from '@/lib/addressesContext';
 import { CartProvider } from '@/lib/cartContext';
 import { FullScreenModalProvider } from '@/lib/FullScreenModalContext';
+import { PublicConfigProvider } from '@/lib/PublicConfigContext';
 import AuthSplashGate from '@/components/AuthSplashGate';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import FCMAutoRegister from '@/components/FCMAutoRegister';
@@ -41,6 +42,7 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col bg-gray-50">
         <SWRConfig value={{ revalidateOnFocus: false, dedupingInterval: 30000 }}>
           <ErrorBoundary>
+          <PublicConfigProvider>
           <AddressesProvider>
             <CartProvider>
               <FullScreenModalProvider>
@@ -51,6 +53,7 @@ export default function RootLayout({
               </FullScreenModalProvider>
             </CartProvider>
           </AddressesProvider>
+          </PublicConfigProvider>
           </ErrorBoundary>
         </SWRConfig>
       </body>
