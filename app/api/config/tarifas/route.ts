@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
+import { revalidatePath } from 'next/cache';
 
 const DOC_ID = 'tarifasEnvio';
 
@@ -89,6 +90,8 @@ export async function PATCH(request: Request) {
       await db.collection('config').doc(DOC_ID).set(updates, { merge: true });
     }
 
+    revalidatePath('/');
+    revalidatePath('/panel/central');
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('PATCH /api/config/tarifas', e);

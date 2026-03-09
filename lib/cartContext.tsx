@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { getDoc, doc } from 'firebase/firestore';
 import { getFirestoreDb } from '@/lib/firebase/client';
 import { useAuth } from '@/lib/useAuth';
 import { saveCart, type CartState } from '@/lib/cartFirestore';
@@ -70,29 +70,46 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const syncedFromLocalRef = useRef(false);
 
-  /* Listener Firestore: desuscribir en el return para evitar fugas y lecturas continuas. */
-  useEffect(() => {
+  /** Una lectura getDoc por carga o tras guardar; evita listener permanente (Opción B: máximo ahorro lecturas). */
+  const refetchCart = useCallback(() => {
     if (!user?.uid) return;
     const db = getFirestoreDb();
-    const ref = doc(db, 'users', user.uid);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        try {
-          const data = snap.data();
-          const c = data?.cart;
-          if (c && Array.isArray(c.stops)) {
-            setCart(c as CartState);
-          } else {
-            setCart({ stops: [] });
-          }
-        } catch (e) {
-          console.error('cart snapshot callback', e);
+    getDoc(doc(db, 'users', user.uid))
+      .then((snap) => {
+        const data = snap.data();
+        const c = data?.cart;
+        if (c && Array.isArray(c.stops)) {
+          setCart(c as CartState);
+        } else {
+          setCart({ stops: [] });
         }
-      },
-      (err) => console.error('cart snapshot', err)
-    );
-    return () => unsub();
+      })
+      .catch((err) => console.error('cart refetch', err));
+  }, [user?.uid]);
+
+  /* Carga inicial desde Firestore (getDoc una vez al montar con usuario). */
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    const db = getFirestoreDb();
+    getDoc(doc(db, 'users', user.uid))
+      .then((snap) => {
+        if (cancelled) return;
+        const data = snap.data();
+        const c = data?.cart;
+        if (c && Array.isArray(c.stops)) {
+          setCart(c as CartState);
+        } else {
+          setCart({ stops: [] });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('cart initial load', err);
+      })
+      .finally(() => {
+        if (!cancelled) setHydrated(true);
+      });
+    return () => { cancelled = true; };
   }, [user?.uid]);
 
   useEffect(() => {
@@ -103,6 +120,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const doSave = () => {
         saveCart(user.uid, local)
           .then(() => {
+            refetchCart();
             try {
               localStorage.removeItem(STORAGE_KEY);
             } catch {
@@ -111,18 +129,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           })
           .catch((err) => {
             console.error('cart sync saveCart', err);
-            // Si falla por permisos (token aún no listo), reintentar una vez tras 600ms
             const msg = String(err?.message ?? '').toLowerCase();
             if (msg.includes('permission') || msg.includes('insufficient')) {
               setTimeout(() => {
-                saveCart(user.uid, local).catch(() => {});
+                saveCart(user.uid, local).then(() => refetchCart()).catch(() => {});
               }, 600);
             }
           });
       };
       doSave();
     }
-  }, [user?.uid]);
+  }, [user?.uid, refetchCart]);
 
   useEffect(() => {
     if (user?.uid) return;
@@ -138,17 +155,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setCart((prev) => {
         const next = updater(prev);
         if (user?.uid) {
-          saveCart(user.uid, next).catch((err) => {
-            console.error('cart saveCart', err);
-            // No rethrow: evita que "Missing or insufficient permissions" tumbe la app en móvil
-          });
+          saveCart(user.uid, next)
+            .then(() => refetchCart())
+            .catch((err) => {
+              console.error('cart saveCart', err);
+            });
         } else {
           saveCartToStorage(next);
         }
         return next;
       });
     },
-    [user?.uid]
+    [user?.uid, refetchCart]
   );
 
   const addItem = useCallback(
@@ -215,15 +233,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (user?.uid) {
         try {
           await saveCart(user.uid, next);
+          refetchCart();
         } catch (err) {
           console.error('replaceCartAndSave saveCart', err);
-          // No rethrow: evita crash por permisos en móvil
         }
       } else {
         saveCartToStorage(next);
       }
     },
-    [user?.uid]
+    [user?.uid, refetchCart]
   );
 
   const clearStop = useCallback(

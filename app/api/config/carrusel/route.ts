@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
+import { revalidatePath } from 'next/cache';
 
 /** PATCH /api/config/carrusel → actualizar intervalo del carrusel (solo maestro) */
 export async function PATCH(request: Request) {
@@ -24,6 +25,8 @@ export async function PATCH(request: Request) {
       { intervalSeconds: clamped, updatedAt: FieldValue.serverTimestamp() },
       { merge: true }
     );
+    revalidatePath('/');
+    revalidatePath('/panel/maestro');
     return NextResponse.json({ ok: true, intervalSeconds: clamped });
   } catch (e) {
     console.error('PATCH /api/config/carrusel', e);

@@ -100,6 +100,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
   const [ocupadoSaving, setOcupadoSaving] = useState(false);
+  const [ocupadoToast, setOcupadoToast] = useState<string | null>(null);
   /** Entregados cargados bajo demanda (paginado, 4 por página) */
   const [deliveredList, setDeliveredList] = useState<Order[]>([]);
   const [deliveredNextCursor, setDeliveredNextCursor] = useState<string | null>(null);
@@ -329,6 +330,12 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
   }, []);
+
+  useEffect(() => {
+    if (!ocupadoToast) return;
+    const t = setTimeout(() => setOcupadoToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [ocupadoToast]);
 
   useEffect(() => {
     if (loading) return;
@@ -573,16 +580,32 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                   disabled={ocupadoSaving}
                   onClick={async () => {
                     if (!id || ocupadoSaving) return;
+                    const prevLocal = local;
+                    setLocal((p) => (p ? { ...p, cerradoHasta: undefined } : null));
                     setOcupadoSaving(true);
+                    setOcupadoToast(null);
                     const token = await getIdToken();
-                    if (!token) { setOcupadoSaving(false); return; }
-                    const res = await fetch(`/api/locales/${id}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                      body: JSON.stringify({ cerradoHasta: null }),
-                    });
-                    if (res.ok) setLocal((prev) => prev ? { ...prev, cerradoHasta: undefined } : null);
-                    setOcupadoSaving(false);
+                    if (!token) {
+                      setLocal(prevLocal);
+                      setOcupadoSaving(false);
+                      return;
+                    }
+                    try {
+                      const res = await fetch(`/api/locales/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ cerradoHasta: null }),
+                      });
+                      if (!res.ok) {
+                        setLocal(prevLocal);
+                        setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                      }
+                    } catch {
+                      setLocal(prevLocal);
+                      setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                    } finally {
+                      setOcupadoSaving(false);
+                    }
                   }}
                   className="px-5 py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm"
                 >
@@ -598,17 +621,33 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                     disabled={ocupadoSaving}
                     onClick={async () => {
                       if (!id || ocupadoSaving) return;
-                      setOcupadoSaving(true);
-                      const token = await getIdToken();
-                      if (!token) { setOcupadoSaving(false); return; }
+                      const prevLocal = local;
                       const hasta = new Date(Date.now() + mins * 60 * 1000).toISOString();
-                      const res = await fetch(`/api/locales/${id}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ cerradoHasta: hasta }),
-                      });
-                      if (res.ok) setLocal((prev) => prev ? { ...prev, cerradoHasta: hasta } : null);
-                      setOcupadoSaving(false);
+                      setLocal((p) => (p ? { ...p, cerradoHasta: hasta } : null));
+                      setOcupadoSaving(true);
+                      setOcupadoToast(null);
+                      const token = await getIdToken();
+                      if (!token) {
+                        setLocal(prevLocal);
+                        setOcupadoSaving(false);
+                        return;
+                      }
+                      try {
+                        const res = await fetch(`/api/locales/${id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ cerradoHasta: hasta }),
+                        });
+                        if (!res.ok) {
+                          setLocal(prevLocal);
+                          setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                        }
+                      } catch {
+                        setLocal(prevLocal);
+                        setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                      } finally {
+                        setOcupadoSaving(false);
+                      }
                     }}
                     className="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold disabled:opacity-50 transition-colors"
                   >
@@ -616,6 +655,11 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                   </button>
                 ))}
               </div>
+            )}
+            {ocupadoToast && (
+              <p className="mt-3 text-sm text-red-600 font-medium" role="alert">
+                {ocupadoToast}
+              </p>
             )}
           </div>
 

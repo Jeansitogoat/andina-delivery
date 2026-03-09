@@ -23,6 +23,7 @@ import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseStorage, getFirestoreDb } from '@/lib/firebase/client';
 import { getFirebaseAuth } from '@/lib/firebase/client';
+import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 
 type TabPerfil = 'historial' | 'direcciones' | 'cuenta';
@@ -171,7 +172,7 @@ export default function PerfilPage() {
     return () => { cancelled = true; };
   }, [user]);
 
-  function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !user?.uid) return;
     const reader = new FileReader();
@@ -181,7 +182,8 @@ export default function PerfilPage() {
     setSubiendoFoto(true);
     const storage = getFirebaseStorage();
     const storageRef = ref(storage, `users/${user.uid}/avatar`);
-    uploadBytes(storageRef, file)
+    const compressed = await compressImage(file, 'avatar');
+    uploadBytes(storageRef, compressed)
       .then(() => getDownloadURL(storageRef))
       .then(async (url) => {
         const db = getFirestoreDb();

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
+import { revalidatePath } from 'next/cache';
 
 const DOC_ID = 'transferenciaAndina';
 
@@ -79,6 +80,7 @@ export async function PATCH(request: Request) {
       { merge: true }
     );
 
+    revalidatePath('/panel/maestro');
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('PATCH /api/config/transferencia', e);

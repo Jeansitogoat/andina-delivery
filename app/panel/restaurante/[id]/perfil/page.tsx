@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
   Store,
   MapPin,
@@ -42,6 +43,7 @@ const HORARIOS_DEFAULT = [
 
 export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const logoRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const codigoRef = useRef<HTMLInputElement>(null);
@@ -225,6 +227,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
       }
       setGuardado(true);
       setTimeout(() => setGuardado(false), 2500);
+      router.refresh();
     } catch {
       setGuardadoError('Error de conexión. Revisa tu internet o intenta con imágenes más pequeñas.');
     }

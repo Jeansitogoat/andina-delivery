@@ -141,7 +141,8 @@ export default function PanelRiderPage() {
     const qActivas = query(
       collection(db, 'pedidos'),
       where('riderId', '==', uid),
-      where('estado', 'in', [...ESTADOS_ACTIVOS])
+      where('estado', 'in', [...ESTADOS_ACTIVOS]),
+      limit(50)
     );
     const unsubActivas = onSnapshot(qActivas, (snap) => {
       const activas: CarreraRider[] = snap.docs.map((d) => docToCarrera({ id: d.id, data: () => d.data() }));

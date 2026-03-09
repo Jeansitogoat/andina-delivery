@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -85,16 +85,26 @@ async function ensureUserDocument(firebaseUser: User): Promise<AndinaUser> {
 
 export function useAuth() {
   const [state, setState] = useState<UseAuthState>({ user: null, loading: true });
+  const lastEnsureUidRef = useRef<string | null>(null);
+  const lastAndinaUserRef = useRef<AndinaUser | null>(null);
 
   useEffect(() => {
     const auth = getFirebaseAuth();
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
+        lastEnsureUidRef.current = null;
+        lastAndinaUserRef.current = null;
         setState({ user: null, loading: false });
+        return;
+      }
+      if (firebaseUser.uid === lastEnsureUidRef.current && lastAndinaUserRef.current) {
+        setState({ user: lastAndinaUserRef.current, loading: false });
         return;
       }
       try {
         const andinaUser = await ensureUserDocument(firebaseUser);
+        lastEnsureUidRef.current = firebaseUser.uid;
+        lastAndinaUserRef.current = andinaUser;
         setState({ user: andinaUser, loading: false });
       } catch (err) {
         console.error('Error cargando usuario Andina', err);
@@ -110,6 +120,8 @@ export function useAuth() {
       const auth = getFirebaseAuth();
       const cred = await signInWithEmailAndPassword(auth, email, password);
       const andinaUser = await ensureUserDocument(cred.user);
+      lastEnsureUidRef.current = cred.user.uid;
+      lastAndinaUserRef.current = andinaUser;
       setState({ user: andinaUser, loading: false });
 
       if (typeof window !== 'undefined') {
@@ -179,6 +191,8 @@ export function useAuth() {
       }
 
       setState({ user: andinaUser, loading: false });
+      lastEnsureUidRef.current = user.uid;
+      lastAndinaUserRef.current = andinaUser;
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem('andina_visitado', '1');
@@ -197,6 +211,8 @@ export function useAuth() {
   const logout = useCallback(async () => {
     const auth = getFirebaseAuth();
     const user = state.user;
+    lastEnsureUidRef.current = null;
+    lastAndinaUserRef.current = null;
     if (user) {
       const fcmRole = user.rol === 'local' ? 'restaurant' : user.rol;
       try {
@@ -233,6 +249,8 @@ export function useAuth() {
     if (!firebaseUser) return;
     try {
       const andinaUser = await ensureUserDocument(firebaseUser);
+      lastEnsureUidRef.current = firebaseUser.uid;
+      lastAndinaUserRef.current = andinaUser;
       setState((s) => ({ ...s, user: andinaUser }));
       if (typeof window !== 'undefined' && andinaUser.displayName) {
         try {

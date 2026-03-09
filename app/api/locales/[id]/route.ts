@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { getLocalFromFirestore, updateLocalInFirestore } from '@/lib/locales-firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { normalizeDataUrl, isValidImageUrl } from '@/lib/validImageUrl';
-import { revalidateTag } from 'next/cache';
+import { revalidateTag, revalidatePath } from 'next/cache';
 
 export async function GET(
   _request: Request,
@@ -139,6 +139,9 @@ export async function PATCH(
       await updateLocalInFirestore(id, updates);
     }
 
+    revalidatePath(`/restaurante/${id}`);
+    revalidatePath(`/panel/restaurante/${id}`);
+    revalidatePath('/');
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('PATCH /api/locales/[id]', e);

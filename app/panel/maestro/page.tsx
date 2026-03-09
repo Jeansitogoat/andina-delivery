@@ -405,6 +405,7 @@ export default function PanelMaestroPage() {
           setEditBannerId(null);
           setBannerForm({ imageUrl: '', alt: '', linkType: 'route', linkValue: '/express', order: 0, active: true });
           loadBanners();
+          router.refresh();
         } else {
           const d = await res.json().catch(() => ({}));
           showToast(d?.error || 'Error al actualizar');
@@ -426,6 +427,7 @@ export default function PanelMaestroPage() {
           showToast('Banner creado');
           setBannerForm({ imageUrl: '', alt: '', linkType: 'route', linkValue: '/express', order: 0, active: true });
           loadBanners();
+          router.refresh();
         } else {
           const d = await res.json().catch(() => ({}));
           showToast(d?.error || 'Error al crear');
@@ -445,6 +447,7 @@ export default function PanelMaestroPage() {
       const res = await fetch(`/api/banners/${id}`, { method: 'DELETE', headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (res.ok) {
         showToast('Banner eliminado');
+        router.refresh();
         if (editBannerId === id) {
           setEditBannerId(null);
           setBannerForm({ imageUrl: '', alt: '', linkType: 'route', linkValue: '/express', order: 0, active: true });
@@ -476,6 +479,7 @@ export default function PanelMaestroPage() {
       });
       if (res.ok) {
         showToast('Intervalo del carrusel guardado');
+        router.refresh();
       } else {
         const d = await res.json().catch(() => ({}));
         showToast(d?.error || 'Error al guardar');
@@ -813,6 +817,7 @@ export default function PanelMaestroPage() {
       });
       if (res.ok) showToast('Configuración de transferencia guardada');
       else showToast('Error al guardar');
+      if (res.ok) router.refresh();
     } catch {
       showToast('Error al guardar');
     } finally {

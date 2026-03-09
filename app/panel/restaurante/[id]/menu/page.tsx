@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, ShoppingBag, X, Save, CheckCircle2, Upload, ChevronUp, ChevronDown } from 'lucide-react';
 import NavPanel from '@/components/panel/NavPanel';
 import type { MenuItem } from '@/lib/data';
@@ -174,6 +175,7 @@ function generateId(localId: string): string {
 
 export default function PanelMenuIdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: localId } = use(params);
+  const router = useRouter();
   const [items, setItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [pageVisible, setPageVisible] = useState(false);
@@ -230,6 +232,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
       setGuardado(true);
       if (guardadoTimer.current) clearTimeout(guardadoTimer.current);
       guardadoTimer.current = setTimeout(() => setGuardado(false), 2500);
+      router.refresh();
       return { ok: true };
     } catch {
       return { ok: false, error: 'Error de conexión. Intenta de nuevo.' };

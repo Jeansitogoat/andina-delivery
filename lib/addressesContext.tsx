@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useCallback, useState, useEffect, useRef } from 'react';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { getDoc, doc } from 'firebase/firestore';
 import type { DireccionGuardada } from '@/components/usuario/SeccionDirecciones';
 import { useAuth } from '@/lib/useAuth';
 import { getFirestoreDb } from '@/lib/firebase/client';
@@ -60,27 +60,42 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
   const [userLocationLatLng, setUserLocationLatLng] = useState<{ lat: number; lng: number } | null>(null);
   const syncedFromLocalRef = useRef(false);
 
-  /* Usuario logueado: suscribirse a Firestore */
-  useEffect(() => {
+  /** Una lectura getDoc por carga o tras guardar; evita listener permanente (Opción B). */
+  const refetchAddresses = useCallback(() => {
     if (!user?.uid) return;
     const db = getFirestoreDb();
-    const ref = doc(db, 'users', user.uid);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        try {
-          const data = snap.data();
-          const arr = data?.addresses;
-          const sid = data?.selectedAddressId;
-          setDirecciones(Array.isArray(arr) ? (arr as DireccionGuardada[]) : []);
-          setSelectedIdState(typeof sid === 'string' ? sid : null);
-        } catch (e) {
-          console.error('addresses snapshot callback', e);
-        }
-      },
-      (err) => console.error('addresses snapshot', err)
-    );
-    return () => unsub();
+    getDoc(doc(db, 'users', user.uid))
+      .then((snap) => {
+        const data = snap.data();
+        const arr = data?.addresses;
+        const sid = data?.selectedAddressId;
+        setDirecciones(Array.isArray(arr) ? (arr as DireccionGuardada[]) : []);
+        setSelectedIdState(typeof sid === 'string' ? sid : null);
+      })
+      .catch((err) => console.error('addresses refetch', err));
+  }, [user?.uid]);
+
+  /* Carga inicial desde Firestore (getDoc una vez al montar con usuario). */
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    const db = getFirestoreDb();
+    getDoc(doc(db, 'users', user.uid))
+      .then((snap) => {
+        if (cancelled) return;
+        const data = snap.data();
+        const arr = data?.addresses;
+        const sid = data?.selectedAddressId;
+        setDirecciones(Array.isArray(arr) ? (arr as DireccionGuardada[]) : []);
+        setSelectedIdState(typeof sid === 'string' ? sid : null);
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('addresses initial load', err);
+      })
+      .finally(() => {
+        if (!cancelled) setHydrated(true);
+      });
+    return () => { cancelled = true; };
   }, [user?.uid]);
 
   /* Usuario logueado por primera vez: migrar localStorage -> Firestore */
@@ -97,17 +112,22 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     }
     if (local.length > 0) {
       syncedFromLocalRef.current = true;
-      saveAddresses(user.uid, local).then(() => {
-        if (localSelected) setSelectedAddress(user.uid, localSelected);
-        try {
-          localStorage.removeItem(STORAGE_KEY);
-          localStorage.removeItem(SELECTED_KEY);
-        } catch {
-          /* ignore */
-        }
-      }).catch((err) => console.error('addresses sync saveAddresses', err));
+      saveAddresses(user.uid, local)
+        .then(() => {
+          if (localSelected) return setSelectedAddress(user.uid, localSelected);
+        })
+        .then(() => refetchAddresses())
+        .then(() => {
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(SELECTED_KEY);
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch((err) => console.error('addresses sync saveAddresses', err));
     }
-  }, [user?.uid]);
+  }, [user?.uid, refetchAddresses]);
 
   /* Sin usuario: usar localStorage */
   useEffect(() => {
@@ -124,12 +144,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true);
   }, [user?.uid]);
 
-  /* Usuario: marcar hydrated cuando tengamos datos (onSnapshot los provee) */
-  useEffect(() => {
-    if (user?.uid) setHydrated(true);
-  }, [user?.uid]);
-
-  /* Pedir permiso de ubicación para cálculo de distancia (fallback si no hay dirección con coords) */
+  /* Pedir permiso de ubicación para cálculo de distancia para cálculo de distancia (fallback si no hay dirección con coords) */
   useEffect(() => {
     if (typeof window === 'undefined' || !navigator?.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -148,7 +163,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     (id: string | null) => {
       setSelectedIdState(id);
       if (user?.uid) {
-        setSelectedAddress(user.uid, id);
+        setSelectedAddress(user.uid, id).then(() => refetchAddresses()).catch((err) => console.error('setSelectedAddress', err));
       } else if (typeof window !== 'undefined') {
         try {
           if (id) localStorage.setItem(SELECTED_KEY, id);
@@ -165,14 +180,12 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     (dirs: DireccionGuardada[]) => {
       setDirecciones(dirs);
       if (user?.uid) {
-        saveAddresses(user.uid, dirs).catch((err) => {
-          console.error('updateDirecciones saveAddresses', err);
-        });
+        saveAddresses(user.uid, dirs).then(() => refetchAddresses()).catch((err) => console.error('updateDirecciones saveAddresses', err));
       } else {
         saveToLocalStorage(dirs);
       }
     },
-    [user?.uid]
+    [user?.uid, refetchAddresses]
   );
 
   const addDireccion = useCallback(
@@ -182,9 +195,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       setDirecciones((prev) => {
         const next = [...prev, nueva];
         if (user?.uid) {
-          saveAddresses(user.uid, next).catch((err) => {
-            console.error('addDireccion saveAddresses', err);
-          });
+          saveAddresses(user.uid, next).then(() => refetchAddresses()).catch((err) => console.error('addDireccion saveAddresses', err));
         } else {
           saveToLocalStorage(next);
         }
@@ -192,7 +203,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       });
       setSelectedId(id);
     },
-    [user?.uid, setSelectedId]
+    [user?.uid, setSelectedId, refetchAddresses]
   );
 
   const setPrincipal = useCallback(
@@ -200,14 +211,14 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       setDirecciones((prev) => {
         const next = prev.map((d) => ({ ...d, principal: d.id === id }));
         if (user?.uid) {
-          saveAddresses(user.uid, next).catch((err) => console.error('setPrincipal saveAddresses', err));
+          saveAddresses(user.uid, next).then(() => refetchAddresses()).catch((err) => console.error('setPrincipal saveAddresses', err));
         } else {
           saveToLocalStorage(next);
         }
         return next;
       });
     },
-    [user?.uid]
+    [user?.uid, refetchAddresses]
   );
 
   const removeDireccion = useCallback(
@@ -215,7 +226,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       setDirecciones((prev) => {
         const next = prev.filter((d) => d.id !== id);
         if (user?.uid) {
-          saveAddresses(user.uid, next).catch((err) => console.error('removeDireccion saveAddresses', err));
+          saveAddresses(user.uid, next).then(() => refetchAddresses()).catch((err) => console.error('removeDireccion saveAddresses', err));
         } else {
           saveToLocalStorage(next);
         }
@@ -223,7 +234,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       });
       if (selectedId === id) setSelectedId(null);
     },
-    [user?.uid, selectedId, setSelectedId]
+    [user?.uid, selectedId, setSelectedId, refetchAddresses]
   );
 
   const principal = direcciones.find((d) => d.principal) ?? direcciones[0];
