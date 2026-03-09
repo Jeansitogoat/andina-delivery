@@ -12,6 +12,7 @@ export interface CartState {
 }
 
 export async function getCart(uid: string): Promise<CartState> {
+  if (!uid || !uid.trim()) return { stops: [] };
   const db = getFirestoreDb();
   const snap = await getDoc(doc(db, 'users', uid));
   const data = snap.data();
@@ -21,6 +22,7 @@ export async function getCart(uid: string): Promise<CartState> {
 }
 
 export async function saveCart(uid: string, cart: CartState): Promise<void> {
+  if (!uid || !uid.trim()) return;
   const db = getFirestoreDb();
   const sanitized = sanitizeForFirestore({ cart });
   await setDoc(doc(db, 'users', uid), sanitized, { merge: true });

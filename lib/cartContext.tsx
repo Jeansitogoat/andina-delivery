@@ -50,6 +50,7 @@ type CartContextType = {
   cart: CartState;
   cartCount: number;
   hydrated: boolean;
+  saving: boolean;
   addItem: (_localId: string, _itemId: string, _note?: string) => void;
   removeItem: (_itemId: string, _localId?: string) => void;
   clearCart: () => void;
@@ -68,6 +69,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [cart, setCart] = useState<CartState>({ stops: [] });
   const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncedFromLocalRef = useRef(false);
 
   /** Una lectura getDoc por carga o tras guardar; evita listener permanente (Opción B: máximo ahorro lecturas). */
@@ -150,23 +153,42 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true);
   }, []);
 
+  const scheduleSave = useCallback(
+    (next: CartState) => {
+      if (!user?.uid) return;
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      setSaving(true);
+      const uid = user.uid;
+      saveTimeoutRef.current = setTimeout(() => {
+        saveCart(uid, next)
+          .then(() => refetchCart())
+          .catch((err) => {
+            console.error('cart saveCart', err);
+          })
+          .finally(() => {
+            setSaving(false);
+            saveTimeoutRef.current = null;
+          });
+      }, 500);
+    },
+    [user?.uid, refetchCart]
+  );
+
   const updateCart = useCallback(
     (updater: (_prev: CartState) => CartState) => {
       setCart((prev) => {
         const next = updater(prev);
         if (user?.uid) {
-          saveCart(user.uid, next)
-            .then(() => refetchCart())
-            .catch((err) => {
-              console.error('cart saveCart', err);
-            });
+          scheduleSave(next);
         } else {
           saveCartToStorage(next);
         }
         return next;
       });
     },
-    [user?.uid, refetchCart]
+    [user?.uid, scheduleSave]
   );
 
   const addItem = useCallback(
@@ -232,10 +254,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setCart(next);
       if (user?.uid) {
         try {
+          if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+          }
+          setSaving(true);
           await saveCart(user.uid, next);
           refetchCart();
         } catch (err) {
           console.error('replaceCartAndSave saveCart', err);
+        } finally {
+          setSaving(false);
         }
       } else {
         saveCartToStorage(next);
@@ -280,6 +309,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cart,
     cartCount,
     hydrated,
+    saving,
     addItem,
     removeItem,
     clearCart,

@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { sendNotification } from '@/lib/notifications';
+import { useToast } from '@/lib/ToastContext';
+import { LoadingButton } from '@/components/LoadingButton';
 import { useAuth } from '@/lib/useAuth';
 import type { EstadoPedido, EstadoRider, PedidoCentral, RiderCentral } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
@@ -111,6 +113,7 @@ export default function PanelCentralPage() {
   const [guardandoTarifas, setGuardandoTarifas] = useState(false);
   const [asignandoKey, setAsignandoKey] = useState<string | null>(null);
   const [avanzandoId, setAvanzandoId] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const newOrderSound = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {

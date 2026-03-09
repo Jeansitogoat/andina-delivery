@@ -38,6 +38,8 @@ import {
   savePedido,
   cancelTransferOrder,
 } from '@/lib/orderStorage';
+import { useToast } from '@/lib/ToastContext';
+import { LoadingButton } from '@/components/LoadingButton';
 
 const TIP_OPTIONS = [
   { label: 'Ahora no', value: 0 },
@@ -97,6 +99,7 @@ export default function CheckoutPage() {
   const [tarifaAjustada, setTarifaAjustada] = useState(false);
   /** Datos de transferencia al entrar a comprobante (persistidos para no depender del carrito tras clearCart) */
   const [transferenciaComprobante, setTransferenciaComprobante] = useState<Local['transferencia'] | null>(null);
+  const { showToast } = useToast();
 
   /** Datos por parada: local + menú + ítems enriquecidos y totales */
   type StopData = {
@@ -308,6 +311,7 @@ export default function CheckoutPage() {
     if (anyFailed) {
       setIsOrdering(false);
       setAuthError('Error al crear el pedido. Intenta de nuevo.');
+      showToast({ type: 'error', message: 'Parece que el internet se fue a dar una vuelta. Reintenta en un momento.' });
       return;
     }
 
@@ -327,6 +331,7 @@ export default function CheckoutPage() {
       setIsOrdering(false);
       const { message } = mapErrorToUserMessage(err);
       setAuthError(message);
+      showToast({ type: 'error', message: 'Parece que el internet se fue a dar una vuelta. Reintenta en un momento.' });
     }
   };
 
@@ -948,9 +953,10 @@ export default function CheckoutPage() {
               Agrega una dirección de entrega para continuar.
             </p>
           )}
-          <button
+          <LoadingButton
             type="button"
             onClick={handleOrder}
+            loading={isOrdering}
             disabled={!puedePedir}
             className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-black text-lg shadow-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-3"
           >
@@ -959,7 +965,7 @@ export default function CheckoutPage() {
             <span className="bg-white/20 rounded-xl px-3 py-0.5 font-black">
               ${grandTotal.toFixed(2)}
             </span>
-          </button>
+          </LoadingButton>
         </div>
       </div>
 

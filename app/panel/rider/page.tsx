@@ -102,7 +102,7 @@ export default function PanelRiderPage() {
   const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
   function playNewCarreraSound() {
     try {
-      if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/new-order.mp3');
+      if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/rider-new-order.mp3');
       newOrderSoundRef.current.volume = 1.0;
       newOrderSoundRef.current.play().catch(() => {});
     } catch {
@@ -820,23 +820,40 @@ export default function PanelRiderPage() {
                 <p className="text-xs font-semibold text-gray-400 mb-1">ENTREGAR A</p>
                 <p className="font-bold text-gray-900">{carreraActiva.clienteNombre}</p>
                 <p className="text-sm text-gray-500 mt-0.5">{carreraActiva.clienteDireccion}</p>
-                <div className="flex items-center gap-3 mt-2">
+                <div className="flex flex-wrap items-center gap-2 mt-2">
                   <a
                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(carreraActiva.clienteDireccion + ', Piñas, Ecuador')}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 bg-blue-50"
                   >
                     <Navigation className="w-3.5 h-3.5" />
                     Abrir en Maps
                   </a>
-                  <a
-                    href={`tel:${carreraActiva.clienteTelefono}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-green-600"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    Llamar
-                  </a>
+                  {carreraActiva.clienteTelefono && (
+                    <>
+                      <a
+                        href={`tel:${carreraActiva.clienteTelefono}`}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-50"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        Llamar cliente
+                      </a>
+                      <a
+                        href={`https://wa.me/${encodeURIComponent(
+                          carreraActiva.clienteTelefono.replace(/[^0-9]/g, '')
+                        )}?text=${encodeURIComponent(
+                          `Hola, soy tu rider de Andina. Estoy en camino con tu pedido desde ${carreraActiva.restaurante}.`
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        WhatsApp
+                      </a>
+                    </>
+                  )}
                 </div>
               </div>
 

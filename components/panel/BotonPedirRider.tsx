@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Truck } from 'lucide-react';
 import { getIdToken } from '@/lib/authToken';
+import { isNightMode } from '@/lib/time';
 
 interface BotonPedirRiderProps {
   orderId: string;
@@ -17,6 +18,8 @@ interface BotonPedirRiderProps {
 
 export default function BotonPedirRider({
   orderId,
+  direccion,
+  restaurante,
   onSolicitado,
   esBatchLeader = true,
   todosListosEnBatch = true,
@@ -27,8 +30,30 @@ export default function BotonPedirRider({
   const isBatchWaiting = esBatchLeader && !todosListosEnBatch;
   const canPedirRider = !isBatchWaiting;
 
+  const isNight = useMemo(() => isNightMode(), []);
+  const whatsappNumber = '593983511866';
+
+  const whatsappText = useMemo(() => {
+    const parts: string[] = [];
+    parts.push('NUEVA CARRERA - ANDINA (MODO NOCTURNO)');
+    parts.push('----------------------------------');
+    parts.push(`ID: #${orderId}`);
+    if (restaurante) parts.push(`Local: ${restaurante}`);
+    parts.push('Total:');
+    if (direccion) parts.push(`Direccion: ${direccion}`);
+    parts.push('----------------------------------');
+    parts.push(`RECLAMAR CARRERA AQUI: https://andina-express.vercel.app/claim/${orderId}`);
+    return encodeURIComponent(parts.join('\\n'));
+  }, [orderId, restaurante, direccion]);
+
+  const whatsappHref = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
+
   async function handlePedirRider() {
     if (solicitado || solicitando || !canPedirRider) return;
+    if (isNight) {
+      window.open(whatsappHref, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setSolicitando(true);
     try {
       const token = await getIdToken();

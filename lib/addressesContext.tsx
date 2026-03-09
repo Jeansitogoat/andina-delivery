@@ -27,6 +27,7 @@ type AddressesContextType = {
   setPrincipal: (_id: string) => void;
   removeDireccion: (_id: string) => void;
   estaLejos: boolean;
+  saving?: boolean;
 };
 
 const AddressesContext = createContext<AddressesContextType | null>(null);
@@ -58,6 +59,8 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
   const [selectedId, setSelectedIdState] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [userLocationLatLng, setUserLocationLatLng] = useState<{ lat: number; lng: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncedFromLocalRef = useRef(false);
 
   /** Una lectura getDoc por carga o tras guardar; evita listener permanente (Opción B). */
@@ -159,6 +162,30 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const scheduleSaveAddresses = useCallback(
+    (dirs: DireccionGuardada[]) => {
+      if (!user?.uid) {
+        saveToLocalStorage(dirs);
+        return;
+      }
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      setSaving(true);
+      const uid = user.uid;
+      saveTimeoutRef.current = setTimeout(() => {
+        saveAddresses(uid, dirs)
+          .then(() => refetchAddresses())
+          .catch((err) => console.error('addresses saveAddresses', err))
+          .finally(() => {
+            setSaving(false);
+            saveTimeoutRef.current = null;
+          });
+      }, 500);
+    },
+    [user?.uid, refetchAddresses]
+  );
+
   const setSelectedId = useCallback(
     (id: string | null) => {
       setSelectedIdState(id);
@@ -179,13 +206,9 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
   const updateDirecciones = useCallback(
     (dirs: DireccionGuardada[]) => {
       setDirecciones(dirs);
-      if (user?.uid) {
-        saveAddresses(user.uid, dirs).then(() => refetchAddresses()).catch((err) => console.error('updateDirecciones saveAddresses', err));
-      } else {
-        saveToLocalStorage(dirs);
-      }
+      scheduleSaveAddresses(dirs);
     },
-    [user?.uid, refetchAddresses]
+    [scheduleSaveAddresses]
   );
 
   const addDireccion = useCallback(
@@ -194,47 +217,35 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       const nueva: DireccionGuardada = { ...d, id };
       setDirecciones((prev) => {
         const next = [...prev, nueva];
-        if (user?.uid) {
-          saveAddresses(user.uid, next).then(() => refetchAddresses()).catch((err) => console.error('addDireccion saveAddresses', err));
-        } else {
-          saveToLocalStorage(next);
-        }
+        scheduleSaveAddresses(next);
         return next;
       });
       setSelectedId(id);
     },
-    [user?.uid, setSelectedId, refetchAddresses]
+    [setSelectedId, scheduleSaveAddresses]
   );
 
   const setPrincipal = useCallback(
     (id: string) => {
       setDirecciones((prev) => {
         const next = prev.map((d) => ({ ...d, principal: d.id === id }));
-        if (user?.uid) {
-          saveAddresses(user.uid, next).then(() => refetchAddresses()).catch((err) => console.error('setPrincipal saveAddresses', err));
-        } else {
-          saveToLocalStorage(next);
-        }
+        scheduleSaveAddresses(next);
         return next;
       });
     },
-    [user?.uid, refetchAddresses]
+    [scheduleSaveAddresses]
   );
 
   const removeDireccion = useCallback(
     (id: string) => {
       setDirecciones((prev) => {
         const next = prev.filter((d) => d.id !== id);
-        if (user?.uid) {
-          saveAddresses(user.uid, next).then(() => refetchAddresses()).catch((err) => console.error('removeDireccion saveAddresses', err));
-        } else {
-          saveToLocalStorage(next);
-        }
+        scheduleSaveAddresses(next);
         return next;
       });
       if (selectedId === id) setSelectedId(null);
     },
-    [user?.uid, selectedId, setSelectedId, refetchAddresses]
+    [selectedId, setSelectedId, scheduleSaveAddresses]
   );
 
   const principal = direcciones.find((d) => d.principal) ?? direcciones[0];
@@ -269,6 +280,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     setPrincipal,
     removeDireccion,
     estaLejos,
+    saving,
   };
 
   return <AddressesContext.Provider value={value}>{children}</AddressesContext.Provider>;

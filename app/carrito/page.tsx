@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, Plus, Minus, Truck, Clock, Package } from 'lucide-react';
+import { ArrowLeft, Trash2, Plus, Minus, Truck, Clock, Package, Loader2 } from 'lucide-react';
 import type { Local, MenuItem } from '@/lib/data';
 import LocalLogo from '@/components/LocalLogo';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
@@ -25,7 +25,7 @@ type StopData = {
 export default function CarritoPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { cart, hydrated, addItem, removeItem, clearCart } = useCart();
+  const { cart, hydrated, addItem, removeItem, clearCart, saving } = useCart();
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
   const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
@@ -164,7 +164,15 @@ export default function CarritoPage() {
           >
             <ArrowLeft className="w-5 h-5 text-gray-700" />
           </button>
-          <h1 className="font-bold text-lg text-gray-900">Mi pedido</h1>
+          <div className="flex flex-col items-center gap-0.5">
+            <h1 className="font-bold text-lg text-gray-900">Mi pedido</h1>
+            {saving && (
+              <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Guardando...
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {user && user.rol !== 'cliente' && (
               <button

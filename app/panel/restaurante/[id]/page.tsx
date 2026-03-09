@@ -40,6 +40,7 @@ import type { Local } from '@/lib/data';
 import type { EstadoPedido } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
+import { isNightMode } from '@/lib/time';
 
 type OrderStatus = 'nuevo' | 'preparando' | 'listo' | 'entregado' | 'cancelado';
 
@@ -356,6 +357,8 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const delivered = deliveredList;
   const todayEarnings = deliveredList.reduce((s, o) => s + o.total, 0);
 
+  const tienePendientesNocturnos = activeOrders.some(() => isNightMode());
+
   async function advanceStatus(orderId: string) {
     const order = orders.find((o) => o.id === orderId);
     if (!order || !order.status) return;
@@ -567,9 +570,14 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               </span>
               No recibir pedidos
             </h3>
-            <p className="text-sm text-gray-500 mb-4 ml-10">
+            <p className="text-sm text-gray-500 mb-2 ml-10">
               Si estás saturado o tenés un inconveniente, podés pausar los pedidos. Los clientes verán &quot;Ocupado&quot; y no podrán agregar al carrito.
             </p>
+            {tienePendientesNocturnos && (
+              <p className="text-xs font-semibold text-red-600 mb-2 ml-10">
+                Tenés pedidos nocturnos pendientes. Marcá como entregados antes de volver a aceptar nuevos pedidos.
+              </p>
+            )}
             {local.cerradoHasta && new Date(local.cerradoHasta).getTime() > Date.now() ? (
               <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
                 <span className="text-sm font-semibold text-amber-900">
@@ -577,7 +585,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                 </span>
                 <button
                   type="button"
-                  disabled={ocupadoSaving}
+                  disabled={ocupadoSaving || tienePendientesNocturnos}
                   onClick={async () => {
                     if (!id || ocupadoSaving) return;
                     const prevLocal = local;
@@ -618,7 +626,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                   <button
                     key={mins}
                     type="button"
-                    disabled={ocupadoSaving}
+                    disabled={ocupadoSaving || tienePendientesNocturnos}
                     onClick={async () => {
                       if (!id || ocupadoSaving) return;
                       const prevLocal = local;

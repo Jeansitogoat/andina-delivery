@@ -21,6 +21,7 @@ function sanitizeAddress(d: DireccionGuardada): Record<string, unknown> {
 }
 
 export async function getAddresses(uid: string): Promise<DireccionGuardada[]> {
+  if (!uid || !uid.trim()) return [];
   const db = getFirestoreDb();
   const snap = await getDoc(doc(db, 'users', uid));
   const data = snap.data();
@@ -30,6 +31,7 @@ export async function getAddresses(uid: string): Promise<DireccionGuardada[]> {
 }
 
 export async function getSelectedAddressId(uid: string): Promise<string | null> {
+  if (!uid || !uid.trim()) return null;
   const db = getFirestoreDb();
   const snap = await getDoc(doc(db, 'users', uid));
   const data = snap.data();
@@ -38,12 +40,14 @@ export async function getSelectedAddressId(uid: string): Promise<string | null> 
 }
 
 export async function saveAddresses(uid: string, dirs: DireccionGuardada[]): Promise<void> {
+  if (!uid || !uid.trim()) return;
   const db = getFirestoreDb();
   const sanitized = dirs.map((d) => sanitizeAddress(d));
   await setDoc(doc(db, 'users', uid), { addresses: sanitized }, { merge: true });
 }
 
 export async function setSelectedAddress(uid: string, id: string | null): Promise<void> {
+  if (!uid || !uid.trim()) return;
   const db = getFirestoreDb();
   await setDoc(doc(db, 'users', uid), { selectedAddressId: id }, { merge: true });
 }

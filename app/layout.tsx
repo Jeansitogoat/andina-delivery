@@ -5,6 +5,9 @@ import { AddressesProvider } from '@/lib/addressesContext';
 import { CartProvider } from '@/lib/cartContext';
 import { FullScreenModalProvider } from '@/lib/FullScreenModalContext';
 import { PublicConfigProvider } from '@/lib/PublicConfigContext';
+import { NetworkStatusProvider } from '@/lib/NetworkStatusContext';
+import { NetworkBanner } from '@/components/NetworkBanner';
+import { ToastProvider } from '@/lib/ToastContext';
 import AuthSplashGate from '@/components/AuthSplashGate';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import FCMAutoRegister from '@/components/FCMAutoRegister';
@@ -42,6 +45,9 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col bg-gray-50">
         <SWRConfig value={{ revalidateOnFocus: false, dedupingInterval: 30000 }}>
           <ErrorBoundary>
+          <NetworkStatusProvider>
+          <ToastProvider>
+          <NetworkBanner />
           <PublicConfigProvider>
           <AddressesProvider>
             <CartProvider>
@@ -54,6 +60,8 @@ export default function RootLayout({
             </CartProvider>
           </AddressesProvider>
           </PublicConfigProvider>
+          </ToastProvider>
+          </NetworkStatusProvider>
           </ErrorBoundary>
         </SWRConfig>
       </body>
