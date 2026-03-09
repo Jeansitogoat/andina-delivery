@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithPopup, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import PasswordInput from '@/components/PasswordInput';
@@ -133,10 +133,6 @@ export default function AuthPage() {
     setGoogleLoading(true);
     try {
       const auth = getFirebaseAuth();
-      if (isMobile()) {
-        await signInWithRedirect(auth, new GoogleAuthProvider());
-        return;
-      }
       const result = await signInWithPopup(auth, new GoogleAuthProvider());
       const firebaseUser = result.user;
       const db = getFirestoreDb();

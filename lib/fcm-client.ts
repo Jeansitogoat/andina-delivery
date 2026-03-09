@@ -75,7 +75,7 @@ export async function getFCMToken(): Promise<string | null> {
     return null;
   }
   try {
-    if ('serviceWorker' in navigator) await navigator.serviceWorker.ready;
+    await waitForServiceWorker();
     const swReg = await getMessagingSWRegistration();
     if (!swReg) {
       console.error('[FCM] getFCMToken: Service Worker no disponible o falló el registro. Comprueba que /firebase-messaging-sw.js exista y tenga scope "/".');
@@ -118,8 +118,8 @@ export async function getFCMTokenWithRetry(options?: {
   if (typeof window === 'undefined') return null;
   const ios = isIOS();
   const {
-    maxAttempts = ios ? 5 : 3,
-    delayMs = ios ? 2000 : 1500,
+    maxAttempts = 3,
+    delayMs = 2000,
     initialDelayMs = ios ? 2500 : 800,
   } = options ?? {};
   await waitForServiceWorker();

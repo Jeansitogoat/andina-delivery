@@ -34,6 +34,7 @@ import { useAuth } from '@/lib/useAuth';
 import type { EstadoPedido, EstadoRider, PedidoCentral, RiderCentral } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 
 /* ─────────────── config y utils ─────────────── */
 const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg: string }> = {
@@ -108,6 +109,8 @@ export default function PanelCentralPage() {
   const [tarifasPorParada, setTarifasPorParada] = useState(0.25);
   const [loadingTarifas, setLoadingTarifas] = useState(false);
   const [guardandoTarifas, setGuardandoTarifas] = useState(false);
+  const [asignandoKey, setAsignandoKey] = useState<string | null>(null);
+  const [avanzandoId, setAvanzandoId] = useState<string | null>(null);
 
   const newOrderSound = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {
@@ -255,6 +258,10 @@ export default function PanelCentralPage() {
 
   /* asignar rider a pedido */
   async function asignarRider(pedidoId: string, riderId: string, batchId?: string | null) {
+    const key = `${pedidoId}_${riderId}`;
+    setAsignandoKey(key);
+    const prevPedidos = pedidos;
+    const prevRiders = riders;
     // Actualización optimista
     setPedidos((prev) => {
       if (batchId) {
@@ -292,25 +299,36 @@ export default function PanelCentralPage() {
     setPedidoSeleccionado(null);
     // Persistir en Firestore
     const tok = await getIdToken();
-    if (tok) {
-      if (batchId) {
-        fetch(`/api/pedidos/batch/${encodeURIComponent(batchId)}/asignar`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-          body: JSON.stringify({ riderId }),
-        }).catch(() => {});
-      } else {
-        fetch(`/api/pedidos/${pedidoId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-          body: JSON.stringify({ estado: 'asignado', riderId }),
-        }).catch(() => {});
+    try {
+      if (!tok) {
+        setPedidos(prevPedidos);
+        setRiders(prevRiders);
+        showToast('No se pudo asignar. Revisá la sesión.');
+        return;
       }
+      const url = batchId
+        ? `/api/pedidos/batch/${encodeURIComponent(batchId)}/asignar`
+        : `/api/pedidos/${pedidoId}`;
+      const body = batchId
+        ? JSON.stringify({ riderId })
+        : JSON.stringify({ estado: 'asignado', riderId });
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body,
+      });
+      if (!res.ok) {
+        setPedidos(prevPedidos);
+        setRiders(prevRiders);
+        showToast('No se pudo asignar. Revisá la conexión.');
+      }
+    } finally {
+      setAsignandoKey(null);
     }
   }
 
   /* avanzar estado manualmente */
-  function avanzarEstado(pedidoId: string) {
+  async function avanzarEstado(pedidoId: string) {
     const pedido = pedidos.find((p) => p.id === pedidoId);
     if (!pedido) return;
     const siguiente: Record<EstadoPedido, EstadoPedido> = {
@@ -326,19 +344,31 @@ export default function PanelCentralPage() {
     };
     const nuevoEstado = siguiente[pedido.estado];
     if (nuevoEstado === pedido.estado) return;
+    setAvanzandoId(pedidoId);
+    const prevPedidos = pedidos;
     // Actualización optimista
     setPedidos((prev) =>
       prev.map((p) => p.id !== pedidoId ? p : { ...p, estado: nuevoEstado })
     );
-    // Persistir en Firestore
-    getIdToken().then((tok) => {
-      if (!tok) return;
-      fetch(`/api/pedidos/${pedidoId}`, {
+    try {
+      const tok = await getIdToken();
+      if (!tok) {
+        setPedidos(prevPedidos);
+        showToast('No se pudo avanzar. Revisá la sesión.');
+        return;
+      }
+      const res = await fetch(`/api/pedidos/${pedidoId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
         body: JSON.stringify({ estado: nuevoEstado }),
-      }).catch(() => {});
-    });
+      });
+      if (!res.ok) {
+        setPedidos(prevPedidos);
+        showToast('No se pudo avanzar. Revisá la conexión.');
+      }
+    } finally {
+      setAvanzandoId(null);
+    }
   }
 
   async function eliminarPedido(pedidoId: string) {
@@ -576,7 +606,9 @@ export default function PanelCentralPage() {
 
             {tab === 'activos' && (
               <div className="space-y-3">
-                {pedidosActivos.length === 0 ? (
+                {loadingData && pedidos.length === 0 ? (
+                  <SkeletonListaPedidos />
+                ) : pedidosActivos.length === 0 ? (
                   <div className="bg-white rounded-3xl p-10 text-center shadow-sm">
                     <CheckCircle2 className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                     <p className="font-bold text-gray-400">No hay pedidos activos</p>
@@ -620,6 +652,8 @@ export default function PanelCentralPage() {
                           esMultiStop={esMultiStop}
                           numeroParada={numeroParada}
                           totalParadas={totalParadas}
+                          avanzandoId={avanzandoId}
+                          asignandoKey={asignandoKey}
                           onAsignar={() => {
                             setPedidoSeleccionado(pedido);
                             setMostrarAsignar(true);
@@ -981,12 +1015,13 @@ export default function PanelCentralPage() {
                   {(pedidoSeleccionado.estado === 'asignado' || pedidoSeleccionado.estado === 'en_camino') && (
                     <button
                       type="button"
+                      disabled={avanzandoId === pedidoSeleccionado.id}
                       onClick={() => {
                         avanzarEstado(pedidoSeleccionado.id);
                         const nuevo = pedidoSeleccionado.estado === 'asignado' ? 'en_camino' : 'entregado';
                         setPedidoSeleccionado({ ...pedidoSeleccionado, estado: nuevo });
                       }}
-                      className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black flex items-center justify-center gap-2 transition-colors"
+                      className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black flex items-center justify-center gap-2 transition-colors"
                     >
                       <RefreshCw className="w-5 h-5" />
                       {pedidoSeleccionado.estado === 'asignado' ? 'Marcar En camino' : 'Marcar Entregado'}
@@ -1032,8 +1067,9 @@ export default function PanelCentralPage() {
                       <button
                         key={rider.id}
                         type="button"
+                        disabled={!!asignandoKey}
                         onClick={() => asignarRider(pedidoSeleccionado.id, rider.id, pedidoSeleccionado.batchId)}
-                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 hover:border-purple-300 hover:bg-purple-50 transition-all"
+                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 hover:border-purple-300 hover:bg-purple-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                       >
                         {getSafeImageSrc(rider.photoURL) ? (
                           <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200">
@@ -1088,6 +1124,8 @@ function TarjetaPedidoCentral({
   esMultiStop = false,
   numeroParada = null,
   totalParadas = null,
+  avanzandoId = null,
+  asignandoKey = null,
   onAsignar,
   onVerDetalle,
   onAvanzar,
@@ -1099,6 +1137,8 @@ function TarjetaPedidoCentral({
   esMultiStop?: boolean;
   numeroParada?: number | null;
   totalParadas?: number | null;
+  avanzandoId?: string | null;
+  asignandoKey?: string | null;
   onAsignar: () => void;
   onVerDetalle: () => void;
   onAvanzar: () => void;
@@ -1189,8 +1229,9 @@ function TarjetaPedidoCentral({
           {esUrgente && (
             <button
               type="button"
+              disabled={!!asignandoKey}
               onClick={onAsignar}
-              className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+              className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
             >
               <Bike className="w-3.5 h-3.5" />
               Asignar rider
@@ -1199,8 +1240,9 @@ function TarjetaPedidoCentral({
           {(pedido.estado === 'asignado' || pedido.estado === 'en_camino') && (
             <button
               type="button"
+              disabled={avanzandoId === pedido.id}
               onClick={onAvanzar}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               {pedido.estado === 'asignado' ? 'En camino' : 'Entregar'}

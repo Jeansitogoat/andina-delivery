@@ -3,7 +3,9 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import type { PedidoCentral } from '@/lib/types';
-import { sendFCMToRole } from '@/lib/fcm-send-server';
+import { sendFCMToRole, sendFCMToRestaurantByLocalId } from '@/lib/fcm-send-server';
+import { sanitizeForFirestore } from '@/lib/firestoreUtils';
+import { pedidoPostSchema } from '@/lib/schemas/pedido';
 
 const ESTADOS_ACTIVOS: string[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
 const LIMIT_POLL = 50;
@@ -208,39 +210,19 @@ export async function POST(request: Request) {
     throw r;
   }
   try {
-    const body = await request.json() as {
-      id: string;
-      restaurante: string;
-      restauranteDireccion: string;
-      clienteNombre: string;
-      clienteDireccion: string;
-      clienteTelefono: string;
-      items: string[];
-      total: number;
-      subtotal?: number;
-      serviceCost?: number;
-      localId?: string;
-      codigoVerificacion?: string;
-      batchId?: string | null;
-      batchIndex?: number | null;
-      batchLeaderLocalId?: string | null;
-      deliveryType?: 'delivery' | 'pickup';
-      paymentMethod?: 'efectivo' | 'transferencia';
-      paymentConfirmed?: boolean;
-      itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
-    };
-
-    const { id, restaurante, items, total, localId: bodyLocalId } = body;
-    const deliveryType = body.deliveryType === 'pickup' ? 'pickup' : 'delivery';
-
-    if (!id || !restaurante || !Array.isArray(items) || typeof total !== 'number') {
-      return NextResponse.json(
-        { error: 'Faltan campos: id, restaurante, items, total' },
-        { status: 400 }
-      );
+    const body = await request.json();
+    const parseResult = pedidoPostSchema.safeParse(body);
+    if (!parseResult.success) {
+      const issues = parseResult.error.flatten().fieldErrors;
+      const firstMsg = Object.values(issues).flat()[0] ?? 'Datos inválidos';
+      return NextResponse.json({ error: firstMsg }, { status: 400 });
     }
+    const bodyParsed = parseResult.data;
+    const deliveryType = bodyParsed.deliveryType === 'pickup' ? 'pickup' : 'delivery';
 
+    const { id, restaurante, items, total, localId: bodyLocalId } = bodyParsed;
     const localId = typeof bodyLocalId === 'string' ? bodyLocalId.trim() : null;
+
     if (!localId) {
       return NextResponse.json(
         { error: 'localId es obligatorio para que el pedido aparezca en el panel del restaurante' },
@@ -290,16 +272,16 @@ export async function POST(request: Request) {
     }
 
     const ahora = new Date();
-    const paymentMethod = body.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo';
-    const paymentConfirmed = body.paymentConfirmed === true;
+    const paymentMethod = bodyParsed.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo';
+    const paymentConfirmed = bodyParsed.paymentConfirmed === true;
     const pedido: PedidoCentral = {
       id,
       clienteId: uid,
-      restaurante: body.restaurante || '—',
-      restauranteDireccion: body.restauranteDireccion || '—',
-      clienteNombre: body.clienteNombre || 'Cliente',
-      clienteDireccion: body.clienteDireccion || '—',
-      clienteTelefono: body.clienteTelefono || '',
+      restaurante: bodyParsed.restaurante || '—',
+      restauranteDireccion: bodyParsed.restauranteDireccion || '—',
+      clienteNombre: bodyParsed.clienteNombre || 'Cliente',
+      clienteDireccion: bodyParsed.clienteDireccion || '—',
+      clienteTelefono: bodyParsed.clienteTelefono || '',
       items,
       total: totalNum,
       estado: 'confirmado',
@@ -308,11 +290,11 @@ export async function POST(request: Request) {
       timestamp: ahora.getTime(),
       distancia: '—',
       localId,
-      codigoVerificacion: body.codigoVerificacion ?? '',
+      codigoVerificacion: bodyParsed.codigoVerificacion ?? '',
       propina: 0,
-      batchId: deliveryType === 'delivery' ? body.batchId ?? null : null,
-      batchIndex: deliveryType === 'delivery' && typeof body.batchIndex === 'number' ? body.batchIndex : null,
-      batchLeaderLocalId: deliveryType === 'delivery' ? body.batchLeaderLocalId ?? null : null,
+      batchId: deliveryType === 'delivery' ? bodyParsed.batchId ?? null : null,
+      batchIndex: deliveryType === 'delivery' && typeof bodyParsed.batchIndex === 'number' ? bodyParsed.batchIndex : null,
+      batchLeaderLocalId: deliveryType === 'delivery' ? bodyParsed.batchLeaderLocalId ?? null : null,
       deliveryType,
     };
 
@@ -322,31 +304,33 @@ export async function POST(request: Request) {
       paymentConfirmed,
       createdAt: FieldValue.serverTimestamp(),
     };
-    if (typeof body.subtotal === 'number' && !Number.isNaN(body.subtotal)) {
-      docData.subtotal = body.subtotal;
+    if (typeof bodyParsed.subtotal === 'number' && !Number.isNaN(bodyParsed.subtotal)) {
+      docData.subtotal = bodyParsed.subtotal;
     }
-    if (typeof body.serviceCost === 'number' && !Number.isNaN(body.serviceCost)) {
-      docData.serviceCost = body.serviceCost;
+    if (typeof bodyParsed.serviceCost === 'number' && !Number.isNaN(bodyParsed.serviceCost)) {
+      docData.serviceCost = bodyParsed.serviceCost;
     }
-    if (body.itemsCart && typeof body.itemsCart === 'object' && body.itemsCart.localId && Array.isArray(body.itemsCart.items)) {
+    if (bodyParsed.itemsCart && typeof bodyParsed.itemsCart === 'object' && bodyParsed.itemsCart.localId && Array.isArray(bodyParsed.itemsCart.items)) {
       docData.itemsCart = {
-        localId: String(body.itemsCart.localId),
-        items: body.itemsCart.items.map((i) => ({
+        localId: String(bodyParsed.itemsCart.localId),
+        items: bodyParsed.itemsCart.items.map((i) => ({
           id: String(i.id),
           qty: Number(i.qty) || 1,
           ...(typeof i.note === 'string' ? { note: i.note } : {}),
         })),
       };
     }
-    await docRef.set(docData);
+    await docRef.set(sanitizeForFirestore(docData));
 
     try {
-      await sendFCMToRole(
-        'restaurant',
-        'Nuevo pedido',
-        `${body.restaurante || 'Restaurante'} · ${body.clienteNombre || 'Cliente'}`,
-        { localId, pedidoId: id, restaurante: body.restaurante || '' }
-      );
+      if (localId && String(localId).trim()) {
+        await sendFCMToRestaurantByLocalId(
+          localId,
+          'Nuevo pedido',
+          `${bodyParsed.restaurante || 'Restaurante'} · ${bodyParsed.clienteNombre || 'Cliente'}`,
+          { localId, pedidoId: id, restaurante: bodyParsed.restaurante || '' }
+        );
+      }
     } catch {
       // no bloquear la respuesta por fallo de notificación
     }

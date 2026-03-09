@@ -2,15 +2,10 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
-
-const ROLES = ['central', 'rider', 'restaurant', 'user'] as const;
-type Role = (typeof ROLES)[number];
+import { sanitizeForFirestore } from '@/lib/firestoreUtils';
+import { fcmRegisterSchema } from '@/lib/schemas/fcmRegister';
 
 const FCM_TOKENS_COLLECTION = 'fcm_tokens';
-
-function isValidRole(r: string): r is Role {
-  return ROLES.includes(r as Role);
-}
 
 export async function POST(request: Request) {
   let auth: { uid: string };
@@ -23,24 +18,32 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json();
-    const { token, role } = body as { token?: string; role?: string };
-    if (typeof token !== 'string' || !token.trim()) {
-      return NextResponse.json({ error: 'token requerido' }, { status: 400 });
+    const parseResult = fcmRegisterSchema.safeParse(body);
+    if (!parseResult.success) {
+      const issues = parseResult.error.flatten().fieldErrors;
+      const firstMsg = Object.values(issues).flat()[0] ?? 'Datos inválidos';
+      return NextResponse.json({ error: firstMsg }, { status: 400 });
     }
-    const trimmedToken = token.trim();
-    const roleStr = (typeof role === 'string' ? role : '').trim();
-    if (!isValidRole(roleStr)) {
-      return NextResponse.json({ error: 'role inválido (central, rider, restaurant, user)' }, { status: 400 });
-    }
+    const { token: rawToken, role: roleStr, localId: bodyLocalId } = parseResult.data;
+    const trimmedToken = rawToken.trim();
     const db = getAdminFirestore();
+    let localId: string | null = typeof bodyLocalId === 'string' && bodyLocalId.trim() ? bodyLocalId.trim() : null;
+    if (roleStr === 'restaurant') {
+      if (!localId) {
+        const userSnap = await db.collection('users').doc(auth.uid).get();
+        localId = userSnap.data()?.localId ?? null;
+      }
+    }
     const docId = `${auth.uid}_${roleStr}`;
-    await db.collection(FCM_TOKENS_COLLECTION).doc(docId).set({
+    const docData: Record<string, unknown> = {
       token: trimmedToken,
       role: roleStr,
       uid: auth.uid,
       updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    console.log('[FCM] Token registered', docId);
+    };
+    if (roleStr === 'restaurant' && localId) docData.localId = localId;
+    await db.collection(FCM_TOKENS_COLLECTION).doc(docId).set(sanitizeForFirestore(docData), { merge: true });
+    console.log('[FCM] Token registered', docId, roleStr === 'restaurant' && localId ? `localId=${localId}` : '');
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('POST /api/fcm/register', e);

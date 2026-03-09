@@ -96,6 +96,7 @@ export default function PanelRiderPage() {
   const [sessionInvalid, setSessionInvalid] = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const fotoRef = useRef<HTMLInputElement>(null);
+  const [avanzandoKey, setAvanzandoKey] = useState<string | null>(null);
 
   const prevCarreraIdsRef = useRef<Set<string>>(new Set());
   const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -268,33 +269,39 @@ export default function PanelRiderPage() {
   }
 
   /* avanzar estado */
-  function avanzarEstado(id: string, nuevoEstado: EstadoCarrera, batchId?: string | null) {
+  async function avanzarEstado(id: string, nuevoEstado: EstadoCarrera, batchId?: string | null) {
     const carrera = carreras.find((c) => c.id === id);
-    if (carrera) {
-      setCarreras((prev) =>
-        prev.map((c) => (c.id === id || (batchId && c.batchId === batchId) ? { ...c, estado: nuevoEstado } : c))
-      );
-    }
-    if (nuevoEstado === 'en_camino') {
-      showToast('¡En camino! El cliente fue notificado.');
-    }
-    if (nuevoEstado === 'en_camino') {
-      getIdToken().then((tok) => {
-        if (!tok) return;
-        if (batchId) {
-          fetch(`/api/pedidos/batch/${encodeURIComponent(batchId)}/estado`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-            body: JSON.stringify({ estado: 'en_camino' }),
-          }).catch(() => {});
-        } else {
-          fetch(`/api/pedidos/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-            body: JSON.stringify({ estado: 'en_camino' }),
-          }).catch(() => {});
-        }
+    if (!carrera) return;
+    if (nuevoEstado !== 'en_camino') return;
+    const key = batchId ?? id;
+    setAvanzandoKey(key);
+    const prevCarreras = carreras;
+    setCarreras((prev) =>
+      prev.map((c) => (c.id === id || (batchId && c.batchId === batchId) ? { ...c, estado: nuevoEstado } : c))
+    );
+    showToast('¡En camino! El cliente fue notificado.');
+    try {
+      const tok = await getIdToken();
+      if (!tok) {
+        setCarreras(prevCarreras);
+        showToast('No se pudo avanzar. Revisá la sesión.');
+        return;
+      }
+      const url = batchId
+        ? `/api/pedidos/batch/${encodeURIComponent(batchId)}/estado`
+        : `/api/pedidos/${id}`;
+      const body = JSON.stringify({ estado: 'en_camino' });
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body,
       });
+      if (!res.ok) {
+        setCarreras(prevCarreras);
+        showToast('No se pudo avanzar. Revisá la conexión.');
+      }
+    } finally {
+      setAvanzandoKey(null);
     }
   }
 
@@ -670,6 +677,7 @@ export default function PanelRiderPage() {
                     <TarjetaCarreraBatch
                       key={leader.batchId!}
                       carreras={group}
+                      avanzandoKey={avanzandoKey}
                       onVerDetalle={() => setCarreraActiva(leader)}
                       onEnCamino={() => avanzarEstado(leader.id, 'en_camino', leader.batchId ?? undefined)}
                       onVerificar={() => {
@@ -681,6 +689,7 @@ export default function PanelRiderPage() {
                     <TarjetaCarrera
                       key={leader.id}
                       carrera={leader}
+                      avanzandoKey={avanzandoKey}
                       onVerDetalle={() => setCarreraActiva(leader)}
                       onEnCamino={() => avanzarEstado(leader.id, 'en_camino')}
                       onVerificar={() => {
@@ -862,11 +871,12 @@ export default function PanelRiderPage() {
               {carreraActiva.estado === 'asignada' && (
                 <button
                   type="button"
+                  disabled={!!avanzandoKey}
                   onClick={() => {
                     avanzarEstado(carreraActiva.id, 'en_camino', carreraActiva.batchId ?? undefined);
                     setCarreraActiva({ ...carreraActiva, estado: 'en_camino' });
                   }}
-                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
+                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
                 >
                   <Bike className="w-5 h-5" />
                   Estoy en camino
@@ -993,11 +1003,13 @@ export default function PanelRiderPage() {
 /* ─────────────── tarjeta de carrera ─────────────── */
 function TarjetaCarreraBatch({
   carreras,
+  avanzandoKey = null,
   onVerDetalle,
   onEnCamino,
   onVerificar,
 }: {
   carreras: CarreraRider[];
+  avanzandoKey?: string | null;
   onVerDetalle: () => void;
   onEnCamino: () => void;
   onVerificar: () => void;
@@ -1077,8 +1089,9 @@ function TarjetaCarreraBatch({
           {esAsignada && (
             <button
               type="button"
+              disabled={!!avanzandoKey}
               onClick={onEnCamino}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
             >
               <Bike className="w-4 h-4" />
               En camino
@@ -1102,11 +1115,13 @@ function TarjetaCarreraBatch({
 
 function TarjetaCarrera({
   carrera,
+  avanzandoKey = null,
   onVerDetalle,
   onEnCamino,
   onVerificar,
 }: {
   carrera: CarreraRider;
+  avanzandoKey?: string | null;
   onVerDetalle: () => void;
   onEnCamino: () => void;
   onVerificar: () => void;
@@ -1191,8 +1206,9 @@ function TarjetaCarrera({
           {esAsignada && (
             <button
               type="button"
+              disabled={!!avanzandoKey}
               onClick={onEnCamino}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
             >
               <Bike className="w-4 h-4" />
               En camino

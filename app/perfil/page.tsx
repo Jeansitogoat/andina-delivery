@@ -14,6 +14,7 @@ import TarjetaPedidoHistorial, {
   type PedidoHistorial,
 } from '@/components/usuario/TarjetaPedidoHistorial';
 import SeccionDirecciones from '@/components/usuario/SeccionDirecciones';
+import SkeletonHistorial from '@/components/SkeletonHistorial';
 import { useCart } from '@/lib/useCart';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
@@ -372,7 +373,7 @@ export default function PerfilPage() {
         {tab === 'historial' && (
           <>
             {historialLoading ? (
-              <div className="py-12 text-center text-gray-400 text-sm">Cargando historial...</div>
+              <SkeletonHistorial />
             ) : historial.length === 0 ? (
               <div className="py-16 text-center text-gray-400">
                 <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -532,9 +533,16 @@ export default function PerfilPage() {
                       type="button"
                       onClick={() => isSupported && requestPermission()}
                       disabled={!isSupported || notifLoading}
-                      className="text-sm font-semibold text-rojo-andino hover:underline disabled:opacity-70"
+                      className="text-sm font-semibold text-rojo-andino hover:underline disabled:opacity-70 flex items-center gap-2"
                     >
-                      {optedOut ? 'Activar notificaciones' : 'Activar notificaciones'}
+                      {notifLoading ? (
+                        <>
+                          <span className="w-3.5 h-3.5 rounded-full border-2 border-rojo-andino border-t-transparent animate-spin block flex-shrink-0" />
+                          Activando…
+                        </>
+                      ) : (
+                        'Activar notificaciones'
+                      )}
                     </button>
                   )}
                 </div>

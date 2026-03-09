@@ -41,9 +41,13 @@ export default function PWAInstallBanner() {
 
     if (isIOS) {
       const key = 'andina_pwa_ios_banner_dismissed';
-      const dismissedAt = sessionStorage.getItem(key);
-      if (!dismissedAt) {
-        setShowIOSBanner(true);
+      try {
+        const dismissedAt = sessionStorage.getItem(key);
+        if (!dismissedAt) {
+          setShowIOSBanner(true);
+        }
+      } catch {
+        /* Silencioso en móvil (modo privado, WebView, etc.) */
       }
     }
 
@@ -65,7 +69,11 @@ export default function PWAInstallBanner() {
 
   const dismissIOS = () => {
     setShowIOSBanner(false);
-    sessionStorage.setItem('andina_pwa_ios_banner_dismissed', Date.now().toString());
+    try {
+      sessionStorage.setItem('andina_pwa_ios_banner_dismissed', Date.now().toString());
+    } catch {
+      /* Silencioso en móvil (modo privado, WebView, etc.) */
+    }
   };
 
   if (installed) return null;

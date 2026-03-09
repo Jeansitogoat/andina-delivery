@@ -57,6 +57,52 @@ export async function sendFCMToRole(
 }
 
 /**
+ * Envía una notificación FCM solo a los tokens del restaurante con el localId dado.
+ * Filtro quirúrgico: solo role === 'restaurant' y localId coincidente. No broadcast.
+ * Si localId está vacío/null/whitespace: no hace nada y devuelve 0 (evita gastar recursos).
+ * No lanza; devuelve el número de envíos exitosos.
+ */
+export async function sendFCMToRestaurantByLocalId(
+  localId: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<number> {
+  if (!localId || typeof localId !== 'string' || !localId.trim()) return 0;
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(FCM_TOKENS_COLLECTION)
+    .where('role', '==', 'restaurant')
+    .where('localId', '==', localId.trim())
+    .get();
+  const messaging = getAdminMessaging();
+  const dataPayload = data && typeof data === 'object'
+    ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
+    : {};
+  const fullData = { title, body, ...dataPayload };
+  let sent = 0;
+  for (const doc of snap.docs) {
+    const token = doc.data().token as string;
+    if (!token?.trim()) continue;
+    try {
+      await messaging.send({
+        token: token.trim(),
+        data: fullData,
+      });
+      sent++;
+    } catch (e) {
+      const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+      const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+      if (isUnregistered) {
+        await doc.ref.delete();
+        console.log('[FCM] Token eliminado (inválido o no registrado):', doc.id);
+      }
+    }
+  }
+  return sent;
+}
+
+/**
  * Envía una notificación FCM solo al usuario con el uid dado (rol 'user').
  * El token se obtiene del documento fcm_tokens/{uid}_user.
  * No lanza; devuelve true si se envió, false si no hay token o error.

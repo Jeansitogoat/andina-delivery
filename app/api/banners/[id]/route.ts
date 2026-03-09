@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
+import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 
 type BannerLinkType = 'category' | 'route' | 'url';
 
@@ -43,7 +44,7 @@ export async function PATCH(
     if (typeof body.order === 'number') updates.order = body.order;
     if (typeof body.active === 'boolean') updates.active = body.active;
 
-    await ref.update(updates);
+    await ref.update(sanitizeForFirestore(updates));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('PATCH /api/banners/[id]', e);

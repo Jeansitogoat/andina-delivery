@@ -17,6 +17,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirestoreDb } from './firebase/client';
+import { getIdToken } from './authToken';
 
 export type UserRole = 'cliente' | 'central' | 'rider' | 'local' | 'maestro';
 
@@ -195,6 +196,25 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     const auth = getFirebaseAuth();
+    const user = state.user;
+    if (user) {
+      const fcmRole = user.rol === 'local' ? 'restaurant' : user.rol;
+      try {
+        const idToken = await getIdToken();
+        if (idToken) {
+          fetch('/api/fcm/unregister', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ role: fcmRole }),
+          }).catch(() => {});
+        }
+      } catch {
+        /* silencioso */
+      }
+    }
     await signOut(auth);
     setState({ user: null, loading: false });
     if (typeof window !== 'undefined') {
@@ -205,7 +225,7 @@ export function useAuth() {
         /* Silencioso en móvil (modo privado, WebView, etc.) */
       }
     }
-  }, []);
+  }, [state.user]);
 
   const refreshUser = useCallback(async () => {
     const auth = getFirebaseAuth();

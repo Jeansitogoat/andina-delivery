@@ -39,6 +39,7 @@ import { getIdToken } from '@/lib/authToken';
 import type { Local } from '@/lib/data';
 import type { EstadoPedido } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
+import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 
 type OrderStatus = 'nuevo' | 'preparando' | 'listo' | 'entregado' | 'cancelado';
 
@@ -84,7 +85,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const { id } = use(params);
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const { permission, requestPermission, loading: notifLoading } = useNotifications('restaurant');
+  const { permission, requestPermission, loading: notifLoading } = useNotifications('restaurant', { localId: id ?? user?.localId ?? '' });
   const [local, setLocal] = useState<Local | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -786,7 +787,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
           )}
 
           {ordersLoading && activeOrders.length === 0 && (
-            <div className="py-8 text-center text-gray-500 text-sm">Cargando pedidos...</div>
+            <SkeletonListaPedidos />
           )}
 
           {(() => {
@@ -930,7 +931,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                 </span>
               </h3>
               {deliveredLoading && delivered.length === 0 ? (
-                <p className="text-sm text-gray-500 py-2">Cargando...</p>
+                <SkeletonListaPedidos />
               ) : (
                 <>
                   <div className="space-y-2">

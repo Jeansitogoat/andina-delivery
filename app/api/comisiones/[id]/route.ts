@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
+import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 
 /** PATCH /api/comisiones/[id] → marcar comisión como pagada (solo maestro) */
 export async function PATCH(
@@ -34,7 +35,7 @@ export async function PATCH(
       updates.pagadoAt = FieldValue.serverTimestamp();
     }
 
-    await ref.update(updates);
+    await ref.update(sanitizeForFirestore(updates));
 
     return NextResponse.json({ ok: true });
   } catch (e) {

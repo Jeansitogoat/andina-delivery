@@ -165,12 +165,19 @@ export default function SeguimientoPedidoPage({
   const [cancelando, setCancelando] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
 
-  /* Polling: estado del pedido desde API cada 6 s (incluye codigo, paymentMethod, paymentConfirmed) */
+  /* Polling: estado del pedido desde API cada 6 s (incluye codigo, paymentMethod, paymentConfirmed). Requiere auth; 401/403 → redirigir a Home. */
   useEffect(() => {
     let cancelled = false;
     const fetchEstado = async () => {
       try {
-        const res = await fetch(`/api/pedidos/${id}`);
+        const token = await getIdToken();
+        const headers: HeadersInit = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const res = await fetch(`/api/pedidos/${id}`, { headers });
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) router.replace('/');
+          return;
+        }
         if (!res.ok || cancelled) return;
         const data = await res.json() as {
           estado?: string;
@@ -206,13 +213,13 @@ export default function SeguimientoPedidoPage({
       }
     };
     fetchEstado();
-    const interval = paymentMethod === 'transferencia' && !paymentConfirmed ? 3000 : 6000;
+    const interval = paymentMethod === 'transferencia' && !paymentConfirmed ? 3000 : 8000;
     const t = setInterval(fetchEstado, interval);
     return () => {
       cancelled = true;
       clearInterval(t);
     };
-  }, [id, paymentMethod, paymentConfirmed]);
+  }, [id, paymentMethod, paymentConfirmed, router]);
 
   /* cuenta regresiva cuando está en camino */
   useEffect(() => {

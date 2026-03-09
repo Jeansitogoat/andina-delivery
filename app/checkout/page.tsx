@@ -26,6 +26,7 @@ import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
+import { mapErrorToUserMessage } from '@/lib/errorMessages';
 import type { Local } from '@/lib/data';
 import AddressSelector from '@/components/AddressSelector';
 import AgregarDireccionModal from '@/components/usuario/AgregarDireccionModal';
@@ -208,6 +209,7 @@ export default function CheckoutPage() {
     }
     setIsOrdering(true);
 
+    try {
     const dirSeleccionada = selectedId ? direcciones.find((d) => d.id === selectedId) : direcciones.find((d) => d.principal) ?? direcciones[0];
     const clienteNombre = user?.displayName ?? user?.email ?? (dirSeleccionada?.nombre ?? 'Cliente');
     const clienteTelefono = user?.telefono ?? user?.email ?? '';
@@ -321,6 +323,11 @@ export default function CheckoutPage() {
     }
     setOrderIdRedirect(firstOrderId);
     setConfirmedTotal(firstTotal);
+    } catch (err) {
+      setIsOrdering(false);
+      const { message } = mapErrorToUserMessage(err);
+      setAuthError(message);
+    }
   };
 
   useEffect(() => {

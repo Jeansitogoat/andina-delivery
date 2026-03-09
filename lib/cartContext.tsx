@@ -39,7 +39,11 @@ function loadCartFromStorage(): CartState {
 
 function saveCartToStorage(cart: CartState) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+  } catch {
+    /* Silencioso en móvil (modo privado, WebView, etc.) */
+  }
 }
 
 type CartContextType = {
@@ -66,6 +70,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const syncedFromLocalRef = useRef(false);
 
+  /* Listener Firestore: desuscribir en el return para evitar fugas y lecturas continuas. */
   useEffect(() => {
     if (!user?.uid) return;
     const db = getFirestoreDb();
@@ -95,13 +100,27 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const local = loadCartFromStorage();
     if (local.stops.length > 0) {
       syncedFromLocalRef.current = true;
-      saveCart(user.uid, local).then(() => {
-        try {
-          localStorage.removeItem(STORAGE_KEY);
-        } catch {
-          // ignore
-        }
-      }).catch((err) => console.error('cart sync saveCart', err));
+      const doSave = () => {
+        saveCart(user.uid, local)
+          .then(() => {
+            try {
+              localStorage.removeItem(STORAGE_KEY);
+            } catch {
+              // ignore
+            }
+          })
+          .catch((err) => {
+            console.error('cart sync saveCart', err);
+            // Si falla por permisos (token aún no listo), reintentar una vez tras 600ms
+            const msg = String(err?.message ?? '').toLowerCase();
+            if (msg.includes('permission') || msg.includes('insufficient')) {
+              setTimeout(() => {
+                saveCart(user.uid, local).catch(() => {});
+              }, 600);
+            }
+          });
+      };
+      doSave();
     }
   }, [user?.uid]);
 
@@ -119,7 +138,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setCart((prev) => {
         const next = updater(prev);
         if (user?.uid) {
-          saveCart(user.uid, next).catch((err) => console.error('cart saveCart', err));
+          saveCart(user.uid, next).catch((err) => {
+            console.error('cart saveCart', err);
+            // No rethrow: evita que "Missing or insufficient permissions" tumbe la app en móvil
+          });
         } else {
           saveCartToStorage(next);
         }
@@ -191,7 +213,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const next: CartState = { stops: stops.map((s) => ({ localId: s.localId, items: [...s.items] })) };
       setCart(next);
       if (user?.uid) {
-        await saveCart(user.uid, next);
+        try {
+          await saveCart(user.uid, next);
+        } catch (err) {
+          console.error('replaceCartAndSave saveCart', err);
+          // No rethrow: evita crash por permisos en móvil
+        }
       } else {
         saveCartToStorage(next);
       }

@@ -2,6 +2,7 @@
 
 import { Component, type ReactNode } from 'react';
 import Link from 'next/link';
+import { mapErrorToUserMessage } from '@/lib/errorMessages';
 
 interface Props {
   children: ReactNode;
@@ -9,24 +10,31 @@ interface Props {
 
 interface State {
   hasError: boolean;
+  error: Error | null;
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(): State {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary:', error, errorInfo);
+    if (!this.state.error) this.setState({ error });
   }
 
   render() {
     if (this.state.hasError) {
+      const showDebug =
+        typeof window !== 'undefined' && window.location.search.includes('debug=1');
+      const err = this.state.error;
+      const { message: userMessage, action } = mapErrorToUserMessage(err ?? new Error('Unknown'));
+
       return (
         <main className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
           <div className="max-w-md w-full text-center">
@@ -35,8 +43,19 @@ export default class ErrorBoundary extends Component<Props, State> {
               Algo salió mal
             </h1>
             <p className="text-gray-600 mb-6">
-              Hubo un error al cargar la página. Intenta recargar o volver al inicio.
+              {userMessage}
             </p>
+            {showDebug && err && (
+              <div className="w-full text-left mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-xs font-bold text-red-800 uppercase mb-1">Modo debug (?debug=1)</p>
+                <p className="text-sm text-red-900 font-mono break-all">{err.message}</p>
+                {err.stack && (
+                  <pre className="mt-2 text-xs text-red-800 overflow-auto max-h-40 whitespace-pre-wrap">
+                    {err.stack}
+                  </pre>
+                )}
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 type="button"
@@ -45,12 +64,21 @@ export default class ErrorBoundary extends Component<Props, State> {
               >
                 Recargar página
               </button>
-              <Link
-                href="/"
-                className="px-6 py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Ir al inicio
-              </Link>
+              {action === 'login' ? (
+                <Link
+                  href="/auth"
+                  className="px-6 py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  Iniciar sesión
+                </Link>
+              ) : (
+                <Link
+                  href="/"
+                  className="px-6 py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  Ir al inicio
+                </Link>
+              )}
             </div>
           </div>
         </main>

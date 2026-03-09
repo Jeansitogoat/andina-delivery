@@ -87,7 +87,14 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user?.uid || syncedFromLocalRef.current) return;
     const local = loadFromLocalStorage();
-    const localSelected = typeof window !== 'undefined' ? localStorage.getItem(SELECTED_KEY) : null;
+    let localSelected: string | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        localSelected = localStorage.getItem(SELECTED_KEY);
+      } catch {
+        /* Silencioso en móvil (modo privado, WebView, etc.) */
+      }
+    }
     if (local.length > 0) {
       syncedFromLocalRef.current = true;
       saveAddresses(user.uid, local).then(() => {
@@ -107,8 +114,12 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     if (user?.uid) return;
     setDirecciones(loadFromLocalStorage());
     if (typeof window !== 'undefined') {
-      const sid = localStorage.getItem(SELECTED_KEY);
-      setSelectedIdState(sid);
+      try {
+        const sid = localStorage.getItem(SELECTED_KEY);
+        setSelectedIdState(sid);
+      } catch {
+        /* Silencioso en móvil (modo privado, WebView, etc.) */
+      }
     }
     setHydrated(true);
   }, [user?.uid]);
@@ -139,8 +150,12 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       if (user?.uid) {
         setSelectedAddress(user.uid, id);
       } else if (typeof window !== 'undefined') {
-        if (id) localStorage.setItem(SELECTED_KEY, id);
-        else localStorage.removeItem(SELECTED_KEY);
+        try {
+          if (id) localStorage.setItem(SELECTED_KEY, id);
+          else localStorage.removeItem(SELECTED_KEY);
+        } catch {
+          /* Silencioso en móvil (modo privado, WebView, etc.) */
+        }
       }
     },
     [user?.uid]

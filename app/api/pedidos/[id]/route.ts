@@ -4,14 +4,23 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import type { PedidoCentral } from '@/lib/types';
 import { sendFCMToUser, sendFCMToRole } from '@/lib/fcm-send-server';
+import { sanitizeForFirestore } from '@/lib/firestoreUtils';
+import { pedidoPatchSchema } from '@/lib/schemas/pedidoPatch';
 
 type PedidoConRider = PedidoCentral & { riderNombre?: string; riderRating?: number | null };
 
-/** GET /api/pedidos/[id] → pedido por id (público para seguimiento del cliente). */
+/** GET /api/pedidos/[id] → pedido por id. Requiere auth: solo dueño del pedido, dueño del local, rider asignado o central/maestro. */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let auth: { uid: string; rol: string };
+  try {
+    auth = await requireAuth(request, ['cliente', 'central', 'maestro', 'rider', 'local']);
+  } catch (r) {
+    if (r instanceof Response) return r;
+    throw r;
+  }
   try {
     const { id } = await params;
     const db = getAdminFirestore();
@@ -20,6 +29,22 @@ export async function GET(
       return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 });
     }
     const data = snap.data()!;
+    const clienteId = data.clienteId ?? null;
+    const pedidoLocalId = data.localId ?? null;
+
+    const isCliente = auth.uid === clienteId;
+    const isCentralOrMaestro = auth.rol === 'central' || auth.rol === 'maestro';
+    const isRiderAsignado = auth.rol === 'rider' && data.riderId === auth.uid;
+    let isLocalDelPedido = false;
+    if (auth.rol === 'local') {
+      const userSnap = await db.collection('users').doc(auth.uid).get();
+      const userLocalId = userSnap.data()?.localId ?? null;
+      isLocalDelPedido = !!userLocalId && userLocalId === pedidoLocalId;
+    }
+    if (!isCliente && !isCentralOrMaestro && !isRiderAsignado && !isLocalDelPedido) {
+      return NextResponse.json({ error: 'No autorizado para ver este pedido' }, { status: 403 });
+    }
+
     type PedidoPublico = PedidoCentral & {
       paymentMethod?: 'efectivo' | 'transferencia';
       paymentConfirmed?: boolean;
@@ -88,17 +113,14 @@ export async function PATCH(
   }
   try {
     const { id } = await params;
-    const body = await request.json() as {
-      estado?: string;
-      riderId?: string | null;
-      propina?: number;
-      accion?: string;
-      motivo?: string;
-      paymentConfirmed?: boolean;
-      comprobanteBase64?: string | null;
-      comprobanteFileName?: string | null;
-      comprobanteMimeType?: string | null;
-    };
+    const bodyRaw = await request.json();
+    const parseResult = pedidoPatchSchema.safeParse(bodyRaw);
+    if (!parseResult.success) {
+      const issues = parseResult.error.flatten().fieldErrors;
+      const firstMsg = Object.values(issues).flat()[0] ?? 'Datos inválidos';
+      return NextResponse.json({ error: firstMsg }, { status: 400 });
+    }
+    const body = parseResult.data;
 
     const db = getAdminFirestore();
     const ref = db.collection('pedidos').doc(id);
@@ -155,7 +177,7 @@ export async function PATCH(
         if (typeof body.motivo === 'string' && body.motivo.trim()) {
           updatesCancel.motivoCancelacion = body.motivo.trim().slice(0, 200);
         }
-        await ref.update(updatesCancel);
+        await ref.update(sanitizeForFirestore(updatesCancel));
         const clienteId = data.clienteId ?? null;
         if (clienteId && typeof clienteId === 'string') {
           try {
@@ -188,7 +210,7 @@ export async function PATCH(
     if (body.comprobanteFileName !== undefined) updates.comprobanteFileName = body.comprobanteFileName;
     if (body.comprobanteMimeType !== undefined) updates.comprobanteMimeType = body.comprobanteMimeType;
 
-    await ref.update(updates);
+    await ref.update(sanitizeForFirestore(updates));
 
     // Al marcar como entregado: crear comision del 10%
     if (body.estado === 'entregado') {

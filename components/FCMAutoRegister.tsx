@@ -17,7 +17,7 @@ export default function FCMAutoRegister() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !user || user.rol !== 'cliente') return;
-    if (Notification.permission !== 'granted') return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
     try {
       if (localStorage.getItem(OPTED_OUT_KEY) === '1') return;
     } catch {
@@ -35,16 +35,22 @@ export default function FCMAutoRegister() {
         const data = (await res.json()) as { hasToken?: boolean };
         if (data.hasToken) return;
 
-        const token = await getFCMTokenWithRetry();
+        const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 2000 });
         if (!token) return;
-        await fetch('/api/fcm/register', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({ token, role: 'user' }),
-        });
+        const registerPayload = () =>
+          fetch('/api/fcm/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ token, role: 'user' }),
+          });
+        let regRes = await registerPayload();
+        for (let attempt = 1; !regRes.ok && attempt < 3; attempt++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          regRes = await registerPayload();
+        }
       } catch {
         // silencioso
       }

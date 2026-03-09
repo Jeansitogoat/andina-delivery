@@ -19,7 +19,7 @@ function getOptedOut(): boolean {
   }
 }
 
-export function useNotifications(role: NotificationRole) {
+export function useNotifications(role: NotificationRole, options?: { localId?: string }) {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export function useNotifications(role: NotificationRole) {
     setOptedOut(getOptedOut());
   }, []);
 
-  const registerToken = useCallback(async (fcmToken: string | null, silent = false): Promise<boolean> => {
+  const registerToken = useCallback(async (fcmToken: string | null, silent = false, extraPayloadOverride?: Record<string, string>): Promise<boolean> => {
     if (!fcmToken) return false;
     try {
       const idToken = await getIdToken();
@@ -39,13 +39,16 @@ export function useNotifications(role: NotificationRole) {
         if (!silent) setError('Sesión expirada. Recargá la página e intentá de nuevo.');
         return false;
       }
+      const body: Record<string, string> = { token: fcmToken, role };
+      const extra = extraPayloadOverride ?? (options?.localId ? { localId: options.localId } : undefined);
+      if (extra) Object.assign(body, extra);
       const res = await fetch('/api/fcm/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ token: fcmToken, role }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         lastRegisteredTokenRef.current = fcmToken;
@@ -64,7 +67,7 @@ export function useNotifications(role: NotificationRole) {
       if (!silent) setError('No se pudo registrar. Intentá de nuevo.');
       return false;
     }
-  }, [role]);
+  }, [role, options?.localId]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -124,9 +127,15 @@ export function useNotifications(role: NotificationRole) {
         return;
       }
       if (result === 'granted') {
-        const token = await getFCMTokenWithRetry();
+        const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 2000 });
         if (token) {
-          await registerToken(token, true);
+          const maxRegisterAttempts = 3;
+          const registerDelayMs = 2000;
+          let registered = await registerToken(token, true);
+          for (let attempt = 1; !registered && attempt < maxRegisterAttempts; attempt++) {
+            await new Promise((r) => setTimeout(r, registerDelayMs));
+            registered = await registerToken(token, true);
+          }
         }
       }
     } catch {
