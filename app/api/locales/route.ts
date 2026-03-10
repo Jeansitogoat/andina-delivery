@@ -47,6 +47,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const incluirSuspendidos = searchParams.get('incluirSuspendidos') === '1';
+    const light = searchParams.get('light') === '1' || searchParams.get('light') === 'true';
 
     const getCached = unstable_cache(
       () => fetchLocalesData(incluirSuspendidos),
@@ -57,6 +58,18 @@ export async function GET(request: Request) {
 
     const headers = new Headers();
     headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+
+    if (light) {
+      // Respuesta ligera solo con info esencial para paneles/contexto.
+      const localesLight = (data.locales as Local[]).map((loc) => ({
+        id: loc.id,
+        name: loc.name,
+        logoUrl: loc.logo ?? '',
+        estadoAbierto: loc.status !== 'suspended',
+      }));
+      return NextResponse.json({ locales: localesLight }, { headers });
+    }
+
     return NextResponse.json(data, { headers });
   } catch (e) {
     console.error('GET /api/locales', e);

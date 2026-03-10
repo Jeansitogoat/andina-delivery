@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -65,8 +66,7 @@ function ComprobantePreview({ file }: { file: File }) {
   if (!url) return null;
   return (
     <div className="w-12 h-12 rounded-lg bg-gray-200 overflow-hidden flex-shrink-0">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="Vista previa" className="w-full h-full object-cover" />
+      <Image src={url} alt="Vista previa" width={48} height={48} className="w-full h-full object-cover" />
     </div>
   );
 }

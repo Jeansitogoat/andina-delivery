@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -582,9 +583,14 @@ export default function PanelRiderPage() {
             <div className="flex items-center gap-4 mb-5">
               <div className="relative flex-shrink-0">
                 {getSafeImageSrc(user?.photoURL) ? (
-                  <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/20">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={getSafeImageSrc(user?.photoURL)!} alt={user.displayName ?? 'Rider'} className="w-full h-full object-cover" />
+                  <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/20 relative">
+                    <Image
+                      src={getSafeImageSrc(user?.photoURL)!}
+                      alt={user.displayName ?? 'Rider'}
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                    />
                   </div>
                 ) : (
                   <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-white font-black text-xl">
@@ -915,13 +921,19 @@ export default function PanelRiderPage() {
 
               {/* qué cobrar */}
               {carreraActiva.paymentMethod === 'transferencia' ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-amber-800">💳 COBRAR SOLO ENVÍO: ${(carreraActiva.costoEnvio ?? carreraActiva.total ?? 0).toFixed(2)}</p>
-                  <p className="text-xs text-amber-700 mt-0.5">Pago por transferencia — cobrar solo el envío al cliente.</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                  <p className="text-sm font-bold text-blue-800">
+                    💳 TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
+                    {(carreraActiva.costoEnvio ?? carreraActiva.total ?? 0).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-blue-700 mt-0.5">Pago por transferencia — cobrar solo el envío al cliente.</p>
                 </div>
               ) : (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-emerald-800">💰 COBRAR TOTAL: ${(carreraActiva.total ?? 0).toFixed(2)}</p>
+                  <p className="text-sm font-bold text-emerald-800">
+                    💵 COBRAR TOTAL AL CLIENTE: $
+                    {(carreraActiva.total ?? 0).toFixed(2)}
+                  </p>
                   <p className="text-xs text-emerald-700 mt-0.5">Cobrar el total en efectivo al cliente.</p>
                 </div>
               )}
@@ -1160,12 +1172,18 @@ function TarjetaCarreraBatch({
         </div>
         {/* qué cobrar (según líder del batch) */}
         {leader.paymentMethod === 'transferencia' ? (
-          <div className="mb-4 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200">
-            <p className="text-xs font-bold text-amber-800">💳 COBRAR SOLO ENVÍO: ${(leader.costoEnvio ?? leader.total ?? 0).toFixed(2)}</p>
+          <div className="mb-4 py-2 px-3 rounded-xl bg-blue-50 border border-blue-200">
+            <p className="text-xs font-bold text-blue-800">
+              💳 TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
+              {(leader.costoEnvio ?? leader.total ?? 0).toFixed(2)}
+            </p>
           </div>
         ) : (
           <div className="mb-4 py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200">
-            <p className="text-xs font-bold text-emerald-800">💰 COBRAR TOTAL: ${(leader.total ?? 0).toFixed(2)}</p>
+            <p className="text-xs font-bold text-emerald-800">
+              💵 COBRAR TOTAL AL CLIENTE: $
+              {(leader.total ?? 0).toFixed(2)}
+            </p>
           </div>
         )}
         <div className="flex gap-2">
@@ -1286,12 +1304,18 @@ function TarjetaCarrera({
 
         {/* qué cobrar */}
         {carrera.paymentMethod === 'transferencia' ? (
-          <div className="mb-4 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200">
-            <p className="text-xs font-bold text-amber-800">💳 COBRAR SOLO ENVÍO: ${(carrera.costoEnvio ?? carrera.total ?? 0).toFixed(2)}</p>
+          <div className="mb-4 py-2 px-3 rounded-xl bg-blue-50 border border-blue-200">
+            <p className="text-xs font-bold text-blue-800">
+              💳 TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
+              {(carrera.costoEnvio ?? carrera.total ?? 0).toFixed(2)}
+            </p>
           </div>
         ) : (
           <div className="mb-4 py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200">
-            <p className="text-xs font-bold text-emerald-800">💰 COBRAR TOTAL: ${(carrera.total ?? 0).toFixed(2)}</p>
+            <p className="text-xs font-bold text-emerald-800">
+              💵 COBRAR TOTAL AL CLIENTE: $
+              {(carrera.total ?? 0).toFixed(2)}
+            </p>
           </div>
         )}
 

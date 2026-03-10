@@ -289,8 +289,13 @@ export default function PerfilPage() {
               {fotoPreview ? (
                 <Image src={fotoPreview} alt={nombreParaMostrar} fill className="object-cover" sizes="80px" />
               ) : getSafeImageSrc(user?.photoURL) ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={getSafeImageSrc(user?.photoURL)!} alt={nombreParaMostrar} className="w-full h-full object-cover" />
+                <Image
+                  src={getSafeImageSrc(user?.photoURL)!}
+                  alt={nombreParaMostrar}
+                  fill
+                  sizes="80px"
+                  className="object-cover"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-white/10">
                   <span className="font-black text-2xl text-white">{nombreParaMostrar ? nombreParaMostrar[0] : '?'}</span>

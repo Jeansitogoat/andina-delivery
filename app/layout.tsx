@@ -5,6 +5,7 @@ import { AddressesProvider } from '@/lib/addressesContext';
 import { CartProvider } from '@/lib/cartContext';
 import { FullScreenModalProvider } from '@/lib/FullScreenModalContext';
 import { PublicConfigProvider } from '@/lib/PublicConfigContext';
+import { AndinaProvider } from '@/lib/AndinaContext';
 import { NetworkStatusProvider } from '@/lib/NetworkStatusContext';
 import { NetworkBanner } from '@/components/NetworkBanner';
 import { ToastProvider } from '@/lib/ToastContext';
@@ -48,18 +49,20 @@ export default function RootLayout({
           <NetworkStatusProvider>
           <ToastProvider>
           <NetworkBanner />
-          <PublicConfigProvider>
-          <AddressesProvider>
-            <CartProvider>
-              <FullScreenModalProvider>
-                <AuthSplashGate>{children}</AuthSplashGate>
-                <FCMAutoRegister />
-              <PWAInstallBanner />
-                <NotificationPromptBanner />
-              </FullScreenModalProvider>
-            </CartProvider>
-          </AddressesProvider>
-          </PublicConfigProvider>
+          <AndinaProvider>
+            <PublicConfigProvider>
+              <AddressesProvider>
+                <CartProvider>
+                  <FullScreenModalProvider>
+                    <AuthSplashGate>{children}</AuthSplashGate>
+                    <FCMAutoRegister />
+                    <PWAInstallBanner />
+                    <NotificationPromptBanner />
+                  </FullScreenModalProvider>
+                </CartProvider>
+              </AddressesProvider>
+            </PublicConfigProvider>
+          </AndinaProvider>
           </ToastProvider>
           </NetworkStatusProvider>
           </ErrorBoundary>

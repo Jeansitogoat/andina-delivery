@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -33,6 +34,7 @@ import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
+import { useAndinaConfig } from '@/lib/AndinaContext';
 
 interface Solicitud {
   id: string;
@@ -62,8 +64,14 @@ function LocaleLogoWithFallback({ logo }: { logo: string | undefined }) {
   }
   return (
     <div className="w-14 h-14 rounded-xl bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-100">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={safeSrc} alt="" className="w-full h-full object-cover" onError={() => setLoadError(true)} />
+      <Image
+        src={safeSrc}
+        alt=""
+        width={56}
+        height={56}
+        className="w-full h-full object-cover"
+        onError={() => setLoadError(true)}
+      />
     </div>
   );
 }
@@ -71,6 +79,7 @@ function LocaleLogoWithFallback({ logo }: { logo: string | undefined }) {
 export default function PanelMaestroPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
+  const { localesLight, config: andinaConfig } = useAndinaConfig();
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
   const [solicitudesLoading, setSolicitudesLoading] = useState(true);
   const [aprobandoId, setAprobandoId] = useState<string | null>(null);
@@ -993,6 +1002,29 @@ export default function PanelMaestroPage() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
+        {/* Estado del sistema (resumen rápido desde AndinaContext) */}
+        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4">
+          <h2 className="text-sm font-semibold text-gray-500 mb-3">
+            Estado del sistema
+          </h2>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-2xl bg-blue-50 px-3 py-2.5 flex flex-col">
+              <span className="text-xs text-blue-600 font-semibold">Locales activos</span>
+              <span className="text-lg font-black text-blue-900">
+                {localesLight.length}
+              </span>
+            </div>
+            <div className="rounded-2xl bg-emerald-50 px-3 py-2.5 flex flex-col">
+              <span className="text-xs text-emerald-600 font-semibold">Tarifa base envío</span>
+              <span className="text-lg font-black text-emerald-900">
+                {andinaConfig.tarifas.tiers.length > 0
+                  ? `$${andinaConfig.tarifas.tiers[0].tarifa.toFixed(2)}`
+                  : '—'}
+              </span>
+            </div>
+          </div>
+        </section>
+
         {toast && (
           <div className="rounded-2xl bg-gray-800 text-white px-4 py-3 text-sm font-medium">
             {toast}
@@ -1564,7 +1596,7 @@ export default function PanelMaestroPage() {
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                   <p className="font-bold text-green-800 mb-1">Local creado</p>
                   <p className="text-sm text-green-700 mb-3">
-                    Entrega estas credenciales al dueño. Luego podés configurar menú y fotos desde el panel del restaurante.
+                    Entrega estas credenciales al dueño. Luego puedes configurar menú y fotos desde el panel del restaurante.
                   </p>
                   {localCreadoResult.email && (
                     <div className="bg-white rounded-lg p-3 mb-3 text-sm font-mono space-y-1 border border-green-100">
@@ -1890,7 +1922,7 @@ export default function PanelMaestroPage() {
             Banners de publicidad
           </h2>
           <p className="text-sm text-gray-500 mb-3">
-            Los banners se muestran en el carrusel de la home. Podés vender espacio a anunciantes externos (odontólogo, spa, etc.). Solo los activos se muestran a los usuarios.
+            Los banners se muestran en el carrusel de la home. Puedes vender espacio a anunciantes externos (odontólogo, spa, etc.). Solo los activos se muestran a los usuarios.
           </p>
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
             Imagen en relación <strong>3:1</strong> (recomendado <strong>1200×400 px</strong>). Se mostrará recortada para ajustarse al carrusel.
@@ -1935,12 +1967,15 @@ export default function PanelMaestroPage() {
                   {bannerUploading ? 'Subiendo...' : bannerForm.imageUrl ? 'Cambiar imagen' : 'Subir imagen'}
                 </button>
                 {bannerForm.imageUrl && (
-                  <div className="mt-2 rounded-xl overflow-hidden border border-gray-200" style={{ aspectRatio: '3/1', maxHeight: 120 }}>
+                  <div className="mt-2 rounded-xl overflow-hidden border border-gray-200 relative" style={{ aspectRatio: '3/1', maxHeight: 120 }}>
                     {getSafeImageSrc(bannerForm.imageUrl) ? (
-                      <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={getSafeImageSrc(bannerForm.imageUrl)} alt="Vista previa" className="w-full h-full object-cover" />
-                      </>
+                      <Image
+                        src={getSafeImageSrc(bannerForm.imageUrl)!}
+                        alt="Vista previa"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 640px"
+                        className="object-cover"
+                      />
                     ) : (
                       <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-sm">Imagen no válida</div>
                     )}
@@ -2062,12 +2097,15 @@ export default function PanelMaestroPage() {
               <ul className="space-y-3">
                 {bannersList.map((b) => (
                   <li key={b.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
-                    <div className="w-24 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-100" style={{ aspectRatio: '3/1' }}>
+                    <div className="w-24 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 relative" style={{ aspectRatio: '3/1' }}>
                       {getSafeImageSrc(b.imageUrl) ? (
-                        <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={getSafeImageSrc(b.imageUrl)} alt={b.alt} className="w-full h-full object-cover" />
-                        </>
+                        <Image
+                          src={getSafeImageSrc(b.imageUrl)!}
+                          alt={b.alt}
+                          fill
+                          sizes="96px"
+                          className="object-cover"
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Sin imagen</div>
                       )}

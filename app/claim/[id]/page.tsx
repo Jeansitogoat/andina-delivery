@@ -215,13 +215,17 @@ export default function ClaimPage({ params }: PageProps) {
                 </div>
               )}
               {pedido.paymentMethod === 'transferencia' ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-amber-800">💳 COBRAR SOLO ENVÍO: ${costoEnvioNum.toFixed(2)}</p>
-                  <p className="text-xs text-amber-700 mt-0.5">Pago por transferencia — cobrar solo el envío al cliente.</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                  <p className="text-sm font-bold text-blue-800">
+                    💳 TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: ${costoEnvioNum.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-blue-700 mt-0.5">Pago por transferencia — cobrar solo el envío al cliente.</p>
                 </div>
               ) : (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-emerald-800">💰 COBRAR TOTAL: ${totalNum.toFixed(2)}</p>
+                  <p className="text-sm font-bold text-emerald-800">
+                    💵 COBRAR TOTAL AL CLIENTE: ${totalNum.toFixed(2)}
+                  </p>
                   <p className="text-xs text-emerald-700 mt-0.5">Cobrar el total en efectivo al cliente.</p>
                 </div>
               )}

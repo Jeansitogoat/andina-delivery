@@ -28,6 +28,7 @@ import {
   DollarSign,
   Truck,
 } from 'lucide-react';
+import Image from 'next/image';
 import { useNotifications } from '@/lib/useNotifications';
 import { sendNotification } from '@/lib/notifications';
 import { useAuth } from '@/lib/useAuth';
@@ -37,6 +38,7 @@ import { getSafeImageSrc } from '@/lib/validImageUrl';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
+import { useAndinaConfig } from '@/lib/AndinaContext';
 
 /* ─────────────── config y utils ─────────────── */
 const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg: string }> = {
@@ -121,6 +123,7 @@ export default function PanelCentralPage() {
   const [eliminarPedidoId, setEliminarPedidoId] = useState<string | null>(null);
 
   const { showToast: showGlobalToast } = useToast();
+  const { config: andinaConfig, refreshConfig } = useAndinaConfig();
   const newOrderSound = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {
     try {
@@ -143,25 +146,17 @@ export default function PanelCentralPage() {
     }
   }, [user, loading, router]);
 
-  /* Cargar tarifas cuando se abre la pestaña Tarifas */
+  /* Cargar tarifas cuando se abre la pestaña Tarifas (desde AndinaContext) */
   useEffect(() => {
     if (tab !== 'tarifas') return;
     setLoadingTarifas(true);
-    fetch('/api/config/tarifas')
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data) {
-          if (Array.isArray(data.tiers) && data.tiers.length > 0) {
-            setTarifasTiers(data.tiers);
-          }
-          if (typeof data.porParadaAdicional === 'number') {
-            setTarifasPorParada(data.porParadaAdicional);
-          }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingTarifas(false));
-  }, [tab]);
+    const cfg = andinaConfig.tarifas;
+    if (Array.isArray(cfg.tiers) && cfg.tiers.length > 0) {
+      setTarifasTiers(cfg.tiers);
+    }
+    setTarifasPorParada(cfg.porParadaAdicional);
+    setLoadingTarifas(false);
+  }, [tab, andinaConfig]);
 
   const guardarTarifas = useCallback(async () => {
     const tok = await getIdToken();
@@ -173,14 +168,19 @@ export default function PanelCentralPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
         body: JSON.stringify({ tiers: tarifasTiers, porParadaAdicional: tarifasPorParada }),
       });
-      if (res.ok) showToast('Tarifas guardadas');
-      else showToast('Error al guardar');
+      if (res.ok) {
+        showToast('Tarifas guardadas');
+        // Refrescar config global para que AndinaContext se actualice
+        refreshConfig().catch(() => {});
+      } else {
+        showToast('Error al guardar');
+      }
     } catch {
       showToast('Error al guardar');
     } finally {
       setGuardandoTarifas(false);
     }
-  }, [tarifasTiers, tarifasPorParada]);
+  }, [tarifasTiers, tarifasPorParada, refreshConfig]);
 
   /* Cargar pedidos y riders (token fresco en cada llamada) */
   const cargarDatos = useCallback(async (filtro?: 'hoy' | 'semana' | 'mes') => {
@@ -727,9 +727,14 @@ export default function PanelCentralPage() {
                     <div key={rider.id} className="bg-white rounded-3xl p-4 shadow-sm">
                       <div className="flex items-center gap-3 mb-3">
                         {getSafeImageSrc(rider.photoURL) ? (
-                          <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0 bg-gray-200">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={getSafeImageSrc(rider.photoURL)!} alt={rider.nombre} className="w-full h-full object-cover" />
+                          <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0 bg-gray-200 relative">
+                            <Image
+                              src={getSafeImageSrc(rider.photoURL)!}
+                              alt={rider.nombre}
+                              fill
+                              sizes="48px"
+                              className="object-cover"
+                            />
                           </div>
                         ) : (
                           <div className={'w-12 h-12 rounded-2xl ' + rider.color + ' flex items-center justify-center text-white font-black text-lg flex-shrink-0'}>
@@ -1076,9 +1081,14 @@ export default function PanelCentralPage() {
                   return (
                     <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-center gap-3">
                       {getSafeImageSrc(rider.photoURL) ? (
-                        <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={getSafeImageSrc(rider.photoURL)!} alt={rider.nombre} className="w-full h-full object-cover" />
+                        <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200 relative">
+                          <Image
+                            src={getSafeImageSrc(rider.photoURL)!}
+                            alt={rider.nombre}
+                            fill
+                            sizes="40px"
+                            className="object-cover"
+                          />
                         </div>
                       ) : (
                         <div className={'w-10 h-10 rounded-xl ' + rider.color + ' flex items-center justify-center text-white font-black flex-shrink-0'}>
@@ -1172,9 +1182,14 @@ export default function PanelCentralPage() {
                         className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 hover:border-purple-300 hover:bg-purple-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                       >
                         {getSafeImageSrc(rider.photoURL) ? (
-                          <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={getSafeImageSrc(rider.photoURL)!} alt={rider.nombre} className="w-full h-full object-cover" />
+                          <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200 relative">
+                            <Image
+                              src={getSafeImageSrc(rider.photoURL)!}
+                              alt={rider.nombre}
+                              fill
+                              sizes="44px"
+                              className="object-cover"
+                            />
                           </div>
                         ) : (
                           <div className={'w-11 h-11 rounded-xl ' + rider.color + ' flex items-center justify-center text-white font-black text-lg flex-shrink-0'}>
@@ -1301,9 +1316,14 @@ function TarjetaPedidoCentral({
         {rider && (
           <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2 mb-3">
             {getSafeImageSrc(rider.photoURL) ? (
-              <div className="w-6 h-6 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={getSafeImageSrc(rider.photoURL)!} alt={rider.nombre} className="w-full h-full object-cover" />
+              <div className="w-6 h-6 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200 relative">
+                <Image
+                  src={getSafeImageSrc(rider.photoURL)!}
+                  alt={rider.nombre}
+                  fill
+                  sizes="24px"
+                  className="object-cover"
+                />
               </div>
             ) : (
               <div className={`w-6 h-6 rounded-lg ${rider.color} flex items-center justify-center text-white font-black text-xs`}>

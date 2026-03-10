@@ -29,3 +29,13 @@ export interface ConfigAllResponse {
   tarifas: ConfigTarifas;
   banners: ConfigBanners;
 }
+
+// Versión liviana de Local para contextos globales (AndinaContext, paneles, etc.)
+export interface LocaleLight {
+  id: string;
+  name: string;
+  /** URL segura del logo ya normalizada */
+  logoUrl: string;
+  /** true si el local está operativo (no suspendido) */
+  estadoAbierto: boolean;
+}

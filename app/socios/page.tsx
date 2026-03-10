@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   X,
@@ -370,8 +371,13 @@ export default function SociosPage() {
               className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors"
             >
               {getSafeImageSrc(logoBase64) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={getSafeImageSrc(logoBase64)} alt="Logo" className="w-12 h-12 rounded-lg object-cover" />
+                <Image
+                  src={getSafeImageSrc(logoBase64)!}
+                  alt="Logo"
+                  width={48}
+                  height={48}
+                  className="w-12 h-12 rounded-lg object-cover"
+                />
               ) : (
                 <>
                   <Camera className="w-5 h-5" />
@@ -390,8 +396,13 @@ export default function SociosPage() {
               className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors"
             >
               {getSafeImageSrc(bannerBase64) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={getSafeImageSrc(bannerBase64)} alt="Banner" className="h-12 w-20 rounded-lg object-cover" />
+                <Image
+                  src={getSafeImageSrc(bannerBase64)!}
+                  alt="Banner"
+                  width={80}
+                  height={48}
+                  className="h-12 w-20 rounded-lg object-cover"
+                />
               ) : (
                 <>
                   <Camera className="w-5 h-5" />

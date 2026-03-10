@@ -80,8 +80,13 @@ function MenuForm({
         <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
           {getSafeImageSrc(image) ? (
             <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={getSafeImageSrc(image)} alt="Preview" className="w-full h-full object-cover" />
+              <Image
+                src={getSafeImageSrc(image)!}
+                alt="Preview"
+                fill
+                sizes="80px"
+                className="object-cover"
+              />
               <button
                 type="button"
                 onClick={() => setImage(null)}
