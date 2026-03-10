@@ -35,6 +35,8 @@ import type { EstadoPedido, EstadoRider, PedidoCentral, RiderCentral } from '@/l
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
+import { useToast } from '@/lib/ToastContext';
+import { LoadingButton } from '@/components/LoadingButton';
 
 /* ─────────────── config y utils ─────────────── */
 const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg: string }> = {
@@ -112,6 +114,13 @@ export default function PanelCentralPage() {
   const [asignandoKey, setAsignandoKey] = useState<string | null>(null);
   const [avanzandoId, setAvanzandoId] = useState<string | null>(null);
 
+  const [showLimpiarModal, setShowLimpiarModal] = useState(false);
+  const [confirmacionLimpiar, setConfirmacionLimpiar] = useState('');
+  const [loadingLimpiar, setLoadingLimpiar] = useState(false);
+
+  const [eliminarPedidoId, setEliminarPedidoId] = useState<string | null>(null);
+
+  const { showToast: showGlobalToast } = useToast();
   const newOrderSound = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {
     try {
@@ -321,7 +330,13 @@ export default function PanelCentralPage() {
         setPedidos(prevPedidos);
         setRiders(prevRiders);
         showToast('No se pudo asignar. Revisá la conexión.');
+        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
+    } catch {
+      setPedidos(prevPedidos);
+      setRiders(prevRiders);
+      showToast('No se pudo asignar. Revisá la conexión.');
+      showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAsignandoKey(null);
     }
@@ -365,7 +380,12 @@ export default function PanelCentralPage() {
       if (!res.ok) {
         setPedidos(prevPedidos);
         showToast('No se pudo avanzar. Revisá la conexión.');
+        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
+    } catch {
+      setPedidos(prevPedidos);
+      showToast('No se pudo avanzar. Revisá la conexión.');
+      showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAvanzandoId(null);
     }
@@ -380,25 +400,36 @@ export default function PanelCentralPage() {
     });
     if (res.ok) {
       setPedidos((prev) => prev.filter((p) => p.id !== pedidoId));
+    } else {
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      showGlobalToast({ type: 'error', message: err.error ?? 'No se pudo eliminar el pedido.' });
     }
   }
 
   async function limpiarTodosPedidos() {
     if (user?.rol !== 'maestro') return;
-    if (!confirm('¿Borrar TODOS los pedidos? Los paneles quedarán vacíos. Esta acción no se puede deshacer.')) return;
     const tok = await getIdToken();
     if (!tok) return;
-    const res = await fetch('/api/maestro/limpiar-pedidos', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${tok}` },
-    });
-    if (res.ok) {
-      const data = await res.json() as { eliminados?: number };
-      setPedidos([]);
-      alert(`Se eliminaron ${data.eliminados ?? 0} pedidos.`);
-    } else {
-      const err = await res.json().catch(() => ({})) as { error?: string };
-      alert(err.error ?? 'Error al limpiar.');
+    setLoadingLimpiar(true);
+    try {
+      const res = await fetch('/api/maestro/limpiar-pedidos', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (res.ok) {
+        const data = await res.json() as { eliminados?: number };
+        setPedidos([]);
+        setShowLimpiarModal(false);
+        setConfirmacionLimpiar('');
+        showGlobalToast({ type: 'success', message: `Se eliminaron ${data.eliminados ?? 0} pedidos.` });
+      } else {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        showGlobalToast({ type: 'error', message: err.error ?? 'Error al limpiar.' });
+      }
+    } catch {
+      showGlobalToast({ type: 'error', message: 'Error al limpiar.' });
+    } finally {
+      setLoadingLimpiar(false);
     }
   }
 
@@ -518,7 +549,7 @@ export default function PanelCentralPage() {
                 {user?.rol === 'maestro' && (
                   <button
                     type="button"
-                    onClick={limpiarTodosPedidos}
+                    onClick={() => setShowLimpiarModal(true)}
                     className="flex items-center gap-2 bg-red-500/30 hover:bg-red-500/50 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors border border-red-300/40"
                     title="Borrar todos los pedidos (dejar paneles como nuevos)"
                   >
@@ -660,7 +691,7 @@ export default function PanelCentralPage() {
                           }}
                           onVerDetalle={() => setPedidoSeleccionado(pedido)}
                           onAvanzar={() => avanzarEstado(pedido.id)}
-                          onEliminar={() => eliminarPedido(pedido.id)}
+                          onEliminar={() => setEliminarPedidoId(pedido.id)}
                         />
                       );
                     })
@@ -894,6 +925,73 @@ export default function PanelCentralPage() {
           }}
         />
 
+        {showLimpiarModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+              <h2 className="font-black text-gray-900 text-lg mb-2">Borrar todos los pedidos</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Los paneles quedarán vacíos. Esta acción no se puede deshacer.
+              </p>
+              <input
+                type="text"
+                value={confirmacionLimpiar}
+                onChange={(e) => setConfirmacionLimpiar(e.target.value)}
+                placeholder="Escribí ELIMINAR para confirmar"
+                className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-red-500"
+                disabled={loadingLimpiar}
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => { setShowLimpiarModal(false); setConfirmacionLimpiar(''); }}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                  disabled={loadingLimpiar}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => limpiarTodosPedidos()}
+                  disabled={confirmacionLimpiar.trim().toUpperCase() !== 'ELIMINAR' || loadingLimpiar}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingLimpiar ? 'Eliminando...' : 'Eliminar todo'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {eliminarPedidoId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+              <h2 className="font-black text-gray-900 text-lg mb-2">Eliminar pedido</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                ¿Eliminar este pedido? Se borrará de la base de datos. Esta acción no se puede deshacer.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEliminarPedidoId(null)}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    eliminarPedido(eliminarPedidoId);
+                    setEliminarPedidoId(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {pedidoSeleccionado && !mostrarAsignar && (
           <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/50">
             <div
@@ -1013,8 +1111,9 @@ export default function PanelCentralPage() {
                     </button>
                   )}
                   {(pedidoSeleccionado.estado === 'asignado' || pedidoSeleccionado.estado === 'en_camino') && (
-                    <button
+                    <LoadingButton
                       type="button"
+                      loading={avanzandoId === pedidoSeleccionado.id}
                       disabled={avanzandoId === pedidoSeleccionado.id}
                       onClick={() => {
                         avanzarEstado(pedidoSeleccionado.id);
@@ -1025,7 +1124,7 @@ export default function PanelCentralPage() {
                     >
                       <RefreshCw className="w-5 h-5" />
                       {pedidoSeleccionado.estado === 'asignado' ? 'Marcar En camino' : 'Marcar Entregado'}
-                    </button>
+                    </LoadingButton>
                   )}
                 </div>
               </div>
@@ -1064,9 +1163,10 @@ export default function PanelCentralPage() {
                   riders
                     .filter((r) => r.estado === 'disponible')
                     .map((rider) => (
-                      <button
+                      <LoadingButton
                         key={rider.id}
                         type="button"
+                        loading={asignandoKey === `${pedidoSeleccionado.id}_${rider.id}`}
                         disabled={!!asignandoKey}
                         onClick={() => asignarRider(pedidoSeleccionado.id, rider.id, pedidoSeleccionado.batchId)}
                         className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 hover:border-purple-300 hover:bg-purple-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
@@ -1091,7 +1191,7 @@ export default function PanelCentralPage() {
                         <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
                           <Check className="w-5 h-5 text-purple-600" />
                         </div>
-                      </button>
+                      </LoadingButton>
                     ))
                 )}
               </div>
@@ -1227,30 +1327,32 @@ function TarjetaPedidoCentral({
             Ver detalle
           </button>
           {esUrgente && (
-            <button
+            <LoadingButton
               type="button"
+              loading={!!asignandoKey}
               disabled={!!asignandoKey}
               onClick={onAsignar}
               className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
             >
               <Bike className="w-3.5 h-3.5" />
               Asignar rider
-            </button>
+            </LoadingButton>
           )}
           {(pedido.estado === 'asignado' || pedido.estado === 'en_camino') && (
-            <button
+            <LoadingButton
               type="button"
+              loading={avanzandoId === pedido.id}
               disabled={avanzandoId === pedido.id}
               onClick={onAvanzar}
               className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               {pedido.estado === 'asignado' ? 'En camino' : 'Entregar'}
-            </button>
+            </LoadingButton>
           )}
           <button
             type="button"
-            onClick={() => window.confirm('¿Eliminar este pedido? Se borrará de la base de datos.') && onEliminar()}
+            onClick={onEliminar}
             className="p-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
             title="Eliminar pedido (pruebas/bugeado)"
             aria-label="Eliminar pedido"

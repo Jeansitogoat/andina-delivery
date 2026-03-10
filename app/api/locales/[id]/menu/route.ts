@@ -4,6 +4,7 @@ import type { MenuItem } from '@/lib/data';
 import { requireAuth } from '@/lib/api-auth';
 import { getLocalFromFirestore, setMenuInFirestore } from '@/lib/locales-firestore';
 import { normalizeDataUrl, isValidImageUrl } from '@/lib/validImageUrl';
+import { menuPatchSchema } from '@/lib/schemas/menuPatch';
 
 /** PATCH /api/locales/[id]/menu → guarda el menú completo del local (solo Firestore). */
 export async function PATCH(
@@ -18,17 +19,20 @@ export async function PATCH(
   }
   try {
     const { id } = await params;
-    const body = (await request.json()) as { items: MenuItem[] };
-
-    if (!Array.isArray(body.items)) {
-      return NextResponse.json({ error: 'items requerido (array)' }, { status: 400 });
+    const body = await request.json();
+    const parse = menuPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
+    const itemsRaw = parse.data.items;
 
     const fromFirestore = await getLocalFromFirestore(id);
     if (!fromFirestore) {
       return NextResponse.json({ error: 'Local no encontrado' }, { status: 404 });
     }
-    const items: MenuItem[] = body.items.map((item) => {
+    const items: MenuItem[] = itemsRaw.map((item) => {
       const it = { ...item };
       if (typeof it.image === 'string' && it.image.startsWith('data:')) {
         const normalized = normalizeDataUrl(it.image);

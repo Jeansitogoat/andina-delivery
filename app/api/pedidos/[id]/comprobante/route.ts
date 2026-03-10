@@ -3,6 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { normalizeDataUrl } from '@/lib/validImageUrl';
+import { comprobantePostSchema } from '@/lib/schemas/comprobante';
 
 /** POST /api/pedidos/[id]/comprobante → subir comprobante de transferencia (cliente). */
 export async function POST(
@@ -17,27 +18,27 @@ export async function POST(
   }
   try {
     const { id } = await params;
-    const body = await request.json() as {
-      comprobanteBase64: string;
-      fileName?: string;
-      mimeType?: string;
-    };
-    if (!body.comprobanteBase64 || typeof body.comprobanteBase64 !== 'string') {
-      return NextResponse.json({ error: 'comprobanteBase64 requerido' }, { status: 400 });
+    const body = await request.json();
+    const parse = comprobantePostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
+    const bodyData = parse.data;
     const db = getAdminFirestore();
     const ref = db.collection('pedidos').doc(id);
     const snap = await ref.get();
     if (!snap.exists) {
       return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 });
     }
-    const comprobanteNormalized = body.comprobanteBase64.startsWith('data:')
-      ? normalizeDataUrl(body.comprobanteBase64)
-      : body.comprobanteBase64;
+    const comprobanteNormalized = bodyData.comprobanteBase64.startsWith('data:')
+      ? normalizeDataUrl(bodyData.comprobanteBase64)
+      : bodyData.comprobanteBase64;
     await ref.update({
       comprobanteBase64: comprobanteNormalized,
-      comprobanteFileName: body.fileName ?? null,
-      comprobanteMimeType: body.mimeType ?? null,
+      comprobanteFileName: bodyData.fileName ?? null,
+      comprobanteMimeType: bodyData.mimeType ?? null,
       updatedAt: FieldValue.serverTimestamp(),
     });
     return NextResponse.json({ ok: true });

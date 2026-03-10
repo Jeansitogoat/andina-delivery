@@ -1,23 +1,65 @@
 rules_version = '2';
+// Andina Express – Reglas definitivas. Ver docs/FIRESTORE_RULES_PROMPT.md.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Usuarios: cada usuario solo puede leer/escribir su propio documento
+
+    // Helper: obtiene el rol del usuario desde /users/{uid}
+    function getRole() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('rol', '')
+        : '';
+    }
+
+    // 1. Usuarios: cada uno solo puede leer/escribir su propio documento
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    // Pedidos: cliente ve sus pedidos, rider ve asignados
+
+    // 2. Pedidos
     match /pedidos/{pedidoId} {
       allow read: if request.auth != null && (
-        resource.data.clienteId == request.auth.uid ||
-        resource.data.riderId == request.auth.uid
+        resource.data.clienteId == request.auth.uid
+        || resource.data.riderId == request.auth.uid
+        || getRole() in ['central', 'maestro']
       );
       allow create: if request.auth != null && request.resource.data.clienteId == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if request.auth != null && (
+        getRole() in ['central', 'maestro']
+        || (resource.data.riderId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'updatedAt', 'ubicacionRider']))
+      );
+      allow delete: if request.auth != null && getRole() in ['central', 'maestro'];
     }
-    // Comisiones: rider solo ve sus propias ganancias
+
+    // 3. Comisiones: lectura solo si el rider es el dueño; escritura denegada (solo Admin SDK)
     match /comisiones/{comisionId} {
       allow read: if request.auth != null && resource.data.riderId == request.auth.uid;
       allow create, update, delete: if false;
+    }
+
+    // 4. Locales, Banners y Config: lectura pública; escritura solo maestro
+    match /locales/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && getRole() == 'maestro';
+    }
+    match /banners/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && getRole() == 'maestro';
+    }
+    match /config/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && getRole() == 'maestro';
+    }
+
+    // 5. Solicitudes: creación pública (nuevos locales); lectura/escritura solo maestro
+    match /solicitudes/{solicitudId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null && getRole() == 'maestro';
+    }
+
+    // Seguridad global: todo lo no especificado denegado
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

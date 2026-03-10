@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { revalidatePath } from 'next/cache';
+import { configTransferenciaPatchSchema } from '@/lib/schemas/configTransferencia';
 
 const DOC_ID = 'transferenciaAndina';
 
@@ -50,25 +51,23 @@ export async function PATCH(request: Request) {
     throw r;
   }
   try {
-    const body = await request.json() as {
-      cuenta?: string;
-      banco?: string;
-      qr?: string;
-      whatsappAdmin?: string;
-      cycleDays?: number;
-      programStartDate?: string;
-    };
+    const body = await request.json();
+    const parse = configTransferenciaPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
+    }
+    const bodyData = parse.data;
     const db = getAdminFirestore();
     const updates: Record<string, string | number> = {};
-    if (body.cuenta !== undefined) updates.cuenta = String(body.cuenta).trim();
-    if (body.banco !== undefined) updates.banco = String(body.banco).trim();
-    if (body.qr !== undefined) updates.qr = String(body.qr).trim();
-    if (body.whatsappAdmin !== undefined) updates.whatsappAdmin = String(body.whatsappAdmin).trim();
-    if (typeof body.cycleDays === 'number' && [7, 15, 30].includes(body.cycleDays)) {
-      updates.cycleDays = body.cycleDays;
-    }
-    if (typeof body.programStartDate === 'string') {
-      updates.programStartDate = body.programStartDate.trim();
+    if (bodyData.cuenta !== undefined) updates.cuenta = String(bodyData.cuenta).trim();
+    if (bodyData.banco !== undefined) updates.banco = String(bodyData.banco).trim();
+    if (bodyData.qr !== undefined) updates.qr = String(bodyData.qr).trim();
+    if (bodyData.whatsappAdmin !== undefined) updates.whatsappAdmin = String(bodyData.whatsappAdmin).trim();
+    if (bodyData.cycleDays !== undefined) updates.cycleDays = bodyData.cycleDays;
+    if (typeof bodyData.programStartDate === 'string') {
+      updates.programStartDate = bodyData.programStartDate.trim();
     }
 
     if (Object.keys(updates).length === 0) {

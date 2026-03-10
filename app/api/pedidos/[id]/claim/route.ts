@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
+import { isRateLimited } from '@/lib/rateLimit';
 
 /** POST /api/pedidos/[id]/claim → rider reclama un pedido nocturno si no tiene riderId asignado. */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isRateLimited(request)) {
+    return NextResponse.json(
+      { error: 'Demasiadas solicitudes. Esperá un momento.' },
+      { status: 429 }
+    );
+  }
+
   let auth: { uid: string; rol: string };
   try {
     auth = await requireAuth(request, ['rider']);

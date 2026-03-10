@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { revalidatePath } from 'next/cache';
+import { configTarifasPatchSchema } from '@/lib/schemas/configTarifas';
 
 const DOC_ID = 'tarifasEnvio';
 
@@ -61,21 +62,19 @@ export async function PATCH(request: Request) {
     throw r;
   }
   try {
-    const body = await request.json() as {
-      tiers?: TarifaTier[];
-      porParadaAdicional?: number;
-    };
+    const body = await request.json();
+    const parse = configTarifasPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
+    }
+    const bodyData = parse.data;
     const db = getAdminFirestore();
 
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
-    if (Array.isArray(body.tiers) && body.tiers.length > 0) {
-      const valid = body.tiers.every(
-        (t) => t && typeof t === 'object' && typeof t.tarifa === 'number' && (t.kmMax == null || typeof t.kmMax === 'number')
-      );
-      if (!valid) {
-        return NextResponse.json({ error: 'tiers inválido' }, { status: 400 });
-      }
-      updates.tiers = body.tiers
+    if (Array.isArray(bodyData.tiers) && bodyData.tiers.length > 0) {
+      updates.tiers = bodyData.tiers
         .map((t) => ({ kmMax: t.kmMax ?? null, tarifa: Number(t.tarifa) }))
         .sort((a, b) => {
           if (a.kmMax == null) return 1;
@@ -83,8 +82,8 @@ export async function PATCH(request: Request) {
           return a.kmMax - b.kmMax;
         });
     }
-    if (typeof body.porParadaAdicional === 'number' && !Number.isNaN(body.porParadaAdicional) && body.porParadaAdicional >= 0) {
-      updates.porParadaAdicional = body.porParadaAdicional;
+    if (typeof bodyData.porParadaAdicional === 'number' && !Number.isNaN(bodyData.porParadaAdicional) && bodyData.porParadaAdicional >= 0) {
+      updates.porParadaAdicional = bodyData.porParadaAdicional;
     }
     if (Object.keys(updates).length > 1) {
       await db.collection('config').doc(DOC_ID).set(updates, { merge: true });

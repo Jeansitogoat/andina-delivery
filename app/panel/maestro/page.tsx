@@ -128,6 +128,8 @@ export default function PanelMaestroPage() {
   const [localesPaginaActual, setLocalesPaginaActual] = useState(1);
   const [seccionActiva, setSeccionActiva] = useState<'comisiones' | 'config' | 'usuarios' | 'solicitudes' | 'locales' | 'publicidad'>('comisiones');
   const [migrandoLocales, setMigrandoLocales] = useState(false);
+  const [eliminarBannerId, setEliminarBannerId] = useState<string | null>(null);
+  const [showMigrarModal, setShowMigrarModal] = useState(false);
 
   /** Banners publicidad */
   type BannerItem = { id: string; imageUrl: string; alt: string; linkType: string; linkValue: string; order: number; active?: boolean };
@@ -441,12 +443,12 @@ export default function PanelMaestroPage() {
   };
 
   const eliminarBanner = async (id: string) => {
-    if (!confirm('¿Eliminar este banner?')) return;
     try {
       const token = await getIdToken();
       const res = await fetch(`/api/banners/${id}`, { method: 'DELETE', headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (res.ok) {
         showToast('Banner eliminado');
+        setEliminarBannerId(null);
         router.refresh();
         if (editBannerId === id) {
           setEditBannerId(null);
@@ -492,7 +494,7 @@ export default function PanelMaestroPage() {
   };
 
   const handleMigrarLocales = async () => {
-    if (!confirm('¿Migrar todos los locales del archivo a la base de datos? Solo ejecutar una vez.')) return;
+    setShowMigrarModal(false);
     setMigrandoLocales(true);
     try {
       const token = await getIdToken();
@@ -1730,7 +1732,7 @@ export default function PanelMaestroPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleMigrarLocales}
+                onClick={() => setShowMigrarModal(true)}
                 disabled={migrandoLocales}
                 className="px-3 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-semibold hover:bg-amber-200 disabled:opacity-60 flex items-center gap-1.5 transition-colors"
                 title="Migrar locales del archivo a la base de datos (ejecutar una sola vez)"
@@ -2096,7 +2098,7 @@ export default function PanelMaestroPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => eliminarBanner(b.id)}
+                        onClick={() => setEliminarBannerId(b.id)}
                         className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
                         aria-label="Eliminar"
                       >
@@ -2313,6 +2315,58 @@ export default function PanelMaestroPage() {
         logout().then(() => router.replace('/auth'));
       }}
     />
+
+    {eliminarBannerId && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+          <h2 className="font-black text-gray-900 text-lg mb-2">Eliminar banner</h2>
+          <p className="text-sm text-gray-600 mb-4">¿Eliminar este banner?</p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEliminarBannerId(null)}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => eliminarBanner(eliminarBannerId)}
+              className="px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700"
+            >
+              Eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {showMigrarModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+          <h2 className="font-black text-gray-900 text-lg mb-2">Migrar locales</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            ¿Migrar todos los locales del archivo a la base de datos? Solo ejecutar una vez.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowMigrarModal(false)}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMigrarLocales()}
+              className="px-4 py-2.5 rounded-xl text-sm font-bold bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Migrar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </main>
   );
 }

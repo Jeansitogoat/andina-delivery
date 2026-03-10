@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { getIdToken } from '@/lib/authToken';
+import { useToast } from '@/lib/ToastContext';
 
 /* ─────────────── tipos ─────────────── */
 interface EstadoPedido {
@@ -164,6 +165,8 @@ export default function SeguimientoPedidoPage({
   const [restauranteDireccion, setRestauranteDireccion] = useState('');
   const [cancelando, setCancelando] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+
+  const { showToast } = useToast();
 
   /* Polling: estado del pedido desde API cada 6 s (incluye codigo, paymentMethod, paymentConfirmed). Requiere auth; 401/403 → redirigir a Home. */
   useEffect(() => {
@@ -684,10 +687,10 @@ export default function SeguimientoPedidoPage({
                       router.push('/');
                     } else {
                       const d = await res.json().catch(() => ({}));
-                      alert(d?.error || 'No se pudo cancelar');
+                      showToast({ type: 'error', message: (d as { error?: string })?.error || 'No se pudo cancelar' });
                     }
                   } catch {
-                    alert('Error de conexión');
+                    showToast({ type: 'error', message: 'Error de conexión' });
                   } finally {
                     setCancelando(false);
                   }

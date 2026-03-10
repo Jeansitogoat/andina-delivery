@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
-
-const ESTADOS_VALIDOS = ['disponible', 'ausente', 'fuera_servicio'] as const;
+import { riderEstadoPatchSchema } from '@/lib/schemas/riderEstado';
 
 /** PATCH /api/riders/[uid]/estado → el rider actualiza su estado manual (disponible, ausente, fuera_servicio). */
 export async function PATCH(
@@ -23,14 +22,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'Solo puedes actualizar tu propio estado' }, { status: 403 });
     }
 
-    const body = await request.json() as { estadoRider?: string };
-    const estadoRider = body.estadoRider;
-    if (!estadoRider || !ESTADOS_VALIDOS.includes(estadoRider as (typeof ESTADOS_VALIDOS)[number])) {
-      return NextResponse.json(
-        { error: 'estadoRider debe ser uno de: disponible, ausente, fuera_servicio' },
-        { status: 400 }
-      );
+    const body = await request.json();
+    const parse = riderEstadoPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
+    const estadoRider = parse.data.estadoRider;
 
     const db = getAdminFirestore();
     await db.collection('users').doc(uid).update({

@@ -4,6 +4,7 @@ import { getLocalFromFirestore, updateLocalInFirestore } from '@/lib/locales-fir
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { normalizeDataUrl, isValidImageUrl } from '@/lib/validImageUrl';
 import { revalidateTag, revalidatePath } from 'next/cache';
+import { localPatchSchema } from '@/lib/schemas/localPatch';
 
 export async function GET(
   _request: Request,
@@ -86,23 +87,27 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const transferencia = body.transferencia as
-      | { numeroCuenta?: string; cooperativa?: string; titular?: string; tipoCuenta?: string; codigoBase64?: string; codigoMimeType?: string }
-      | null
-      | undefined;
-    const status = body.status as 'active' | 'suspended' | undefined;
-    const name = body.name as string | undefined;
-    const address = body.address as string | undefined;
-    const telefono = body.telefono as string | undefined;
-    const time = body.time as string | undefined;
-    const shipping = body.shipping as number | undefined;
-    const logo = body.logo as string | undefined;
-    const cover = body.cover as string | undefined;
-    const horarios = body.horarios as Array<{ dia: string; abierto: boolean; desde: string; hasta: string }> | undefined;
-    const cerradoHasta = body.cerradoHasta as string | null | undefined;
-    const categories = body.categories as string[] | undefined;
-    const lat = typeof body.lat === 'number' && !Number.isNaN(body.lat) ? body.lat : undefined;
-    const lng = typeof body.lng === 'number' && !Number.isNaN(body.lng) ? body.lng : undefined;
+    const parse = localPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
+    }
+    const bodyData = parse.data;
+    const transferencia = bodyData.transferencia;
+    const status = bodyData.status;
+    const name = bodyData.name;
+    const address = bodyData.address;
+    const telefono = bodyData.telefono;
+    const time = bodyData.time;
+    const shipping = bodyData.shipping;
+    const logo = bodyData.logo;
+    const cover = bodyData.cover;
+    const horarios = bodyData.horarios;
+    const cerradoHasta = bodyData.cerradoHasta;
+    const categories = bodyData.categories;
+    const lat = bodyData.lat;
+    const lng = bodyData.lng;
 
     const fromFirestore = await getLocalFromFirestore(id);
     if (!fromFirestore) {

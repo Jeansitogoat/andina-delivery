@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
+import { bannerPostSchema } from '@/lib/schemas/banner';
 
 export type BannerLinkType = 'category' | 'route' | 'url';
 
@@ -99,26 +100,21 @@ export async function POST(request: Request) {
     throw r;
   }
   try {
-    const body = await request.json() as {
-      imageUrl: string;
-      alt?: string;
-      linkType?: BannerLinkType;
-      linkValue?: string;
-      order?: number;
-      active?: boolean;
-    };
-    const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
-    if (!imageUrl) {
-      return NextResponse.json({ error: 'imageUrl es requerido' }, { status: 400 });
+    const body = await request.json();
+    const parse = bannerPostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
-    const linkType: BannerLinkType = ['category', 'route', 'url'].includes(body.linkType ?? '') ? body.linkType! : 'url';
+    const data = parse.data;
     const doc = {
-      imageUrl,
-      alt: typeof body.alt === 'string' ? body.alt.trim().slice(0, 200) : '',
-      linkType,
-      linkValue: typeof body.linkValue === 'string' ? body.linkValue.trim().slice(0, 500) : '',
-      order: typeof body.order === 'number' ? body.order : 0,
-      active: body.active !== false,
+      imageUrl: data.imageUrl.trim(),
+      alt: (data.alt ?? '').trim().slice(0, 200),
+      linkType: data.linkType ?? 'url',
+      linkValue: (data.linkValue ?? '').trim().slice(0, 500),
+      order: typeof data.order === 'number' ? data.order : 0,
+      active: data.active !== false,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };

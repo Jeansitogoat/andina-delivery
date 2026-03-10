@@ -37,6 +37,8 @@ import { useNotifications } from '@/lib/useNotifications';
 import { useAuth } from '@/lib/useAuth';
 import type { EstadoCarrera, EstadoRider, CarreraRider } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
+import { useToast } from '@/lib/ToastContext';
+import { normalizePhoneEcuador } from '@/lib/normalizePhoneEcuador';
 
 function mapEstado(estadoPedido: string): EstadoCarrera {
   if (estadoPedido === 'en_camino') return 'en_camino';
@@ -99,6 +101,7 @@ export default function PanelRiderPage() {
   const fotoRef = useRef<HTMLInputElement>(null);
   const [avanzandoKey, setAvanzandoKey] = useState<string | null>(null);
 
+  const { showToast: showGlobalToast } = useToast();
   const prevCarreraIdsRef = useRef<Set<string>>(new Set());
   const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
   function playNewCarreraSound() {
@@ -301,7 +304,12 @@ export default function PanelRiderPage() {
       if (!res.ok) {
         setCarreras(prevCarreras);
         showToast('No se pudo avanzar. Revisá la conexión.');
+        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
+    } catch {
+      setCarreras(prevCarreras);
+      showToast('No se pudo avanzar. Revisá la conexión.');
+      showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAvanzandoKey(null);
     }
@@ -831,19 +839,20 @@ export default function PanelRiderPage() {
                     <Navigation className="w-3.5 h-3.5" />
                     Abrir en Maps
                   </a>
-                  {carreraActiva.clienteTelefono && (
+                  {carreraActiva.clienteTelefono && (() => {
+                    const phoneNorm = normalizePhoneEcuador(carreraActiva.clienteTelefono);
+                    if (!phoneNorm) return null;
+                    return (
                     <>
                       <a
-                        href={`tel:${carreraActiva.clienteTelefono}`}
+                        href={`tel:+${phoneNorm}`}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-50"
                       >
                         <Phone className="w-3.5 h-3.5" />
                         Llamar cliente
                       </a>
                       <a
-                        href={`https://wa.me/${encodeURIComponent(
-                          carreraActiva.clienteTelefono.replace(/[^0-9]/g, '')
-                        )}?text=${encodeURIComponent(
+                        href={`https://wa.me/${phoneNorm}?text=${encodeURIComponent(
                           `Hola, soy tu rider de Andina. Estoy en camino con tu pedido desde ${carreraActiva.restaurante}.`
                         )}`}
                         target="_blank"
@@ -854,7 +863,8 @@ export default function PanelRiderPage() {
                         WhatsApp
                       </a>
                     </>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
 

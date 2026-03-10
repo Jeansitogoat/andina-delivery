@@ -3,6 +3,7 @@ import type { Solicitud } from '@/lib/socios-types';
 import { requireAuth } from '@/lib/api-auth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { solicitudPostSchema } from '@/lib/schemas/solicitudPost';
 
 const SOLICITUDES_COLLECTION = 'solicitudes';
 
@@ -52,6 +53,15 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const parse = solicitudPostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json(
+        { error: String(firstMessage), fieldErrors: flat },
+        { status: 400 }
+      );
+    }
     const {
       nombreLocal,
       nombre,
@@ -65,27 +75,20 @@ export async function POST(request: Request) {
       logoBase64,
       bannerBase64,
       menuFotosBase64,
-    } = body;
-
-    if (!nombreLocal?.trim() || !nombre?.trim() || !apellido?.trim() || !email?.trim() || !telefono?.trim() || !telefonoLocal?.trim() || !direccion?.trim() || !tipoNegocio) {
-      return NextResponse.json(
-        { error: 'Faltan campos obligatorios: nombreLocal, nombre, apellido, email, telefono, telefonoLocal, direccion, tipoNegocio' },
-        { status: 400 }
-      );
-    }
+    } = parse.data;
 
     const solicitud: Solicitud = {
       id: generateId(),
       status: 'pending',
       createdAt: new Date().toISOString(),
-      nombreLocal: String(nombreLocal).trim(),
-      nombre: String(nombre).trim(),
-      apellido: String(apellido).trim(),
-      email: String(email).trim(),
-      telefono: String(telefono).trim(),
-      telefonoLocal: String(telefonoLocal).trim(),
-      direccion: String(direccion).trim(),
-      tipoNegocio: String(tipoNegocio),
+      nombreLocal: nombreLocal.trim(),
+      nombre: nombre.trim(),
+      apellido: apellido.trim(),
+      email: email.trim(),
+      telefono: telefono.trim(),
+      telefonoLocal: telefonoLocal.trim(),
+      direccion: direccion.trim(),
+      tipoNegocio: tipoNegocio,
       localACalle: Boolean(localACalle),
       logoBase64: logoBase64 ?? undefined,
       bannerBase64: bannerBase64 ?? undefined,

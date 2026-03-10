@@ -41,6 +41,8 @@ import type { EstadoPedido } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 import { isNightMode } from '@/lib/time';
+import { useToast } from '@/lib/ToastContext';
+import { LoadingButton } from '@/components/LoadingButton';
 
 type OrderStatus = 'nuevo' | 'preparando' | 'listo' | 'entregado' | 'cancelado';
 
@@ -107,6 +109,13 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [deliveredNextCursor, setDeliveredNextCursor] = useState<string | null>(null);
   const [deliveredLoading, setDeliveredLoading] = useState(false);
 
+  const [advancingOrderId, setAdvancingOrderId] = useState<string | null>(null);
+  const [retirandoOrderId, setRetirandoOrderId] = useState<string | null>(null);
+  const [confirmingPaymentOrderId, setConfirmingPaymentOrderId] = useState<string | null>(null);
+
+  const [eliminarOrderId, setEliminarOrderId] = useState<string | null>(null);
+
+  const { showToast } = useToast();
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
   const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {
@@ -357,7 +366,10 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const delivered = deliveredList;
   const todayEarnings = deliveredList.reduce((s, o) => s + o.total, 0);
 
-  const tienePendientesNocturnos = activeOrders.some(() => isNightMode());
+  const tienePendientesNocturnos = isNightMode() && activeOrders.length > 0;
+  const idsPendientesNocturnos = tienePendientesNocturnos
+    ? activeOrders.slice(0, 3).map((o) => `#${o.id}`).join(', ')
+    : '';
 
   async function advanceStatus(orderId: string) {
     const order = orders.find((o) => o.id === orderId);
@@ -366,6 +378,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     if (!cfg?.nextEstado) return;
     const token = await getIdToken();
     if (!token) return;
+    setAdvancingOrderId(orderId);
     try {
       const res = await fetch(`/api/pedidos/${orderId}`, {
         method: 'PATCH',
@@ -379,9 +392,14 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             return { ...o, status: cfg.next!, estadoFirestore: cfg.nextEstado! };
           })
         );
+      } else {
+        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
-      // silencioso
+      showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+    } finally {
+      setAdvancingOrderId(null);
     }
   }
 
@@ -389,6 +407,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     const token = await getIdToken();
     if (!token) return;
     const order = orders.find((o) => o.id === orderId);
+    setRetirandoOrderId(orderId);
     try {
       const res = await fetch(`/api/pedidos/${orderId}`, {
         method: 'PATCH',
@@ -403,9 +422,14 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             ...prev,
           ]);
         }
+      } else {
+        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
-      // silencioso
+      showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+    } finally {
+      setRetirandoOrderId(null);
     }
   }
 
@@ -418,6 +442,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   async function handleConfirmPayment(orderId: string) {
     const token = await getIdToken();
     if (!token) return;
+    setConfirmingPaymentOrderId(orderId);
     try {
       const res = await fetch(`/api/pedidos/${orderId}`, {
         method: 'PATCH',
@@ -425,8 +450,14 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         body: JSON.stringify({ paymentConfirmed: true }),
       });
       if (res.ok) refreshPendingTransfer();
+      else {
+        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+      }
     } catch {
-      // silencioso
+      showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+    } finally {
+      setConfirmingPaymentOrderId(null);
     }
   }
 
@@ -449,24 +480,27 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         );
         setCancelOrderId(null);
         setCancelMotivo('');
+      } else {
+        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
-      // silencioso
+      showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setCancelLoading(false);
     }
   }
 
   async function eliminarPedido(orderId: string) {
-    if (!confirm('¿Eliminar este pedido de la base de datos? No se puede deshacer.')) return;
     const token = await getIdToken();
     if (!token) return;
     const res = await fetch(`/api/pedidos/${orderId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      setEliminarOrderId(null);
     } else {
       const err = await res.json().catch(() => ({})) as { error?: string };
-      alert(err.error ?? 'No se pudo eliminar.');
+      showToast({ type: 'error', message: err.error ?? 'No se pudo eliminar.' });
     }
   }
 
@@ -575,7 +609,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             </p>
             {tienePendientesNocturnos && (
               <p className="text-xs font-semibold text-red-600 mb-2 ml-10">
-                Tenés pedidos nocturnos pendientes. Marcá como entregados antes de volver a aceptar nuevos pedidos.
+                Tenés pedidos nocturnos pendientes {idsPendientesNocturnos ? `(${idsPendientesNocturnos})` : ''}. Marcá como entregados antes de volver a aceptar nuevos pedidos.
               </p>
             )}
             {local.cerradoHasta && new Date(local.cerradoHasta).getTime() > Date.now() ? (
@@ -583,9 +617,10 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                 <span className="text-sm font-semibold text-amber-900">
                   Ocupado hasta {new Date(local.cerradoHasta).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}
                 </span>
-                <button
+                <LoadingButton
                   type="button"
-                  disabled={ocupadoSaving || tienePendientesNocturnos}
+                  loading={ocupadoSaving}
+                  disabled={tienePendientesNocturnos}
                   onClick={async () => {
                     if (!id || ocupadoSaving) return;
                     const prevLocal = local;
@@ -607,26 +642,29 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                       if (!res.ok) {
                         setLocal(prevLocal);
                         setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                        showToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                       }
                     } catch {
                       setLocal(prevLocal);
                       setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                      showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                     } finally {
                       setOcupadoSaving(false);
                     }
                   }}
                   className="px-5 py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm"
                 >
-                  {ocupadoSaving ? '...' : 'Reabrir ya'}
-                </button>
+                  Reabrir ya
+                </LoadingButton>
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {[30, 60, 90].map((mins) => (
-                  <button
+                  <LoadingButton
                     key={mins}
                     type="button"
-                    disabled={ocupadoSaving || tienePendientesNocturnos}
+                    loading={ocupadoSaving}
+                    disabled={tienePendientesNocturnos}
                     onClick={async () => {
                       if (!id || ocupadoSaving) return;
                       const prevLocal = local;
@@ -649,10 +687,12 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                         if (!res.ok) {
                           setLocal(prevLocal);
                           setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                          showToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                         }
                       } catch {
                         setLocal(prevLocal);
                         setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                        showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                       } finally {
                         setOcupadoSaving(false);
                       }
@@ -660,7 +700,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                     className="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold disabled:opacity-50 transition-colors"
                   >
                     {mins} min
-                  </button>
+                  </LoadingButton>
                 ))}
               </div>
             )}
@@ -699,13 +739,14 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                       <span className="font-bold text-gray-900 text-sm">{order.orderNum}</span>
                       <p className="text-xs text-gray-500 mt-0.5">${order.total.toFixed(2)} · {formatDireccionCorta(order.direccion)}</p>
                     </div>
-                    <button
+                    <LoadingButton
                       type="button"
+                      loading={confirmingPaymentOrderId === order.orderId}
                       onClick={() => handleConfirmPayment(order.orderId)}
                       className="flex-shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white transition-colors"
                     >
                       Confirmar pago recibido
-                    </button>
+                    </LoadingButton>
                   </div>
                   <ul className="text-xs text-gray-600 space-y-0.5 mb-3">
                     {order.items.slice(0, 3).map((item, i) => (
@@ -904,13 +945,14 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 {order.deliveryType === 'pickup' && order.status === 'listo' && (
-                                  <button
+                                  <LoadingButton
                                     type="button"
+                                    loading={retirandoOrderId === order.id}
                                     onClick={() => marcarRetirado(order.id)}
                                     className="text-xs font-bold px-4 py-2.5 rounded-xl bg-green-600 text-white hover:bg-green-700"
                                   >
                                     Marcar como retirado
-                                  </button>
+                                  </LoadingButton>
                                 )}
                                 {order.deliveryType !== 'pickup' && order.status === 'listo' && order.estadoFirestore === 'esperando_rider' && (
                                   <span className="text-xs font-semibold px-3 py-2 rounded-xl bg-amber-100 text-amber-800">
@@ -928,8 +970,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                   />
                                 )}
                                 {orderCfg.next && (
-                                  <button
+                                  <LoadingButton
                                     type="button"
+                                    loading={advancingOrderId === order.id}
                                     onClick={() => advanceStatus(order.id)}
                                     className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-colors ${
                                       order.status === 'nuevo' ? 'bg-rojo-andino text-white hover:bg-rojo-andino/90' :
@@ -938,7 +981,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                     }`}
                                   >
                                     {orderCfg.nextLabel}
-                                  </button>
+                                  </LoadingButton>
                                 )}
                                 {(order.status === 'nuevo' || order.status === 'preparando') && (
                                   <button
@@ -954,7 +997,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => eliminarPedido(order.id)}
+                                  onClick={() => setEliminarOrderId(order.id)}
                                   className="p-2.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-red-600 transition-colors"
                                   title="Eliminar pedido de la base de datos (pruebas/bugeado)"
                                   aria-label="Eliminar pedido"
@@ -1054,13 +1097,39 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               >
                 Volver
               </button>
-              <button
+              <LoadingButton
                 type="button"
+                loading={cancelLoading}
                 onClick={confirmarCancelacion}
                 className="px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-70"
-                disabled={cancelLoading}
               >
-                {cancelLoading ? 'Cancelando...' : 'Confirmar cancelación'}
+                Confirmar cancelación
+              </LoadingButton>
+            </div>
+          </div>
+        </div>
+      )}
+      {eliminarOrderId && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+            <h2 className="font-black text-gray-900 text-lg mb-2">Eliminar pedido</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              ¿Eliminar este pedido de la base de datos? No se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEliminarOrderId(null)}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => eliminarPedido(eliminarOrderId)}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700"
+              >
+                Eliminar
               </button>
             </div>
           </div>

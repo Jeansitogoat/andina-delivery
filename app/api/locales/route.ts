@@ -8,6 +8,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { slugify, ensureUniqueLocalId } from '@/lib/slugify';
 import { normalizeDataUrl, isValidImageUrl } from '@/lib/validImageUrl';
+import { localPostSchema } from '@/lib/schemas/localPost';
 
 const CONFIG_DOC_ID = 'transferenciaAndina';
 
@@ -72,23 +73,15 @@ export async function POST(request: Request) {
     throw r;
   }
   try {
-    const body = (await request.json()) as {
-      name?: string;
-      address?: string;
-      telefono?: string;
-      time?: string;
-      logo?: string;
-      cover?: string;
-      ownerName?: string;
-      ownerPhone?: string;
-      ownerEmail?: string;
-      lat?: number;
-      lng?: number;
-    };
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    if (!name) {
-      return NextResponse.json({ error: 'name es obligatorio' }, { status: 400 });
+    const body = await request.json();
+    const parse = localPostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
+    const bodyData = parse.data;
+    const name = bodyData.name.trim();
 
     const existingIds = await getExistingLocalIdsFromFirestore();
     const baseSlug = slugify(name);
@@ -103,8 +96,8 @@ export async function POST(request: Request) {
       // ignorar
     }
     const commissionStartDate = getCommissionStartDate(programStartDate);
-    const logoRaw = typeof body.logo === 'string' ? body.logo : '';
-    const coverRaw = typeof body.cover === 'string' ? body.cover : '';
+    const logoRaw = typeof bodyData.logo === 'string' ? bodyData.logo : '';
+    const coverRaw = typeof bodyData.cover === 'string' ? bodyData.cover : '';
     const logo = logoRaw.startsWith('data:') ? normalizeDataUrl(logoRaw) : logoRaw;
     const cover = coverRaw.startsWith('data:') ? normalizeDataUrl(coverRaw) : coverRaw;
 
@@ -113,22 +106,22 @@ export async function POST(request: Request) {
       name,
       rating: 4.5,
       reviews: 0,
-      time: typeof body.time === 'string' && body.time.trim() ? body.time.trim() : '20-35 min',
+      time: typeof bodyData.time === 'string' && bodyData.time.trim() ? bodyData.time.trim() : '20-35 min',
       shipping: 1.5,
       type: ['Restaurantes'],
       distance: '—',
       destacado: false,
       logo,
       cover,
-      address: typeof body.address === 'string' && body.address.trim() ? body.address.trim() : undefined,
-      lat: typeof body.lat === 'number' && !Number.isNaN(body.lat) ? body.lat : undefined,
-      lng: typeof body.lng === 'number' && !Number.isNaN(body.lng) ? body.lng : undefined,
+      address: typeof bodyData.address === 'string' && bodyData.address.trim() ? bodyData.address.trim() : undefined,
+      lat: typeof bodyData.lat === 'number' && !Number.isNaN(bodyData.lat) ? bodyData.lat : undefined,
+      lng: typeof bodyData.lng === 'number' && !Number.isNaN(bodyData.lng) ? bodyData.lng : undefined,
       minOrder: 5,
       categories: ['Más pedidos'],
-      ownerName: typeof body.ownerName === 'string' && body.ownerName.trim() ? body.ownerName.trim() : undefined,
-      ownerPhone: typeof body.ownerPhone === 'string' && body.ownerPhone.trim() ? body.ownerPhone.trim() : undefined,
-      ownerEmail: typeof body.ownerEmail === 'string' && body.ownerEmail.trim() ? body.ownerEmail.trim() : undefined,
-      telefono: typeof body.telefono === 'string' && body.telefono.trim() ? body.telefono.trim() : undefined,
+      ownerName: typeof bodyData.ownerName === 'string' && bodyData.ownerName.trim() ? bodyData.ownerName.trim() : undefined,
+      ownerPhone: typeof bodyData.ownerPhone === 'string' && bodyData.ownerPhone.trim() ? bodyData.ownerPhone.trim() : undefined,
+      ownerEmail: typeof bodyData.ownerEmail === 'string' && bodyData.ownerEmail.trim() ? bodyData.ownerEmail.trim() : undefined,
+      telefono: typeof bodyData.telefono === 'string' && bodyData.telefono.trim() ? bodyData.telefono.trim() : undefined,
       commissionStartDate,
     };
 

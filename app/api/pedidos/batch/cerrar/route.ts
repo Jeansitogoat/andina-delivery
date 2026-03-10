@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
+import { batchCerrarPostSchema } from '@/lib/schemas/batchCerrar';
 
 const CONFIG_DOC_ID = 'transferenciaAndina';
 
@@ -15,16 +16,14 @@ export async function POST(request: Request) {
     throw r;
   }
   try {
-    const body = await request.json() as { batchId?: string; codigo?: string };
-    const batchId = typeof body.batchId === 'string' ? body.batchId.trim() : null;
-    const codigo = typeof body.codigo === 'string' ? body.codigo.trim() : '';
-
-    if (!batchId || !codigo) {
-      return NextResponse.json(
-        { error: 'batchId y codigo son obligatorios' },
-        { status: 400 }
-      );
+    const body = await request.json();
+    const parse = batchCerrarPostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
+    const { batchId, codigo } = parse.data;
 
     const db = getAdminFirestore();
 

@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { sendFCMToRole, sendFCMToUser, type FCMRole } from '@/lib/fcm-send-server';
-
-const ROLES = ['central', 'rider', 'restaurant', 'user'] as const;
-type NotificationTarget = (typeof ROLES)[number];
-
-function isValidTarget(t: string): t is NotificationTarget {
-  return ROLES.includes(t as NotificationTarget);
-}
+import { fcmSendPostSchema } from '@/lib/schemas/fcmSend';
 
 export async function POST(request: Request) {
   let auth: { uid: string; rol: string };
@@ -19,27 +13,17 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json();
-    const { target, uid, title, body: bodyText, data: dataPayload } = body as {
-      target?: string;
-      uid?: string;
-      title?: string;
-      body?: string;
-      data?: Record<string, string>;
-    };
-    const targetStr = target ?? '';
-    if (!isValidTarget(targetStr)) {
-      return NextResponse.json(
-        { error: 'target inválido (central, rider, restaurant, user)' },
-        { status: 400 }
-      );
+    const parse = fcmSendPostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
+    const { target: targetStr, uid, title, body: bodyText } = parse.data;
     if (auth.rol === 'cliente' && targetStr !== 'user') {
       return NextResponse.json({ error: 'Los clientes solo pueden enviar notificaciones al target user' }, { status: 403 });
     }
-    if (typeof title !== 'string' || typeof bodyText !== 'string') {
-      return NextResponse.json({ error: 'title y body requeridos' }, { status: 400 });
-    }
-    const data = dataPayload && typeof dataPayload === 'object' ? dataPayload : {};
+    const data = (parse.data.data ?? {}) as Record<string, string>;
     let effectiveUid = typeof uid === 'string' && uid.trim() ? uid.trim() : null;
     if (targetStr === 'user' && !effectiveUid && auth.rol === 'cliente') {
       effectiveUid = auth.uid;
@@ -54,6 +38,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, sent });
   } catch (e) {
     console.error('POST /api/fcm/send', e);
-    return NextResponse.json({ error: 'Bad request' }, { status: 400 });
+    return NextResponse.json({ error: 'Solicitud inválida' }, { status: 400 });
   }
 }

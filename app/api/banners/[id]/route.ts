@@ -4,8 +4,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { revalidatePath } from 'next/cache';
-
-type BannerLinkType = 'category' | 'route' | 'url';
+import { bannerPatchSchema } from '@/lib/schemas/banner';
 
 /** PATCH /api/banners/[id] → actualizar banner (solo maestro) */
 export async function PATCH(
@@ -23,28 +22,28 @@ export async function PATCH(
     if (!id) {
       return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
     }
-    const body = await request.json() as {
-      imageUrl?: string;
-      alt?: string;
-      linkType?: BannerLinkType;
-      linkValue?: string;
-      order?: number;
-      active?: boolean;
-    };
+    const body = await request.json();
+    const parse = bannerPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
+    }
+    const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+    const data = parse.data;
+    if (data.imageUrl !== undefined) updates.imageUrl = data.imageUrl.trim();
+    if (data.alt !== undefined) updates.alt = data.alt.trim().slice(0, 200);
+    if (data.linkType !== undefined) updates.linkType = data.linkType;
+    if (data.linkValue !== undefined) updates.linkValue = data.linkValue.trim().slice(0, 500);
+    if (data.order !== undefined) updates.order = data.order;
+    if (data.active !== undefined) updates.active = data.active;
+
     const db = getAdminFirestore();
     const ref = db.collection('banners').doc(id);
     const snap = await ref.get();
     if (!snap.exists) {
       return NextResponse.json({ error: 'Banner no encontrado' }, { status: 404 });
     }
-    const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
-    if (typeof body.imageUrl === 'string') updates.imageUrl = body.imageUrl.trim();
-    if (typeof body.alt === 'string') updates.alt = body.alt.trim().slice(0, 200);
-    if (['category', 'route', 'url'].includes(body.linkType ?? '')) updates.linkType = body.linkType;
-    if (typeof body.linkValue === 'string') updates.linkValue = body.linkValue.trim().slice(0, 500);
-    if (typeof body.order === 'number') updates.order = body.order;
-    if (typeof body.active === 'boolean') updates.active = body.active;
-
     await ref.update(sanitizeForFirestore(updates));
     revalidatePath('/');
     return NextResponse.json({ ok: true });

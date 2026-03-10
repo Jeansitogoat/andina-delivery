@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import type { UserRole } from '@/lib/useAuth';
 import { FieldValue } from 'firebase-admin/firestore';
+import { maestroUsuariosPostSchema } from '@/lib/schemas/maestroUsuarios';
 
 /** POST /api/maestro/usuarios — Crear usuario (central o local). Solo maestro. */
 export async function POST(request: Request) {
@@ -14,19 +15,13 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json();
-    const { email, password, rol, displayName, localId } = body as {
-      email?: string;
-      password?: string;
-      rol?: string;
-      displayName?: string;
-      localId?: string;
-    };
-    if (!email || typeof email !== 'string' || !email.trim()) {
-      return NextResponse.json({ error: 'email requerido' }, { status: 400 });
+    const parse = maestroUsuariosPostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      return NextResponse.json({ error: 'password mínimo 6 caracteres' }, { status: 400 });
-    }
+    const { email, password, rol, displayName, localId } = parse.data;
     const role = rol === 'central' || rol === 'local' ? rol : 'local';
     const auth = getAdminAuth();
     const db = getAdminFirestore();

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import { fcmUnregisterPostSchema } from '@/lib/schemas/fcmUnregister';
 
 const FCM_TOKENS_COLLECTION = 'fcm_tokens';
 
@@ -15,9 +16,8 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json().catch(() => ({}));
-    const role = (typeof (body as { role?: string }).role === 'string'
-      ? (body as { role: string }).role.trim()
-      : 'user');
+    const parse = fcmUnregisterPostSchema.safeParse(body);
+    const role = parse.success && parse.data.role ? parse.data.role : 'user';
     const docId = `${auth.uid}_${role}`;
     const db = getAdminFirestore();
     await db.collection(FCM_TOKENS_COLLECTION).doc(docId).delete();

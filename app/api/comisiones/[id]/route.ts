@@ -3,6 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
+import { comisionPatchSchema } from '@/lib/schemas/comisionPatch';
 
 /** PATCH /api/comisiones/[id] → marcar comisión como pagada (solo maestro) */
 export async function PATCH(
@@ -17,10 +18,14 @@ export async function PATCH(
   }
   try {
     const { id } = await params;
-    const body = await request.json() as { pagado?: boolean };
-    if (typeof body.pagado !== 'boolean') {
-      return NextResponse.json({ error: 'pagado (boolean) requerido' }, { status: 400 });
+    const body = await request.json();
+    const parse = comisionPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
     }
+    const { pagado } = parse.data;
 
     const db = getAdminFirestore();
     const ref = db.collection('comisiones').doc(id);
@@ -30,8 +35,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Comisión no encontrada' }, { status: 404 });
     }
 
-    const updates: Record<string, unknown> = { pagado: body.pagado };
-    if (body.pagado) {
+    const updates: Record<string, unknown> = { pagado };
+    if (pagado) {
       updates.pagadoAt = FieldValue.serverTimestamp();
     }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
+import { calificarPostSchema } from '@/lib/schemas/calificar';
 
 /** POST /api/pedidos/[id]/calificar → cliente califica local y rider tras entrega. */
 export async function POST(
@@ -22,14 +23,17 @@ export async function POST(
   }
   try {
     const { id } = await params;
-    const body = await request.json() as {
-      estrellasLocal?: number;
-      estrellasRider?: number;
-      reseñaLocal?: string;
-    };
-    const estrellasLocal = typeof body.estrellasLocal === 'number' ? Math.min(5, Math.max(0, body.estrellasLocal)) : 0;
-    const estrellasRider = typeof body.estrellasRider === 'number' ? Math.min(5, Math.max(0, body.estrellasRider)) : 0;
-    const reseñaLocal = typeof body.reseñaLocal === 'string' ? body.reseñaLocal.trim().slice(0, 500) : '';
+    const body = await request.json();
+    const parse = calificarPostSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
+    }
+    const bodyData = parse.data;
+    const estrellasLocal = typeof bodyData.estrellasLocal === 'number' ? Math.min(5, Math.max(0, bodyData.estrellasLocal)) : 0;
+    const estrellasRider = typeof bodyData.estrellasRider === 'number' ? Math.min(5, Math.max(0, bodyData.estrellasRider)) : 0;
+    const reseñaLocal = typeof bodyData.reseñaLocal === 'string' ? bodyData.reseñaLocal.trim().slice(0, 500) : '';
 
     const db = getAdminFirestore();
     const ref = db.collection('pedidos').doc(id);

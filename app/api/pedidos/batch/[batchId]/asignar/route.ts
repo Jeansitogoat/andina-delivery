@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
+import { batchAsignarPatchSchema } from '@/lib/schemas/batchAsignar';
 
 /** PATCH /api/pedidos/batch/[batchId]/asignar → asigna un rider a todos los pedidos del batch (panel central). */
 export async function PATCH(
@@ -18,12 +19,18 @@ export async function PATCH(
 
   try {
     const { batchId } = await params;
-    const body = (await request.json()) as { riderId?: string };
-    const riderId = typeof body.riderId === 'string' ? body.riderId.trim() : '';
+    const body = await request.json();
+    const parse = batchAsignarPatchSchema.safeParse(body);
+    if (!parse.success) {
+      const flat = parse.error.flatten().fieldErrors;
+      const firstMessage = Object.values(flat).flat().find(Boolean) || 'Datos inválidos';
+      return NextResponse.json({ error: String(firstMessage), fieldErrors: flat }, { status: 400 });
+    }
+    const riderId = parse.data.riderId.trim();
 
-    if (!batchId?.trim() || !riderId) {
+    if (!batchId?.trim()) {
       return NextResponse.json(
-        { error: 'batchId y riderId son obligatorios' },
+        { error: 'batchId es obligatorio' },
         { status: 400 }
       );
     }

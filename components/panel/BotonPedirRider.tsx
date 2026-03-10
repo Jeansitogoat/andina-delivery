@@ -32,6 +32,9 @@ export default function BotonPedirRider({
 
   const isNight = useMemo(() => isNightMode(), []);
   const whatsappNumber = '593983511866';
+  const claimBaseUrl = typeof process.env.NEXT_PUBLIC_APP_URL === 'string' && process.env.NEXT_PUBLIC_APP_URL
+    ? process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')
+    : 'https://andina-express.vercel.app';
 
   const whatsappText = useMemo(() => {
     const parts: string[] = [];
@@ -42,9 +45,9 @@ export default function BotonPedirRider({
     parts.push('Total:');
     if (direccion) parts.push(`Direccion: ${direccion}`);
     parts.push('----------------------------------');
-    parts.push(`RECLAMAR CARRERA AQUI: https://andina-express.vercel.app/claim/${orderId}`);
+    parts.push(`RECLAMAR CARRERA AQUI: ${claimBaseUrl}/claim/${orderId}`);
     return encodeURIComponent(parts.join('\\n'));
-  }, [orderId, restaurante, direccion]);
+  }, [orderId, restaurante, direccion, claimBaseUrl]);
 
   const whatsappHref = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 
