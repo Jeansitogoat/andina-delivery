@@ -38,6 +38,7 @@ import { useAuth } from '@/lib/useAuth';
 import type { EstadoCarrera, EstadoRider, CarreraRider } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { useToast } from '@/lib/ToastContext';
+import { LoadingButton } from '@/components/LoadingButton';
 import { normalizePhoneEcuador } from '@/lib/normalizePhoneEcuador';
 
 function mapEstado(estadoPedido: string): EstadoCarrera {
@@ -66,6 +67,8 @@ function docToCarrera(d: { id: string; data: () => Record<string, unknown> }): C
     batchId: (data.batchId as string) ?? null,
     batchIndex: (data.batchIndex as number) ?? null,
     timestamp: (data.timestamp as number) ?? 0,
+    paymentMethod: (data.paymentMethod as 'efectivo' | 'transferencia') || undefined,
+    costoEnvio: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost as number) ? (data.serviceCost as number) : undefined,
   };
 }
 
@@ -100,6 +103,7 @@ export default function PanelRiderPage() {
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const fotoRef = useRef<HTMLInputElement>(null);
   const [avanzandoKey, setAvanzandoKey] = useState<string | null>(null);
+  const [rechazandoCarreraId, setRechazandoCarreraId] = useState<string | null>(null);
 
   const { showToast: showGlobalToast } = useToast();
   const prevCarreraIdsRef = useRef<Set<string>>(new Set());
@@ -312,6 +316,33 @@ export default function PanelRiderPage() {
       showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAvanzandoKey(null);
+    }
+  }
+
+  async function handleRechazarCarrera(pedidoId: string) {
+    setRechazandoCarreraId(pedidoId);
+    try {
+      const tok = await getIdToken();
+      if (!tok) {
+        showGlobalToast({ type: 'error', message: 'Sesión inválida.' });
+        return;
+      }
+      const res = await fetch(`/api/pedidos/${encodeURIComponent(pedidoId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ accion: 'rechazar_carrera' }),
+      });
+      if (res.ok) {
+        setCarreraActiva(null);
+        showGlobalToast({ type: 'success', message: 'Carrera rechazada. Volvió a quedar disponible.' });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showGlobalToast({ type: 'error', message: (data.error as string) || 'No se pudo rechazar.' });
+      }
+    } catch {
+      showGlobalToast({ type: 'error', message: 'Error de conexión. Reintentá.' });
+    } finally {
+      setRechazandoCarreraId(null);
     }
   }
 
@@ -882,7 +913,18 @@ export default function PanelRiderPage() {
                 </div>
               </div>
 
-              {/* propina */}
+              {/* qué cobrar */}
+              {carreraActiva.paymentMethod === 'transferencia' ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                  <p className="text-sm font-bold text-amber-800">💳 COBRAR SOLO ENVÍO: ${(carreraActiva.costoEnvio ?? carreraActiva.total ?? 0).toFixed(2)}</p>
+                  <p className="text-xs text-amber-700 mt-0.5">Pago por transferencia — cobrar solo el envío al cliente.</p>
+                </div>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                  <p className="text-sm font-bold text-emerald-800">💰 COBRAR TOTAL: ${(carreraActiva.total ?? 0).toFixed(2)}</p>
+                  <p className="text-xs text-emerald-700 mt-0.5">Cobrar el total en efectivo al cliente.</p>
+                </div>
+              )}
               <div className="bg-green-50 border border-green-100 rounded-2xl p-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Wallet className="w-5 h-5 text-green-600" />
@@ -898,18 +940,28 @@ export default function PanelRiderPage() {
 
               {/* botones de acción */}
               {carreraActiva.estado === 'asignada' && (
-                <button
-                  type="button"
-                  disabled={!!avanzandoKey}
-                  onClick={() => {
-                    avanzarEstado(carreraActiva.id, 'en_camino', carreraActiva.batchId ?? undefined);
-                    setCarreraActiva({ ...carreraActiva, estado: 'en_camino' });
-                  }}
-                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Bike className="w-5 h-5" />
-                  Estoy en camino
-                </button>
+                <>
+                  <LoadingButton
+                    type="button"
+                    loading={avanzandoKey === (carreraActiva.batchId ?? carreraActiva.id)}
+                    onClick={() => {
+                      avanzarEstado(carreraActiva.id, 'en_camino', carreraActiva.batchId ?? undefined);
+                      setCarreraActiva({ ...carreraActiva, estado: 'en_camino' });
+                    }}
+                    className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Bike className="w-5 h-5" />
+                    Estoy en camino
+                  </LoadingButton>
+                  <LoadingButton
+                    type="button"
+                    loading={rechazandoCarreraId === carreraActiva.id}
+                    onClick={() => handleRechazarCarrera(carreraActiva.id)}
+                    className="w-full py-3 rounded-2xl border-2 border-gray-200 text-gray-600 hover:bg-gray-50 font-semibold text-base flex items-center justify-center gap-2 transition-colors"
+                  >
+                    Rechazar carrera
+                  </LoadingButton>
+                </>
               )}
               {carreraActiva.estado === 'en_camino' && (
                 <button
@@ -1106,6 +1158,16 @@ function TarjetaCarreraBatch({
           <p className="text-xs text-gray-400">Ganancia estimada</p>
           <p className="font-black text-green-600">+${totalGanancia.toFixed(2)}</p>
         </div>
+        {/* qué cobrar (según líder del batch) */}
+        {leader.paymentMethod === 'transferencia' ? (
+          <div className="mb-4 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200">
+            <p className="text-xs font-bold text-amber-800">💳 COBRAR SOLO ENVÍO: ${(leader.costoEnvio ?? leader.total ?? 0).toFixed(2)}</p>
+          </div>
+        ) : (
+          <div className="mb-4 py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <p className="text-xs font-bold text-emerald-800">💰 COBRAR TOTAL: ${(leader.total ?? 0).toFixed(2)}</p>
+          </div>
+        )}
         <div className="flex gap-2">
           <button
             type="button"
@@ -1116,15 +1178,15 @@ function TarjetaCarreraBatch({
             <ChevronRight className="w-4 h-4" />
           </button>
           {esAsignada && (
-            <button
+            <LoadingButton
               type="button"
-              disabled={!!avanzandoKey}
+              loading={!!avanzandoKey && avanzandoKey === leader.batchId}
               onClick={onEnCamino}
               className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
             >
               <Bike className="w-4 h-4" />
               En camino
-            </button>
+            </LoadingButton>
           )}
           {esEnCamino && (
             <button
@@ -1222,6 +1284,17 @@ function TarjetaCarrera({
           </div>
         </div>
 
+        {/* qué cobrar */}
+        {carrera.paymentMethod === 'transferencia' ? (
+          <div className="mb-4 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200">
+            <p className="text-xs font-bold text-amber-800">💳 COBRAR SOLO ENVÍO: ${(carrera.costoEnvio ?? carrera.total ?? 0).toFixed(2)}</p>
+          </div>
+        ) : (
+          <div className="mb-4 py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <p className="text-xs font-bold text-emerald-800">💰 COBRAR TOTAL: ${(carrera.total ?? 0).toFixed(2)}</p>
+          </div>
+        )}
+
         {/* botones */}
         <div className="flex gap-2">
           <button
@@ -1233,15 +1306,15 @@ function TarjetaCarrera({
             <ChevronRight className="w-4 h-4" />
           </button>
           {esAsignada && (
-            <button
+            <LoadingButton
               type="button"
-              disabled={!!avanzandoKey}
+              loading={!!avanzandoKey && (avanzandoKey === carrera.id || avanzandoKey === carrera.batchId)}
               onClick={onEnCamino}
               className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
             >
               <Bike className="w-4 h-4" />
               En camino
-            </button>
+            </LoadingButton>
           )}
           {esEnCamino && (
             <button

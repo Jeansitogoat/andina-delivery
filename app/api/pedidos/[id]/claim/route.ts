@@ -42,7 +42,7 @@ export async function POST(
         // Ya asignado a este rider: idempotente
         return { status: 200 as const, body: { ok: true, alreadyAssigned: true } };
       }
-      tx.update(ref, { riderId: auth.uid });
+      tx.update(ref, { riderId: auth.uid, estado: 'asignado' });
       return { status: 200 as const, body: { ok: true } };
     });
 

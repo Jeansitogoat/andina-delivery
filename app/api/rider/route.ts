@@ -72,6 +72,8 @@ export async function GET(request: Request) {
         batchId: (data.batchId as string) ?? null,
         batchIndex: (data.batchIndex as number) ?? null,
         timestamp: (data.timestamp as number) ?? 0,
+        paymentMethod: (data.paymentMethod as 'efectivo' | 'transferencia') || undefined,
+        costoEnvio: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost as number) ? (data.serviceCost as number) : undefined,
       };
     });
 

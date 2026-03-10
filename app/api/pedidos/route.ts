@@ -34,6 +34,8 @@ function docToPedidoCentral(d: DocumentSnapshot): PedidoCentral {
     batchIndex: data.batchIndex ?? null,
     batchLeaderLocalId: data.batchLeaderLocalId ?? null,
     deliveryType: (data.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
+    paymentMethod: data.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
+    serviceCost: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost) ? data.serviceCost : undefined,
   };
 }
 
@@ -243,7 +245,6 @@ export async function POST(request: Request) {
       const sameTotal = Number(data?.total ?? 0) === totalNum;
       const sameItems = JSON.stringify(data?.items ?? []) === itemsKey;
       if (sameCliente && sameLocal && sameTotal && sameItems) {
-        console.log('[pedidos] Idempotente: pedido ya existe', { id, clienteId: uid, localId });
         const pedidoExistente: PedidoCentral = {
           id: existing.id,
           clienteId: data?.clienteId ?? uid,

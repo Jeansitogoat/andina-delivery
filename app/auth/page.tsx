@@ -7,7 +7,6 @@ import { signInWithPopup, getRedirectResult, GoogleAuthProvider } from 'firebase
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import PasswordInput from '@/components/PasswordInput';
-import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { getFirestoreDb } from '@/lib/firebase/client';
@@ -16,7 +15,6 @@ type Paso = 'login' | 'registro' | 'registro-rider' | 'registro-exitoso' | 'regi
 
 export default function AuthPage() {
   const router = useRouter();
-  const { addDireccion } = useAddresses();
   const { user, loading: authLoading, loginWithEmail, registerWithEmail, logout } = useAuth();
   const [paso, setPaso] = useState<Paso>('login');
   const [registro, setRegistro] = useState({
@@ -25,8 +23,6 @@ export default function AuthPage() {
     contraseña: '',
     confirmarContraseña: '',
     celular: '',
-    direccion: '',
-    referencia: '',
   });
   const [login, setLogin] = useState({ correo: '', contraseña: '' });
   const [registrando, setRegistrando] = useState(false);
@@ -251,17 +247,6 @@ export default function AuthPage() {
         await registerWithEmail(params);
         registrandoRef.current = false;
         setRegistrando(false);
-        // Pequeña espera para que el token de auth se propague antes de Firestore
-        if (registro.direccion.trim()) {
-          await new Promise((r) => setTimeout(r, 400));
-          addDireccion({
-            etiqueta: 'casa',
-            nombre: 'Mi casa',
-            detalle: registro.direccion.trim(),
-            referencia: registro.referencia.trim() || undefined,
-            principal: true,
-          });
-        }
         setPaso('registro-exitoso');
       } catch (err) {
         if (isRetryableAuthError(err) && attempt < 2) {
@@ -646,7 +631,7 @@ export default function AuthPage() {
               <p className="text-xs font-bold text-blue-800 uppercase">Cliente (pedir delivery)</p>
             </div>
             <h1 className="text-xl font-black text-gray-900 mb-1">Crear cuenta</h1>
-            <p className="text-gray-500 text-sm mb-6">Completa tus datos para pedir delivery a domicilio</p>
+            <p className="text-gray-500 text-sm mb-6">Completa tus datos. Podés agregar tu dirección de entrega después en la app (desde Perfil o al hacer tu primer pedido, con el mapa).</p>
 
             <form onSubmit={handleRegistro} className="space-y-4">
             <div>
@@ -718,26 +703,6 @@ export default function AuthPage() {
                 placeholder="09X XXX XXXX"
                 className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
                 required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Dirección (Piñas)</label>
-              <input
-                type="text"
-                value={registro.direccion}
-                onChange={(e) => setRegistro((r) => ({ ...r, direccion: e.target.value }))}
-                placeholder="Calle, sector, referencia"
-                className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Referencia para entregas</label>
-              <input
-                type="text"
-                value={registro.referencia}
-                onChange={(e) => setRegistro((r) => ({ ...r, referencia: e.target.value }))}
-                placeholder="Ej. Casa azul, al lado del parque"
-                className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
               />
             </div>
             <button

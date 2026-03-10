@@ -37,6 +37,10 @@ export interface PedidoCentral {
   batchLeaderLocalId?: string | null;
   /** 'delivery' = entrega a domicilio (pasa por central/riders), 'pickup' = retiro en local */
   deliveryType?: 'delivery' | 'pickup';
+  /** Método de pago para mensaje rider y cobro */
+  paymentMethod?: 'efectivo' | 'transferencia';
+  /** Costo de envío (para transferencia: cobrar solo envío) */
+  serviceCost?: number;
   /** Para "Volver a pedir": estructura del carrito al momento del pedido (opcional) */
   itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
 }
@@ -76,5 +80,9 @@ export interface CarreraRider {
   batchIndex?: number | null;
   /** Timestamp para filtrado por fecha (p. ej. historial) */
   timestamp?: number;
+  /** Método de pago para claridad de cobro */
+  paymentMethod?: 'efectivo' | 'transferencia';
+  /** Costo de envío (cobrar solo envío si transferencia) */
+  costoEnvio?: number;
 }
 

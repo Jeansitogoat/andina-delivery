@@ -59,6 +59,8 @@ interface Order {
   batchId?: string | null;
   batchLeaderLocalId?: string | null;
   deliveryType?: 'delivery' | 'pickup';
+  paymentMethod?: 'efectivo' | 'transferencia';
+  serviceCost?: number;
 }
 
 function estadoToStatus(estado: EstadoPedido): OrderStatus {
@@ -148,7 +150,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         setOrders([]);
         return;
       }
-      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup' }>; nextCursor?: string | null };
+      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>; nextCursor?: string | null };
       const list: Order[] = (data.pedidos || []).map((p) => ({
         id: p.id,
         cliente: p.clienteNombre || 'Cliente',
@@ -161,6 +163,8 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         batchId: p.batchId ?? null,
         batchLeaderLocalId: p.batchLeaderLocalId ?? null,
         deliveryType: p.deliveryType === 'pickup' ? 'pickup' : 'delivery',
+        paymentMethod: p.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
+        serviceCost: typeof p.serviceCost === 'number' && !Number.isNaN(p.serviceCost) ? p.serviceCost : undefined,
       }));
       const newIds = new Set(list.map((o) => o.id));
       if (list.some((o) => !prevOrderIdsRef.current.has(o.id))) {
@@ -964,6 +968,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                     orderId={order.id}
                                     direccion={order.direccion}
                                     restaurante={local.name}
+                                    metodoPago={order.paymentMethod}
+                                    total={order.total}
+                                    costoEnvio={order.serviceCost}
                                     onSolicitado={() => onRiderSolicitado(order.id)}
                                     esBatchLeader={!order.batchId || order.batchLeaderLocalId === id}
                                     todosListosEnBatch={!order.batchId || batchTodosListos[order.batchId] !== false}

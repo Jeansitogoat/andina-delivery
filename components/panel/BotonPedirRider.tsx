@@ -9,6 +9,12 @@ interface BotonPedirRiderProps {
   orderId: string;
   direccion?: string;
   restaurante?: string;
+  /** Método de pago para el mensaje al rider */
+  metodoPago?: 'efectivo' | 'transferencia';
+  /** Total del pedido (para mensaje efectivo) */
+  total?: number;
+  /** Costo de envío (para mensaje transferencia: cobrar solo envío) */
+  costoEnvio?: number;
   onSolicitado?: () => void;
   /** Multi-stop: solo el local líder puede pedir rider */
   esBatchLeader?: boolean;
@@ -20,6 +26,9 @@ export default function BotonPedirRider({
   orderId,
   direccion,
   restaurante,
+  metodoPago,
+  total,
+  costoEnvio,
   onSolicitado,
   esBatchLeader = true,
   todosListosEnBatch = true,
@@ -32,22 +41,27 @@ export default function BotonPedirRider({
 
   const isNight = useMemo(() => isNightMode(), []);
   const whatsappNumber = '593983511866';
-  const claimBaseUrl = typeof process.env.NEXT_PUBLIC_APP_URL === 'string' && process.env.NEXT_PUBLIC_APP_URL
-    ? process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')
-    : 'https://andina-express.vercel.app';
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   const whatsappText = useMemo(() => {
-    const parts: string[] = [];
-    parts.push('NUEVA CARRERA - ANDINA (MODO NOCTURNO)');
-    parts.push('----------------------------------');
-    parts.push(`ID: #${orderId}`);
-    if (restaurante) parts.push(`Local: ${restaurante}`);
-    parts.push('Total:');
-    if (direccion) parts.push(`Direccion: ${direccion}`);
-    parts.push('----------------------------------');
-    parts.push(`RECLAMAR CARRERA AQUI: ${claimBaseUrl}/claim/${orderId}`);
-    return encodeURIComponent(parts.join('\\n'));
-  }, [orderId, restaurante, direccion, claimBaseUrl]);
+    const lineas: string[] = [];
+    lineas.push('NUEVA CARRERA - ANDINA (MODO NOCTURNO)');
+    lineas.push('----------------------------------');
+    lineas.push(`ID: #${orderId}`);
+    if (restaurante) lineas.push(`Local: ${restaurante}`);
+    const totalNum = typeof total === 'number' && !Number.isNaN(total) ? total : 0;
+    const costoEnvioNum = typeof costoEnvio === 'number' && !Number.isNaN(costoEnvio) ? costoEnvio : totalNum;
+    if (metodoPago === 'transferencia') {
+      lineas.push(`💳 *PAGO POR TRANSFERENCIA* (Cobrar solo envío): $${costoEnvioNum}`);
+    } else {
+      lineas.push(`💰 *TOTAL A COBRAR:* $${totalNum}`);
+    }
+    if (direccion) lineas.push(`Direccion: ${direccion}`);
+    lineas.push('----------------------------------');
+    lineas.push(`RECLAMAR CARRERA AQUI: ${baseUrl}/claim/${orderId}`);
+    const mensaje = lineas.join('\n');
+    return encodeURIComponent(mensaje);
+  }, [orderId, restaurante, direccion, baseUrl, metodoPago, total, costoEnvio]);
 
   const whatsappHref = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 

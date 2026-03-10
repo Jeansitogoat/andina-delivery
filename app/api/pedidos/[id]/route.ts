@@ -35,18 +35,20 @@ export async function GET(
     const isCliente = auth.uid === clienteId;
     const isCentralOrMaestro = auth.rol === 'central' || auth.rol === 'maestro';
     const isRiderAsignado = auth.rol === 'rider' && data.riderId === auth.uid;
+    const isRiderVerPreview = auth.rol === 'rider' && (data.estado === 'esperando_rider') && (data.riderId ?? null) === null;
     let isLocalDelPedido = false;
     if (auth.rol === 'local') {
       const userSnap = await db.collection('users').doc(auth.uid).get();
       const userLocalId = userSnap.data()?.localId ?? null;
       isLocalDelPedido = !!userLocalId && userLocalId === pedidoLocalId;
     }
-    if (!isCliente && !isCentralOrMaestro && !isRiderAsignado && !isLocalDelPedido) {
+    if (!isCliente && !isCentralOrMaestro && !isRiderAsignado && !isRiderVerPreview && !isLocalDelPedido) {
       return NextResponse.json({ error: 'No autorizado para ver este pedido' }, { status: 403 });
     }
 
     type PedidoPublico = PedidoCentral & {
       paymentMethod?: 'efectivo' | 'transferencia';
+      serviceCost?: number;
       paymentConfirmed?: boolean;
       comprobanteBase64?: string | null;
       comprobanteFileName?: string | null;
@@ -72,6 +74,7 @@ export async function GET(
       propina: data.propina ?? 0,
       deliveryType: (data.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
       paymentMethod: data.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
+      serviceCost: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost) ? data.serviceCost : undefined,
       paymentConfirmed: data.paymentConfirmed !== false,
       comprobanteBase64: data.comprobanteBase64 ?? null,
       comprobanteFileName: data.comprobanteFileName ?? null,
@@ -198,6 +201,24 @@ export async function PATCH(
       }
       if (body.riderId !== undefined || body.propina !== undefined) {
         return NextResponse.json({ error: 'Solo central/rider pueden asignar rider o propina' }, { status: 403 });
+      }
+    }
+
+    /* Rider: rechazar carrera (solo servidor aplica riderId: null y estado) */
+    if (auth.rol === 'rider') {
+      const accion = typeof body.accion === 'string' ? body.accion.trim() : '';
+      if (accion === 'rechazar_carrera') {
+        if (data.riderId !== auth.uid) {
+          return NextResponse.json({ error: 'No estás asignado a esta carrera' }, { status: 403 });
+        }
+        await ref.update(
+          sanitizeForFirestore({
+            riderId: null,
+            estado: 'esperando_rider',
+            updatedAt: FieldValue.serverTimestamp(),
+          })
+        );
+        return NextResponse.json({ ok: true });
       }
     }
 
