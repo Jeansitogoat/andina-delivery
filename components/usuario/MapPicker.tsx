@@ -15,6 +15,7 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const circleRef = useRef<L.Circle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +40,7 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
         if (cancelled || !containerRef.current) return;
 
         const center: [number, number] = lat != null && lng != null ? [lat, lng] : [PIÑAS_CENTER.lat, PIÑAS_CENTER.lng];
-        const map = L.map(containerRef.current).setView(center, 15);
+        const map = L.map(containerRef.current).setView(center, 18);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -56,7 +57,25 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
         mapRef.current = map;
         markerRef.current = marker;
 
+        const updateAccuracyCircle = (latVal: number, lngVal: number) => {
+          if (!mapRef.current) return;
+          const radiusMeters = 30; // zona de precisión visual, no bloqueante
+          if (circleRef.current) {
+            circleRef.current.setLatLng([latVal, lngVal]);
+            circleRef.current.setRadius(radiusMeters);
+          } else {
+            circleRef.current = L.circle([latVal, lngVal], {
+              radius: radiusMeters,
+              color: '#3b82f6',
+              weight: 1,
+              fillColor: '#3b82f6',
+              fillOpacity: 0.12,
+            }).addTo(mapRef.current);
+          }
+        };
+
         const reverseGeocodeAndSelect = async (latVal: number, lngVal: number) => {
+          updateAccuracyCircle(latVal, lngVal);
           try {
             const res = await fetch(
               `https://nominatim.openstreetmap.org/reverse?lat=${latVal}&lon=${lngVal}&format=json`,
@@ -64,9 +83,9 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
             );
             const data = await res.json();
             const addr = (data?.display_name && String(data.display_name).trim()) || undefined;
-            onSelect(latVal, lngVal, addr || `${latVal.toFixed(5)}, ${lngVal.toFixed(5)}`);
+            onSelect(latVal, lngVal, addr || `${latVal.toFixed(6)}, ${lngVal.toFixed(6)}`);
           } catch {
-            onSelect(latVal, lngVal, `${latVal.toFixed(5)}, ${lngVal.toFixed(5)}`);
+            onSelect(latVal, lngVal, `${latVal.toFixed(6)}, ${lngVal.toFixed(6)}`);
           }
         };
 
@@ -82,8 +101,11 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
         });
 
         if (lat != null && lng != null) {
-          map.setView([lat, lng], 15);
+          map.setView([lat, lng], 18);
           marker.setLatLng([lat, lng]);
+          updateAccuracyCircle(lat, lng);
+        } else {
+          updateAccuracyCircle(center[0], center[1]);
         }
 
         if (!cancelled) setLoading(false);
@@ -99,6 +121,10 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
     return () => {
       cancelled = true;
       if (mapRef.current) {
+        if (circleRef.current) {
+          circleRef.current.remove();
+          circleRef.current = null;
+        }
         mapRef.current.remove();
         mapRef.current = null;
         markerRef.current = null;

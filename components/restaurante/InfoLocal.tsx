@@ -32,8 +32,10 @@ export default function InfoLocal({ local, search, onSearch }: Props) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 mb-3">
           <span className="flex items-center gap-1 font-semibold text-gray-800">
             <Star className="w-4 h-4 fill-dorado-oro text-dorado-oro" />
-            {local.rating}
-            <span className="font-normal text-gray-500">({local.reviews} opiniones)</span>
+            {local.reviews > 0 ? local.rating.toFixed(1) : 'Nuevo'}
+            <span className="font-normal text-gray-500">
+              {local.reviews > 0 ? `(${local.reviews} opiniones)` : '(Sin opiniones aún)'}
+            </span>
           </span>
           <span className="flex items-center gap-1">
             <Clock className="w-4 h-4 text-gray-400" />

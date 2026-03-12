@@ -22,13 +22,17 @@ function docToLocal(data: Record<string, unknown>, id: string): Local {
   return {
     id,
     name: String(data.name ?? ''),
-    rating: Number(data.rating ?? 4.5),
+    rating: Number(data.rating ?? 0),
     reviews: Number(data.reviews ?? data.reviewsCount ?? 0),
     time: String(data.time ?? '20-35 min'),
     shipping: Number(data.shipping ?? 1.5),
     type: Array.isArray(data.type) ? (data.type as string[]) : ['Restaurantes'],
     distance: String(data.distance ?? '—'),
     destacado: Boolean(data.destacado),
+    isFeatured: Boolean((data as { isFeatured?: boolean }).isFeatured),
+    featuredUntil: typeof (data as { featuredUntil?: number }).featuredUntil === 'number'
+      ? (data as { featuredUntil?: number }).featuredUntil!
+      : null,
     logo: String(data.logo ?? ''),
     cover: String(data.cover ?? ''),
     address: data.address != null ? String(data.address) : undefined,

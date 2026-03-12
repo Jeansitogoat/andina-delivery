@@ -35,6 +35,10 @@ export interface Local {
   type: string[];
   distance: string;
   destacado: boolean;
+  /** Local destacado (monetización). Refleja el campo Firestore isFeatured. */
+  isFeatured?: boolean;
+  /** Timestamp (ms) opcional hasta cuándo se mantiene el destacado. */
+  featuredUntil?: number | null;
   logo: string;
   cover: string;
   address?: string;

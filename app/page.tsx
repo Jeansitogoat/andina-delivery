@@ -42,7 +42,7 @@ const categories: { key: CategoryKey; name: string; icon: typeof UtensilsCrossed
   { key: 'Farmacias', name: 'Farmacias', icon: Pill },
 ];
 
-const DIRECCIONES_EJEMPLO = ['Calle Sucre', 'Sector La Cadena', 'Frente al Parque Central'];
+const DIRECCIONES_EJEMPLO: string[] = [];
 
 export default function Home() {
   const router = useRouter();
@@ -391,8 +391,8 @@ export default function Home() {
           <h2 className="text-lg font-bold text-gray-900 mb-1">Locales cerca de ti</h2>
           <p className="text-sm text-gray-500 mb-4">
             {originLatLng
-              ? `Entregas: ${DIRECCIONES_EJEMPLO.join(' · ')} · Ordenado por distancia`
-              : `Entregas: ${DIRECCIONES_EJEMPLO.join(' · ')} · Agrega una dirección o permite ubicación para ver distancias`}
+              ? 'Entregas cerca de tu ubicación · Ordenado por distancia'
+              : 'Selecciona tu ubicación o permite acceso a tu ubicación para ver locales cercanos'}
           </p>
           {loadingLocales || navigatingTo ? (
             <SkeletonLocales />
@@ -404,7 +404,15 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {filteredLocales.map((local) => {
+              {filteredLocales
+                .slice()
+                .sort((a, b) => {
+                  const aFeatured = Boolean((a as { isFeatured?: boolean }).isFeatured);
+                  const bFeatured = Boolean((b as { isFeatured?: boolean }).isFeatured);
+                  if (aFeatured === bFeatured) return 0;
+                  return aFeatured ? -1 : 1;
+                })
+                .map((local) => {
                 const estado = getEstadoAbierto(local);
                 const cerrado = !estado.abierto;
                 const badgeText = estado.motivo === 'ocupado' ? 'Ocupado' : 'Cerrado';
@@ -453,7 +461,7 @@ export default function Home() {
                         </span>
                       </>
                     )}
-                    {local.destacado && !cerrado && (
+                    {Boolean((local as { isFeatured?: boolean }).isFeatured) && !cerrado && (
                       <span className="absolute top-2 left-2 bg-dorado-oro text-gray-900 text-xs font-bold px-2 py-1 rounded-lg z-[1]">
                         Destacada
                       </span>

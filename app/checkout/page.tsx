@@ -99,6 +99,9 @@ export default function CheckoutPage() {
   const [tarifaAjustada, setTarifaAjustada] = useState(false);
   /** Datos de transferencia al entrar a comprobante (persistidos para no depender del carrito tras clearCart) */
   const [transferenciaComprobante, setTransferenciaComprobante] = useState<Local['transferencia'] | null>(null);
+  /** Base numérica usada para generar IDs de pedido en modo transferencia (para recrearlos al enviar comprobante). */
+  const [transferBaseNum, setTransferBaseNum] = useState<string | null>(null);
+  const [isUploadingComprobante, setIsUploadingComprobante] = useState(false);
   const { showToast } = useToast();
 
   /** Datos por parada: local + menú + ítems enriquecidos y totales */
@@ -213,88 +216,113 @@ export default function CheckoutPage() {
     setIsOrdering(true);
 
     try {
-    const dirSeleccionada = selectedId ? direcciones.find((d) => d.id === selectedId) : direcciones.find((d) => d.principal) ?? direcciones[0];
-    const clienteNombre = user?.displayName ?? user?.email ?? (dirSeleccionada?.nombre ?? 'Cliente');
-    const clienteTelefono = user?.telefono ?? user?.email ?? '';
-    const direccion = isPickup
-      ? (local?.address ? `Retiro en local: ${local.address}` : 'Retiro en local')
-      : direccionEntregar; // ya validado antes: no permite pedir sin dirección
-    const baseNum = Date.now().toString().slice(-6);
-    const batchIdBase = !isPickup && stopsData.length > 1 ? `A-${baseNum}` : null;
-    const batchLeaderLocalId = !isPickup && stopsData.length > 1 ? stopsData[0].localId : null;
-    let firstOrderId = '';
-    let firstOrderNum = '';
-    let firstTotal = 0;
+      const dirSeleccionada = selectedId ? direcciones.find((d) => d.id === selectedId) : direcciones.find((d) => d.principal) ?? direcciones[0];
+      const clienteNombre = user?.displayName ?? user?.email ?? (dirSeleccionada?.nombre ?? 'Cliente');
+      const clienteTelefono = user?.telefono ?? user?.email ?? '';
+      const direccion = isPickup
+        ? (local?.address ? `Retiro en local: ${local.address}` : 'Retiro en local')
+        : direccionEntregar; // ya validado antes: no permite pedir sin dirección
+      const baseNum = Date.now().toString().slice(-6);
+      const batchIdBase = !isPickup && stopsData.length > 1 ? `A-${baseNum}` : null;
+      const batchLeaderLocalId = !isPickup && stopsData.length > 1 ? stopsData[0].localId : null;
+      let firstOrderId = '';
+      let firstOrderNum = '';
+      let firstTotal = 0;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    };
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
 
-    const fetchPromises: Promise<Response>[] = [];
-
-    stopsData.forEach((stop, index) => {
-      const orderId = `A-${baseNum}-${index}`;
-      const num = `#${orderId}`;
-      const codigo = generateVerificationCode();
-      const stopTotal = index === 0
-        ? stop.subtotal + envioTarifa + serviceCost + propinaEfectiva
-        : stop.subtotal;
-      if (index === 0) {
-        firstOrderId = orderId;
-        firstOrderNum = num;
-        firstTotal = stopTotal;
+      // Si el cliente paga por transferencia, aún no creamos el pedido en Firestore.
+      // Solo preparamos los datos para la pantalla de comprobante y diferimos el POST
+      // hasta que se suba correctamente el archivo.
+      if (payment === 'transferencia') {
+        if (!stopsData[0]) {
+          setIsOrdering(false);
+          setAuthError('No se pudo preparar el pedido. Intenta de nuevo.');
+          showToast({ type: 'error', message: 'No se pudo preparar el pedido. Revisa tu conexión e intenta de nuevo.' });
+          return;
+        }
+        const stop0 = stopsData[0];
+        const stopTotal0 = stop0.subtotal + envioTarifa + serviceCost + propinaEfectiva;
+        const orderId0 = `A-${baseNum}-0`;
+        const num0 = `#${orderId0}`;
+        setOrderNum(num0);
+        setOrderIdRedirect(orderId0);
+        setConfirmedTotal(stopTotal0);
+        setTransferenciaComprobante(local?.transferencia ?? null);
+        setTransferBaseNum(baseNum);
+        setIsOrdering(false);
+        setConfirmed(true);
+        setPostStep('comprobante');
+        return;
       }
-      // Datos ya van a Firestore vía POST; savePedido solo como fallback para pedido page antes de primera carga
-      savePedido(orderId, {
-        codigo,
-        paymentMethod: payment,
-        paymentConfirmed: payment === 'efectivo',
-        orderNum: num,
-        direccionEntregar: direccion,
-        localName: stop.local?.name,
-        localTime: stop.local?.time,
-        grandTotal: stopTotal,
-        items: stop.enrichedItems,
-      });
-      const res = fetch('/api/pedidos', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          id: orderId,
-          restaurante: stop.local?.name ?? '—',
-          restauranteDireccion: stop.local?.address ?? '—',
-          clienteNombre,
-          clienteDireccion: direccion,
-          clienteTelefono: clienteTelefono || '',
-          items: stop.enrichedItems.map((i) => `${i.qty}× ${i.name}`),
-          total: stopTotal,
-          subtotal: stop.subtotal,
-          ...(index === 0 ? { serviceCost } : {}),
-          localId: stop.localId,
-          codigoVerificacion: codigo,
-          deliveryType: isPickup ? 'pickup' : 'delivery',
+
+      const fetchPromises: Promise<Response>[] = [];
+
+      stopsData.forEach((stop, index) => {
+        const orderId = `A-${baseNum}-${index}`;
+        const num = `#${orderId}`;
+        const codigo = generateVerificationCode();
+        const stopTotal = index === 0
+          ? stop.subtotal + envioTarifa + serviceCost + propinaEfectiva
+          : stop.subtotal;
+        if (index === 0) {
+          firstOrderId = orderId;
+          firstOrderNum = num;
+          firstTotal = stopTotal;
+        }
+        // Datos ya van a Firestore vía POST; savePedido solo como fallback para pedido page antes de primera carga
+        savePedido(orderId, {
+          codigo,
           paymentMethod: payment,
           paymentConfirmed: payment === 'efectivo',
-          ...(batchIdBase && batchLeaderLocalId != null
-            ? { batchId: batchIdBase, batchIndex: index, batchLeaderLocalId }
-            : {}),
-          itemsCart: (() => {
-            const cartStop = cart.stops.find((s) => s.localId === stop.localId);
-            if (!cartStop?.items?.length) return undefined;
-            return {
-              localId: stop.localId,
-              items: cartStop.items.map((i) => ({ id: i.id, qty: i.qty, ...(i.note ? { note: i.note } : {}) })),
-            };
-          })(),
-        }),
+          orderNum: num,
+          direccionEntregar: direccion,
+          localName: stop.local?.name,
+          localTime: stop.local?.time,
+          grandTotal: stopTotal,
+          items: stop.enrichedItems,
+        });
+        const res = fetch('/api/pedidos', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            id: orderId,
+            restaurante: stop.local?.name ?? '—',
+            restauranteDireccion: stop.local?.address ?? '—',
+            clienteNombre,
+            clienteDireccion: direccion,
+            clienteTelefono: clienteTelefono || '',
+            items: stop.enrichedItems.map((i) => `${i.qty}× ${i.name}`),
+            total: stopTotal,
+            subtotal: stop.subtotal,
+            ...(index === 0 ? { serviceCost } : {}),
+            localId: stop.localId,
+            codigoVerificacion: codigo,
+            deliveryType: isPickup ? 'pickup' : 'delivery',
+            paymentMethod: payment,
+            paymentConfirmed: payment === 'efectivo',
+            ...(batchIdBase && batchLeaderLocalId != null
+              ? { batchId: batchIdBase, batchIndex: index, batchLeaderLocalId }
+              : {}),
+            itemsCart: (() => {
+              const cartStop = cart.stops.find((s) => s.localId === stop.localId);
+              if (!cartStop?.items?.length) return undefined;
+              return {
+                localId: stop.localId,
+                items: cartStop.items.map((i) => ({ id: i.id, qty: i.qty, ...(i.note ? { note: i.note } : {}) })),
+              };
+            })(),
+          }),
+        });
+        fetchPromises.push(res);
+
+        // Pendientes de transferencia están en Firestore (panel restaurante los obtiene vía API)
       });
-      fetchPromises.push(res);
 
-      // Pendientes de transferencia están en Firestore (panel restaurante los obtiene vía API)
-    });
-
-    const results = await Promise.all(fetchPromises);
+      const results = await Promise.all(fetchPromises);
     const any401 = results.some((r) => r.status === 401);
     if (any401) {
       setIsOrdering(false);
@@ -387,30 +415,161 @@ export default function CheckoutPage() {
     };
 
     const handleEnviarComprobante = async () => {
-      if (!comprobanteFile) return;
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = typeof reader.result === 'string' ? reader.result : '';
-        if (base64) {
-          const token = await getIdToken();
-          await fetch(`/api/pedidos/${orderIdRedirect}/comprobante`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              comprobanteBase64: base64,
-              fileName: comprobanteFile.name,
-              mimeType: comprobanteFile.type,
-            }),
-          });
+      if (!comprobanteFile) {
+        showToast({ type: 'error', message: 'Adjunta el comprobante de pago para continuar.' });
+        return;
+      }
+      if (isUploadingComprobante) return;
+      setIsUploadingComprobante(true);
+
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : '';
+            if (!result) {
+              reject(new Error('No se pudo leer el archivo de comprobante.'));
+            } else {
+              resolve(result);
+            }
+          };
+          reader.onerror = () => reject(new Error('No se pudo leer el archivo de comprobante.'));
+          reader.readAsDataURL(comprobanteFile);
+        });
+
+        const token = await getIdToken();
+        if (!token) {
+          setIsUploadingComprobante(false);
+          showToast({ type: 'error', message: 'Sesión expirada. Inicia sesión e intenta de nuevo.' });
+          return;
         }
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        };
+
+        const baseNum = transferBaseNum ?? Date.now().toString().slice(-6);
+        const isPickupHere = deliveryType === 'pickup';
+        const batchIdBase = !isPickupHere && stopsData.length > 1 ? `A-${baseNum}` : null;
+        const batchLeaderLocalId = !isPickupHere && stopsData.length > 1 ? stopsData[0].localId : null;
+
+        const dirSeleccionada = selectedId ? direcciones.find((d) => d.id === selectedId) : direcciones.find((d) => d.principal) ?? direcciones[0];
+        const clienteNombre = user?.displayName ?? user?.email ?? (dirSeleccionada?.nombre ?? 'Cliente');
+        const clienteTelefono = user?.telefono ?? user?.email ?? '';
+        const direccion = isPickupHere
+          ? (local?.address ? `Retiro en local: ${local.address}` : 'Retiro en local')
+          : direccionEntregar;
+
+        let firstOrderIdLocal = '';
+        let firstOrderNumLocal = '';
+        let firstTotalLocal = 0;
+
+        const fetchPromises: Promise<Response>[] = [];
+
+        stopsData.forEach((stop, index) => {
+          const orderId = `A-${baseNum}-${index}`;
+          const num = `#${orderId}`;
+          const codigo = generateVerificationCode();
+          const stopTotal = index === 0
+            ? stop.subtotal + envioTarifa + serviceCost + propinaEfectiva
+            : stop.subtotal;
+          if (index === 0) {
+            firstOrderIdLocal = orderId;
+            firstOrderNumLocal = num;
+            firstTotalLocal = stopTotal;
+          }
+
+          savePedido(orderId, {
+            codigo,
+            paymentMethod: payment,
+            paymentConfirmed: false,
+            orderNum: num,
+            direccionEntregar: direccion,
+            localName: stop.local?.name,
+            localTime: stop.local?.time,
+            grandTotal: stopTotal,
+            items: stop.enrichedItems,
+          });
+
+          const body: Record<string, unknown> = {
+            id: orderId,
+            restaurante: stop.local?.name ?? '—',
+            restauranteDireccion: stop.local?.address ?? '—',
+            clienteNombre,
+            clienteDireccion: direccion,
+            clienteTelefono: clienteTelefono || '',
+            items: stop.enrichedItems.map((i) => `${i.qty}× ${i.name}`),
+            total: stopTotal,
+            subtotal: stop.subtotal,
+            ...(index === 0 ? { serviceCost } : {}),
+            localId: stop.localId,
+            codigoVerificacion: codigo,
+            deliveryType: isPickupHere ? 'pickup' : 'delivery',
+            paymentMethod: payment,
+            paymentConfirmed: false,
+            ...(batchIdBase && batchLeaderLocalId != null
+              ? { batchId: batchIdBase, batchIndex: index, batchLeaderLocalId }
+              : {}),
+            itemsCart: (() => {
+              const cartStop = cart.stops.find((s) => s.localId === stop.localId);
+              if (!cartStop?.items?.length) return undefined;
+              return {
+                localId: stop.localId,
+                items: cartStop.items.map((i) => ({ id: i.id, qty: i.qty, ...(i.note ? { note: i.note } : {}) })),
+              };
+            })(),
+          };
+
+          if (index === 0) {
+            body.comprobanteBase64 = base64;
+            body.fileName = comprobanteFile.name;
+            body.mimeType = comprobanteFile.type;
+          }
+
+          const res = fetch('/api/pedidos', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+          });
+          fetchPromises.push(res);
+        });
+
+        const results = await Promise.all(fetchPromises);
+        const any401 = results.some((r) => r.status === 401);
+        if (any401) {
+          setIsUploadingComprobante(false);
+          showToast({ type: 'error', message: 'Sesión expirada o no autorizada. Inicia sesión e intenta de nuevo.' });
+          return;
+        }
+        const any403 = results.some((r) => r.status === 403);
+        if (any403) {
+          setIsUploadingComprobante(false);
+          showToast({ type: 'error', message: 'Solo las cuentas de cliente pueden realizar pedidos.' });
+          return;
+        }
+        const anyFailed = results.some((r) => !r.ok);
+        if (anyFailed) {
+          setIsUploadingComprobante(false);
+          showToast({ type: 'error', message: 'Error al crear el pedido. Intenta de nuevo.' });
+          return;
+        }
+
+        setIsUploadingComprobante(false);
         setComprobanteEnviado(true);
         clearCart();
-        setTimeout(() => router.replace(`/pedido/${orderIdRedirect}`), 2200);
-      };
-      reader.readAsDataURL(comprobanteFile);
+        setOrderIdRedirect(firstOrderIdLocal || orderIdRedirect);
+        setOrderNum(firstOrderNumLocal || orderNum);
+        setConfirmedTotal(firstTotalLocal || confirmedTotal);
+        setTimeout(
+          () => router.replace(`/pedido/${firstOrderIdLocal || orderIdRedirect}`),
+          2200
+        );
+      } catch (err) {
+        setIsUploadingComprobante(false);
+        const { message } = mapErrorToUserMessage(err);
+        showToast({ type: 'error', message: message ?? 'No se pudo enviar el comprobante. Intenta de nuevo.' });
+      }
     };
 
     const handleRegresar = () => {
@@ -418,6 +577,8 @@ export default function CheckoutPage() {
       setPostStep(null);
       setConfirmed(false);
       setComprobanteFile(null);
+      setTransferBaseNum(null);
+      setIsUploadingComprobante(false);
     };
 
     const isImage = comprobanteFile?.type.startsWith('image/');
@@ -593,15 +754,16 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              <button
+              <LoadingButton
                 type="button"
                 onClick={handleEnviarComprobante}
+                loading={isUploadingComprobante}
                 disabled={!comprobanteFile}
                 className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 disabled:bg-gray-200 disabled:text-gray-400 text-white font-black text-base shadow-lg transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed"
               >
                 <Upload className="w-5 h-5" />
-                Enviar comprobante
-              </button>
+                {isUploadingComprobante ? 'Enviando…' : 'Enviar comprobante'}
+              </LoadingButton>
 
               <p className="text-center text-xs text-gray-500">O envía tu comprobante por</p>
               <a
@@ -616,12 +778,12 @@ export default function CheckoutPage() {
             </>
           ) : (
             <div className="bg-white rounded-3xl shadow-xl p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
-                <Clock className="w-8 h-8 text-dorado-oro animate-pulse" />
+              <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
+                <CheckCircle2 className="w-10 h-10 text-green-500" />
               </div>
-              <h2 className="font-black text-xl text-gray-900 mb-2">Esperando un momento</h2>
-              <p className="text-gray-600 mb-1">Que el restaurante confirme tu pago.</p>
-              <p className="text-sm text-gray-500">Serás redirigido al seguimiento de tu pedido.</p>
+              <h2 className="font-black text-xl text-gray-900 mb-2">Comprobante enviado</h2>
+              <p className="text-gray-600 mb-1">Tu pago por transferencia fue enviado correctamente.</p>
+              <p className="text-sm text-gray-500">En unos segundos verás el seguimiento de tu pedido.</p>
             </div>
           )}
         </div>

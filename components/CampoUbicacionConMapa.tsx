@@ -29,7 +29,7 @@ export default function CampoUbicacionConMapa({
   initialLat,
   initialLng,
   label = 'Dirección',
-  placeholder = 'Ej. Calle Sucre 123, Sector La Cadena, Piñas',
+  placeholder = 'Ej. Dirección de entrega en Piñas',
   compact = false,
 }: Props) {
   const [lat, setLat] = useState<number | null>(initialLat ?? null);

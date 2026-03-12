@@ -146,3 +146,48 @@ export async function sendFCMToUser(
     return false;
   }
 }
+
+/**
+ * Envía una notificación FCM solo al rider con el uid dado (rol 'rider').
+ * El token se obtiene del documento fcm_tokens/{uid}_rider.
+ * No lanza; devuelve true si se envió, false si no hay token o error.
+ */
+export async function sendFCMToRider(
+  uid: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<boolean> {
+  if (!uid?.trim()) return false;
+  const db = getAdminFirestore();
+  const docRef = db.collection(FCM_TOKENS_COLLECTION).doc(`${uid.trim()}_rider`);
+  const snap = await docRef.get();
+  const token = snap.exists ? (snap.data()?.token as string) : null;
+  if (!token?.trim()) {
+    console.warn('[FCM] No token for rider', uid, '- fcm_tokens/', `${uid}_rider`);
+    return false;
+  }
+  const messaging = getAdminMessaging();
+  const dataPayload = data && typeof data === 'object'
+    ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
+    : {};
+  const fullData = { title, body, ...dataPayload };
+  try {
+    await messaging.send({
+      token: token.trim(),
+      data: fullData,
+    });
+    console.log('[FCM] Sent to rider', uid);
+    return true;
+  } catch (e) {
+    const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+    const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+    if (isUnregistered) {
+      await docRef.delete();
+      console.log('[FCM] Token eliminado para rider (inválido o no registrado):', docRef.id);
+    } else {
+      console.error('[FCM] sendFCMToRider failed for', uid, e);
+    }
+    return false;
+  }
+}

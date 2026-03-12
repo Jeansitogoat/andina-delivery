@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/api-auth';
 import type { PedidoCentral } from '@/lib/types';
 import { sendFCMToRole, sendFCMToRestaurantByLocalId } from '@/lib/fcm-send-server';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
+import { normalizeDataUrl } from '@/lib/validImageUrl';
 import { pedidoPostSchema } from '@/lib/schemas/pedido';
 
 const ESTADOS_ACTIVOS: string[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
@@ -320,6 +321,18 @@ export async function POST(request: Request) {
           ...(typeof i.note === 'string' ? { note: i.note } : {}),
         })),
       };
+    }
+    if (typeof bodyParsed.comprobanteBase64 === 'string' && bodyParsed.comprobanteBase64.trim()) {
+      const normalized = bodyParsed.comprobanteBase64.startsWith('data:')
+        ? normalizeDataUrl(bodyParsed.comprobanteBase64)
+        : bodyParsed.comprobanteBase64;
+      docData.comprobanteBase64 = normalized;
+      if (typeof bodyParsed.fileName === 'string') {
+        docData.comprobanteFileName = bodyParsed.fileName;
+      }
+      if (typeof bodyParsed.mimeType === 'string') {
+        docData.comprobanteMimeType = bodyParsed.mimeType;
+      }
     }
     await docRef.set(sanitizeForFirestore(docData));
 

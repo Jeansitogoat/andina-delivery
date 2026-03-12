@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
-import { sendFCMToRole, sendFCMToUser, type FCMRole } from '@/lib/fcm-send-server';
+import { sendFCMToRole, sendFCMToUser, sendFCMToRider, type FCMRole } from '@/lib/fcm-send-server';
 import { fcmSendPostSchema } from '@/lib/schemas/fcmSend';
 
 export async function POST(request: Request) {
@@ -31,6 +31,9 @@ export async function POST(request: Request) {
     let sent = 0;
     if (targetStr === 'user' && effectiveUid) {
       const ok = await sendFCMToUser(effectiveUid, title, bodyText, data);
+      sent = ok ? 1 : 0;
+    } else if (targetStr === 'rider' && effectiveUid) {
+      const ok = await sendFCMToRider(effectiveUid, title, bodyText, data);
       sent = ok ? 1 : 0;
     } else {
       sent = await sendFCMToRole(targetStr as FCMRole, title, bodyText, data);

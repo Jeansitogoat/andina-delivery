@@ -149,7 +149,7 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
                 type="text"
                 value={detalle}
                 onChange={(e) => setDetalle(e.target.value)}
-                placeholder="Ej. Calle Sucre 123, Sector La Cadena"
+                placeholder="Ej. Dirección completa de tu casa o trabajo"
                 className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-rojo-andino transition-colors"
               />
               <button

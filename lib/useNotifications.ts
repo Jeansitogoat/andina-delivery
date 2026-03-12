@@ -9,6 +9,7 @@ export type NotificationRole = 'central' | 'rider' | 'restaurant' | 'user';
 export type NotificationPermission = 'granted' | 'denied' | 'default';
 
 const OPTED_OUT_KEY = 'andina_notifications_opted_out';
+const TOKEN_KEY_PREFIX = 'andina_fcm_token_';
 
 function getOptedOut(): boolean {
   if (typeof window === 'undefined') return false;
@@ -26,6 +27,33 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const [optedOut, setOptedOut] = useState(false);
   const lastRegisteredTokenRef = useRef<string | null>(null);
 
+  const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${role}` : TOKEN_KEY_PREFIX;
+
+  const readStoredToken = useCallback((): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return localStorage.getItem(storageKey) || null;
+    } catch {
+      return null;
+    }
+  }, [storageKey]);
+
+  const writeStoredToken = useCallback(
+    (token: string | null) => {
+      if (typeof window === 'undefined') return;
+      try {
+        if (token) {
+          localStorage.setItem(storageKey, token);
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      } catch {
+        // silencioso en móvil / modo privado
+      }
+    },
+    [storageKey]
+  );
+
   useEffect(() => {
     setOptedOut(getOptedOut());
   }, []);
@@ -35,7 +63,6 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     try {
       const idToken = await getIdToken();
       if (!idToken) {
-        if (typeof window !== 'undefined') console.warn('[FCM] registerToken: sin sesión (getIdToken null)');
         if (!silent) setError('Sesión expirada. Recargá la página e intentá de nuevo.');
         return false;
       }
@@ -52,8 +79,8 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       });
       if (res.ok) {
         lastRegisteredTokenRef.current = fcmToken;
+        writeStoredToken(fcmToken);
         setError(null);
-        if (typeof window !== 'undefined') console.log('[FCM] Token enviado al servidor');
         return true;
       }
       const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -61,13 +88,14 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       if (!silent) setError(errMsg);
       if (typeof errMsg === 'string' && /unregistered|invalid|token|inválido/.test(errMsg.toLowerCase())) {
         lastRegisteredTokenRef.current = null;
+        writeStoredToken(null);
       }
       return false;
     } catch {
       if (!silent) setError('No se pudo registrar. Intentá de nuevo.');
       return false;
     }
-  }, [role, options?.localId]);
+  }, [role, options?.localId, writeStoredToken]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -92,7 +120,8 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     const syncToken = () => {
       getFCMToken().then((token) => {
         if (!token) return;
-        if (lastRegisteredTokenRef.current !== token) {
+        const stored = readStoredToken();
+        if (lastRegisteredTokenRef.current !== token || stored !== token) {
           lastRegisteredTokenRef.current = null;
           registerToken(token, true);
         }
@@ -104,7 +133,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     document.addEventListener('visibilitychange', onVisibility);
     syncToken();
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [permission, optedOut, registerToken]);
+  }, [permission, optedOut, registerToken, readStoredToken]);
 
   const requestPermission = useCallback(async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -123,7 +152,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       const result = await Notification.requestPermission();
       setPermission(result as NotificationPermission);
       if (result === 'denied') {
-        setError('Rechazaste las notificaciones. Podés activarlas después en la configuración del navegador.');
+        setError('Rechazaste las notificaciones. Puedes activarlas después en la configuración del navegador.');
         return;
       }
       if (result === 'granted') {

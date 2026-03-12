@@ -99,7 +99,19 @@ export default function PanelMaestroPage() {
   const [creandoUsuario, setCreandoUsuario] = useState(false);
   const [usuarioCreado, setUsuarioCreado] = useState<{ email: string; password: string; rol: string; localId?: string } | null>(null);
   const [editandoLocal, setEditandoLocal] = useState<Local | null>(null);
-  const [editLocalForm, setEditLocalForm] = useState({ name: '', address: '', telefono: '', time: '', email: '', password: '', logo: '', cover: '', lat: null as number | null, lng: null as number | null });
+  const [editLocalForm, setEditLocalForm] = useState({
+    name: '',
+    address: '',
+    telefono: '',
+    time: '',
+    email: '',
+    password: '',
+    logo: '',
+    cover: '',
+    lat: null as number | null,
+    lng: null as number | null,
+    isFeatured: false,
+  });
   const [guardandoLocal, setGuardandoLocal] = useState(false);
   const [borrandoId, setBorrandoId] = useState<string | null>(null);
   const [confirmarAccionLocal, setConfirmarAccionLocal] = useState<{
@@ -151,6 +163,7 @@ export default function PanelMaestroPage() {
   const bannerImageRef = useRef<HTMLInputElement>(null);
   const [carruselIntervalSeconds, setCarruselIntervalSeconds] = useState(4);
   const [carruselIntervalSaving, setCarruselIntervalSaving] = useState(false);
+  const [lastFcmSync, setLastFcmSync] = useState<Date | null>(null);
 
   const [nuevoLocalManual, setNuevoLocalManual] = useState({
     name: '',
@@ -212,6 +225,26 @@ export default function PanelMaestroPage() {
       });
     return () => { cancelled = true; };
   }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/fcm/last-sync')
+      .then((res) => (res.ok ? res.json() : { lastSync: null }))
+      .then((data: { lastSync: number | null }) => {
+        if (cancelled) return;
+        if (typeof data.lastSync === 'number') {
+          setLastFcmSync(new Date(data.lastSync));
+        } else {
+          setLastFcmSync(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLastFcmSync(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -659,6 +692,7 @@ export default function PanelMaestroPage() {
       cover: loc.cover ?? '',
       lat: typeof loc.lat === 'number' ? loc.lat : null,
       lng: typeof loc.lng === 'number' ? loc.lng : null,
+      isFeatured: Boolean((loc as { isFeatured?: boolean }).isFeatured ?? loc.destacado),
     });
   };
 
@@ -709,13 +743,23 @@ export default function PanelMaestroPage() {
           cover: editLocalForm.cover || undefined,
           lat: editLocalForm.lat != null ? editLocalForm.lat : undefined,
           lng: editLocalForm.lng != null ? editLocalForm.lng : undefined,
+          isFeatured: editLocalForm.isFeatured,
         }),
       });
       if (res.ok) {
         setLocales((prev) =>
           prev.map((l) =>
             l.id === editandoLocal.id
-              ? { ...l, name: editLocalForm.name.trim(), address: editLocalForm.address.trim() || undefined, telefono: editLocalForm.telefono.trim() || undefined, time: editLocalForm.time.trim() || l.time, logo: editLocalForm.logo || l.logo, cover: editLocalForm.cover || l.cover }
+              ? {
+                  ...l,
+                  name: editLocalForm.name.trim(),
+                  address: editLocalForm.address.trim() || undefined,
+                  telefono: editLocalForm.telefono.trim() || undefined,
+                  time: editLocalForm.time.trim() || l.time,
+                  logo: editLocalForm.logo || l.logo,
+                  cover: editLocalForm.cover || l.cover,
+                  isFeatured: editLocalForm.isFeatured,
+                }
               : l
           )
         );
@@ -1023,6 +1067,17 @@ export default function PanelMaestroPage() {
               </span>
             </div>
           </div>
+          {lastFcmSync && (
+            <p className="mt-3 text-[11px] text-gray-400">
+              Última sincronización de notificaciones:{' '}
+              {lastFcmSync.toLocaleString('es-EC', {
+                hour: '2-digit',
+                minute: '2-digit',
+                day: '2-digit',
+                month: '2-digit',
+              })}
+            </p>
+          )}
         </section>
 
         {toast && (
@@ -2277,6 +2332,23 @@ export default function PanelMaestroPage() {
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-rojo-andino"
                   placeholder="Ej: 20-30 min"
                 />
+              </div>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-xs font-bold text-gray-500 uppercase">Local destacado</span>
+                <button
+                  type="button"
+                  onClick={() => setEditLocalForm((f) => ({ ...f, isFeatured: !f.isFeatured }))}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors ${
+                    editLocalForm.isFeatured ? 'bg-amber-400 border-amber-400' : 'bg-gray-200 border-gray-200'
+                  }`}
+                  aria-pressed={editLocalForm.isFeatured}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      editLocalForm.isFeatured ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
               <div className="pt-2 border-t border-gray-100">
                 <p className="text-xs font-bold text-gray-500 uppercase mb-2">Logo y banner</p>

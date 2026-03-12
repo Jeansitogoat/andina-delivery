@@ -108,6 +108,7 @@ export async function PATCH(
     const categories = bodyData.categories;
     const lat = bodyData.lat;
     const lng = bodyData.lng;
+    const isFeatured = bodyData.isFeatured;
 
     const fromFirestore = await getLocalFromFirestore(id);
     if (!fromFirestore) {
@@ -127,6 +128,7 @@ export async function PATCH(
     if (categories !== undefined && Array.isArray(categories)) updates.categories = categories;
     if (lat !== undefined) updates.lat = lat;
     if (lng !== undefined) updates.lng = lng;
+    if (isFeatured !== undefined) (updates as any).isFeatured = Boolean(isFeatured);
     if (transferencia !== undefined) {
       updates.transferencia =
         transferencia === null

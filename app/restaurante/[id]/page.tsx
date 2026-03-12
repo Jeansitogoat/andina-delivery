@@ -223,8 +223,10 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 mb-3">
                   <span className="flex items-center gap-1 font-semibold text-gray-800">
                     <Star className="w-4 h-4 fill-dorado-oro text-dorado-oro" />
-                    {local.rating}
-                    <span className="font-normal text-gray-500">({local.reviews} opiniones)</span>
+                    {local.reviews > 0 ? local.rating.toFixed(1) : 'Nuevo'}
+                    <span className="font-normal text-gray-500">
+                      {local.reviews > 0 ? `(${local.reviews} opiniones)` : '(Sin opiniones aún)'}
+                    </span>
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-4 h-4 text-gray-400" />
@@ -409,7 +411,9 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
               <h2 className="font-bold text-lg text-gray-900 mb-3 flex items-center gap-2">
                 <Star className="w-5 h-5 fill-dorado-oro text-dorado-oro" />
                 Opiniones
-                <span className="text-sm font-normal text-gray-400">{local.rating} · {local.reviews} reseñas</span>
+                <span className="text-sm font-normal text-gray-400">
+                  {local.reviews > 0 ? `${local.rating.toFixed(1)} · ${local.reviews} reseñas` : 'Sin opiniones aún'}
+                </span>
               </h2>
               <div className="space-y-3">
                 {reviews.map((r, i) => (

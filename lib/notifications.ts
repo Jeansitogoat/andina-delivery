@@ -9,9 +9,11 @@ export interface SendNotificationParams {
   title: string;
   body: string;
   data?: Record<string, string>;
+  /** Opcional: uid específico cuando el target admite envíos directos (p. ej. rider, user). */
+  uid?: string;
 }
 
-export async function sendNotification({ target, title, body, data }: SendNotificationParams): Promise<void> {
+export async function sendNotification({ target, title, body, data, uid }: SendNotificationParams): Promise<void> {
   try {
     const { getIdToken } = await import('@/lib/authToken');
     const token = await getIdToken();
@@ -22,7 +24,7 @@ export async function sendNotification({ target, title, body, data }: SendNotifi
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ target, title, body, data: data ?? {} }),
+      body: JSON.stringify({ target, title, body, data: data ?? {}, ...(uid ? { uid } : {}) }),
     });
     if (!res.ok) {
       // API error; no molestar al usuario

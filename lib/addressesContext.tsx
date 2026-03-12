@@ -158,7 +158,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
         }
       },
       () => {},
-      { timeout: 10000, maximumAge: 300000, enableHighAccuracy: false }
+      { timeout: 10000, maximumAge: 300000, enableHighAccuracy: true }
     );
   }, []);
 

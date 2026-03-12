@@ -301,6 +301,7 @@ export default function PanelCentralPage() {
     }
     sendNotification({
       target: 'rider',
+      uid: riderId,
       title: 'Nueva carrera asignada',
       body: `${pedido?.restaurante} · ${pedido?.clienteNombre} · $` + (pedido?.total.toFixed(2) ?? '0.00'),
     });
