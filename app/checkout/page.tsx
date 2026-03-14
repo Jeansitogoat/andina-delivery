@@ -346,13 +346,11 @@ export default function CheckoutPage() {
     setIsOrdering(false);
     setOrderNum(firstOrderNum);
     setConfirmed(true);
-    if (payment === 'efectivo') clearCart();
-    if (payment === 'transferencia') {
-      setTransferenciaComprobante(local?.transferencia ?? null);
-      setPostStep('comprobante');
-    } else {
-      setPostStep('gracias');
+    // En este punto solo puede ser efectivo: el flujo de transferencia hace return antes.
+    if (payment === 'efectivo') {
+      clearCart();
     }
+    setPostStep('gracias');
     setOrderIdRedirect(firstOrderId);
     setConfirmedTotal(firstTotal);
     } catch (err) {
@@ -814,7 +812,31 @@ export default function CheckoutPage() {
     );
   }
 
-  if (!allLoaded || stopsData.length === 0) return null;
+  if (!allLoaded || stopsData.length === 0) {
+    return (
+      <main className="min-h-screen bg-gray-50 flex flex-col">
+        <header className="bg-white sticky top-0 z-10 shadow-sm border-b border-gray-100">
+          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors flex-shrink-0"
+              aria-label="Volver"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-700" />
+            </button>
+            <h1 className="font-bold text-lg text-gray-900">Detalle de entrega</h1>
+          </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center px-4 py-12">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-full border-4 border-rojo-andino border-t-transparent animate-spin" />
+            <p className="text-gray-500 text-sm">Cargando locales y menús…</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main

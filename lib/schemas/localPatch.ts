@@ -31,6 +31,8 @@ export const localPatchSchema = z.object({
   lat: z.number().optional(),
   lng: z.number().optional(),
   transferencia: transferenciaSchema.optional(),
+  // Flag opcional para marcar locales destacados (monetización)
+  isFeatured: z.boolean().optional(),
 });
 
 export type LocalPatchInput = z.infer<typeof localPatchSchema>;

@@ -25,6 +25,9 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# Generated from env at build time - do not commit credentials
+public/firebase-messaging-sw.js
+
 # vercel
 .vercel
 

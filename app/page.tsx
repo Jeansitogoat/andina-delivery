@@ -18,13 +18,15 @@ import {
   User,
   Store,
   Package,
+  RefreshCw,
+  WifiOff,
 } from 'lucide-react';
 import AddressSelector from '@/components/AddressSelector';
 import SkeletonLocales from '@/components/SkeletonLocales';
 import LocalLogo from '@/components/LocalLogo';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
-import { useLocales } from '@/lib/useLocales';
+import { useAndinaConfig } from '@/lib/AndinaContext';
 import { useAddresses } from '@/lib/addressesContext';
 import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import { getIdToken } from '@/lib/authToken';
@@ -53,8 +55,9 @@ export default function Home() {
   const [bannerIndex, setBannerIndex] = useState(0);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
   const [seguimientoOrderId, setSeguimientoOrderId] = useState<string | null>(null);
+  const [bannerErrors, setBannerErrors] = useState<Set<string>>(() => new Set());
 
-  const { locales: localesList, isLoading: loadingLocales } = useLocales(false);
+  const { localesLight: localesList, loading: loadingLocales, error: configError, refreshConfig } = useAndinaConfig();
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
   const { getTarifaEnvioPorDistancia, tarifaMinima } = useTarifasEnvio();
   const { isOpen: fullScreenModalOpen } = useFullScreenModal();
@@ -187,6 +190,9 @@ export default function Home() {
       }
     }
     list = list.sort((a, b) => {
+      const aFeat = Boolean((a as { isFeatured?: boolean }).isFeatured);
+      const bFeat = Boolean((b as { isFeatured?: boolean }).isFeatured);
+      if (aFeat !== bFeat) return aFeat ? -1 : 1;
       if (originLatLng) {
         const hasA = typeof a.lat === 'number' && typeof a.lng === 'number';
         const hasB = typeof b.lat === 'number' && typeof b.lng === 'number';
@@ -342,6 +348,7 @@ export default function Home() {
         >
           {banners.map((banner, i) => {
             const safeImageUrl = getSafeImageSrc(banner.imageUrl);
+            const showFallback = !safeImageUrl || bannerErrors.has(banner.id);
             return (
             <button
               key={banner.id}
@@ -355,18 +362,21 @@ export default function Home() {
                 i === bannerIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
             >
-              {safeImageUrl ? (
+              {showFallback ? (
+                <div className="absolute inset-0 bg-gray-200 flex items-center justify-center" aria-hidden>
+                  <Store className="w-12 h-12 text-gray-400" />
+                </div>
+              ) : (
                 <Image
-                  src={safeImageUrl}
+                  src={safeImageUrl!}
                   alt={banner.alt}
                   fill
                   className="object-cover"
                   sizes="100vw"
                   priority={i === 0}
                   unoptimized={banner.imageUrl.startsWith('http') || banner.imageUrl.startsWith('data:')}
+                  onError={() => setBannerErrors((prev) => new Set(prev).add(banner.id))}
                 />
-              ) : (
-                <div className="absolute inset-0 bg-gray-200 flex items-center justify-center" aria-hidden />
               )}
             </button>
           ); })}
@@ -388,13 +398,29 @@ export default function Home() {
 
         {/* Lista de locales */}
         <section>
+          {configError && localesList.length > 0 && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-amber-100 px-4 py-3 text-amber-900">
+              <div className="flex items-center gap-2">
+                <WifiOff className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm font-medium">Sin conexión – Mostrando datos guardados</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => refreshConfig()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-200/80 px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-200 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reintentar
+              </button>
+            </div>
+          )}
           <h2 className="text-lg font-bold text-gray-900 mb-1">Locales cerca de ti</h2>
           <p className="text-sm text-gray-500 mb-4">
             {originLatLng
               ? 'Entregas cerca de tu ubicación · Ordenado por distancia'
               : 'Selecciona tu ubicación o permite acceso a tu ubicación para ver locales cercanos'}
           </p>
-          {loadingLocales || navigatingTo ? (
+          {(loadingLocales && localesList.length === 0) || navigatingTo ? (
             <SkeletonLocales />
           ) : filteredLocales.length === 0 ? (
             <div className="py-12 text-center text-gray-500">
@@ -403,16 +429,8 @@ export default function Home() {
               <p className="text-sm mt-1">Prueba con otra búsqueda o categoría</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {filteredLocales
-                .slice()
-                .sort((a, b) => {
-                  const aFeatured = Boolean((a as { isFeatured?: boolean }).isFeatured);
-                  const bFeatured = Boolean((b as { isFeatured?: boolean }).isFeatured);
-                  if (aFeatured === bFeatured) return 0;
-                  return aFeatured ? -1 : 1;
-                })
-                .map((local) => {
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-fade-in">
+              {filteredLocales.map((local, index) => {
                 const estado = getEstadoAbierto(local);
                 const cerrado = !estado.abierto;
                 const badgeText = estado.motivo === 'ocupado' ? 'Ocupado' : 'Cerrado';
@@ -436,25 +454,26 @@ export default function Home() {
                 >
                   <div className="relative aspect-[3/2] bg-gray-100 flex items-center justify-center overflow-hidden">
                     {(() => {
-                      const safeLogo = getSafeImageSrc(local.logo);
+                      const safeLogo = getSafeImageSrc(local.logoUrl);
                       return safeLogo ? (
                         <LocalLogo
                           src={safeLogo}
                           alt={local.name}
                           fill
-                          className={`object-contain group-hover:scale-105 transition-transform duration-300 ${cerrado ? 'opacity-60' : ''}`}
+                          className={`object-contain group-hover:scale-105 transition-transform duration-300 transition-opacity duration-300 ${cerrado ? 'opacity-60' : ''}`}
                           sizes="(max-width: 768px) 50vw, 200px"
                           unoptimized={safeLogo.startsWith('data:')}
-                          iconClassName={`w-12 h-12 text-rojo-andino/40 ${cerrado ? 'opacity-60' : ''}`}
+                          iconClassName={`w-12 h-12 text-rojo-andino/40 transition-opacity duration-300 ${cerrado ? 'opacity-60' : ''}`}
+                          priority={index < 4}
                         />
                       ) : (
-                        <UtensilsCrossed className={`w-12 h-12 text-rojo-andino/40 group-hover:scale-110 transition-transform ${cerrado ? 'opacity-60' : ''}`} />
+                        <UtensilsCrossed className={`w-12 h-12 text-rojo-andino/40 group-hover:scale-110 transition-transform transition-opacity duration-300 ${cerrado ? 'opacity-60' : ''}`} />
                       );
                     })()}
                     {cerrado && (
                       <>
-                        <div className="absolute inset-0 bg-gray-900/40 z-[1]" aria-hidden />
-                        <span className="absolute inset-0 z-[2] flex items-center justify-center">
+                        <div className="absolute inset-0 bg-gray-900/40 z-[1] transition-opacity duration-300" aria-hidden />
+                        <span className="absolute inset-0 z-[2] flex items-center justify-center transition-opacity duration-300">
                           <span className="bg-gray-800 text-white font-bold text-sm px-4 py-2 rounded-xl shadow-lg">
                             {badgeText}
                           </span>

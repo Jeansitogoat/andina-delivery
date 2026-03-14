@@ -16,7 +16,7 @@ import PWAInstallBanner from '@/components/PWAInstallBanner';
 import NotificationPromptBanner from '@/components/NotificationPromptBanner';
 
 export const metadata: Metadata = {
-  title: 'Andina',
+  title: 'Andina Delivery - Piñas',
   description: 'Delivery oficial - Restaurantes, Market y Farmacias',
   manifest: '/manifest.json',
   icons: { icon: '/logo-andina.png', apple: '/logo-andina.png' },
@@ -41,7 +41,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Andina" />
+        <meta name="apple-mobile-web-app-title" content="Andina Delivery - Piñas" />
       </head>
       <body className="min-h-screen flex flex-col bg-gray-50">
         <SWRConfig value={{ revalidateOnFocus: false, dedupingInterval: 30000 }}>

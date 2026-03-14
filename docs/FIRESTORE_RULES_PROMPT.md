@@ -1,6 +1,6 @@
 # Prompt mejorado para generar Firestore Rules (Gemini)
 
-Este documento contiene el prompt completo e mejorado para generar las reglas de Firestore de Andina Express. Podés copiarlo y pegarlo en Gemini para obtener reglas listas para la consola de Firebase.
+Este documento contiene el prompt completo e mejorado para generar las reglas de Firestore de Andina Express. Puedes copiarlo y pegarlo en Gemini para obtener reglas listas para la consola de Firebase.
 
 ---
 

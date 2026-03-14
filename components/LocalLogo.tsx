@@ -13,6 +13,8 @@ interface LocalLogoProps {
   sizes?: string;
   unoptimized?: boolean;
   iconClassName?: string;
+  /** Prioridad LCP: carga antes que otras imágenes (primer banner, primeros 4 logos) */
+  priority?: boolean;
 }
 
 /** Logo de local con fallback a ícono si la imagen no existe o falla al cargar (evita ERR_INVALID_URL y 404). */
@@ -24,6 +26,7 @@ export default function LocalLogo({
   sizes,
   unoptimized,
   iconClassName = 'w-12 h-12 text-rojo-andino/40',
+  priority,
 }: LocalLogoProps) {
   const [error, setError] = useState(false);
   const safeSrc = getSafeImageSrc(src);
@@ -48,6 +51,7 @@ export default function LocalLogo({
       className={className}
       sizes={sizes}
       unoptimized={unoptimized}
+      priority={priority}
       onError={() => setError(true)}
     />
   );

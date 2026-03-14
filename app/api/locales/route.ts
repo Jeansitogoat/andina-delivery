@@ -60,12 +60,22 @@ export async function GET(request: Request) {
     headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
 
     if (light) {
-      // Respuesta ligera solo con info esencial para paneles/contexto.
+      // Respuesta ligera para Home y contexto: sin menús ni reviews.
       const localesLight = (data.locales as Local[]).map((loc) => ({
         id: loc.id,
         name: loc.name,
         logoUrl: loc.logo ?? '',
         estadoAbierto: loc.status !== 'suspended',
+        type: Array.isArray(loc.type) ? loc.type : ['Restaurantes'],
+        status: loc.status,
+        lat: typeof loc.lat === 'number' ? loc.lat : undefined,
+        lng: typeof loc.lng === 'number' ? loc.lng : undefined,
+        isFeatured: Boolean(loc.isFeatured ?? loc.destacado),
+        time: String(loc.time ?? '20-35 min'),
+        rating: Number(loc.rating ?? 0),
+        reviews: Number(loc.reviews ?? 0),
+        horarios: Array.isArray(loc.horarios) ? loc.horarios : undefined,
+        cerradoHasta: loc.cerradoHasta != null ? String(loc.cerradoHasta) : undefined,
       }));
       return NextResponse.json({ locales: localesLight }, { headers });
     }

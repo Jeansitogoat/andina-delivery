@@ -25,6 +25,7 @@ import { getFirebaseStorage, getFirestoreDb } from '@/lib/firebase/client';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { useToast } from '@/lib/ToastContext';
 
 type TabPerfil = 'historial' | 'direcciones' | 'cuenta';
 
@@ -62,6 +63,7 @@ export default function PerfilPage() {
   const { clearCart, replaceCartAndSave } = useCart();
   const { direcciones, updateDirecciones } = useAddresses();
   const { permission, requestPermission, reintentarRegistro, desactivar, loading: notifLoading, error: notifError, isSupported, optedOut } = useNotifications('user');
+  const { showToast } = useToast();
   const fotoRef = useRef<HTMLInputElement>(null);
 
   const [tab, setTab] = useState<TabPerfil>('historial');
@@ -191,7 +193,7 @@ export default function PerfilPage() {
         const auth = getFirebaseAuth();
         if (auth.currentUser) await updateProfile(auth.currentUser, { photoURL: url });
       })
-      .catch((err) => console.error('Error subiendo foto', err))
+      .catch(() => showToast({ type: 'error', message: 'No se pudo subir la foto. Revisa tu conexión e intenta de nuevo.' }))
       .finally(() => setSubiendoFoto(false));
   }
 
@@ -216,7 +218,7 @@ export default function PerfilPage() {
         }
       })
       .then(() => refreshUser?.())
-      .catch((err) => console.error('Error guardando perfil', err));
+      .catch(() => showToast({ type: 'error', message: 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.' }));
   }
 
   function cerrarSesion() {

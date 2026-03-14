@@ -29,6 +29,10 @@ export const pedidoPostSchema = z.object({
     localId: z.string().min(1, 'localId es requerido'),
     items: z.array(itemsCartItemSchema).min(1, 'Debe incluir al menos un ítem en el carrito'),
   }).optional(),
+  // Datos opcionales de comprobante de transferencia (checkout transferencia)
+  comprobanteBase64: z.string().optional(),
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
 });
 
 export type PedidoPostInput = z.infer<typeof pedidoPostSchema>;

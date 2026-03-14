@@ -542,7 +542,7 @@ export default function AuthPage() {
           </div>
           <h1 className="text-2xl font-black text-gray-900 mb-2">¡Registro exitoso!</h1>
           <p className="text-gray-600 mb-6">
-            Tu cuenta está lista. Ya podés pedir en restaurantes, market y farmacias de Piñas.
+            Tu cuenta está lista. Ya puedes pedir en restaurantes, market y farmacias de Piñas.
           </p>
           <button
             type="button"
@@ -631,7 +631,7 @@ export default function AuthPage() {
               <p className="text-xs font-bold text-blue-800 uppercase">Cliente (pedir delivery)</p>
             </div>
             <h1 className="text-xl font-black text-gray-900 mb-1">Crear cuenta</h1>
-            <p className="text-gray-500 text-sm mb-6">Completa tus datos. Podés agregar tu dirección de entrega después en la app (desde Perfil o al hacer tu primer pedido, con el mapa).</p>
+            <p className="text-gray-500 text-sm mb-6">Completa tus datos. Puedes agregar tu dirección de entrega después en la app (desde Perfil o al hacer tu primer pedido, con el mapa).</p>
 
             <form onSubmit={handleRegistro} className="space-y-4">
             <div>

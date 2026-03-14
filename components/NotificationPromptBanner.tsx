@@ -64,14 +64,10 @@ export default function NotificationPromptBanner() {
     lastRetryAt.current = now;
     let cancelled = false;
     (async () => {
-      if (typeof window !== 'undefined') console.log('[FCM] Reintento registro (usuario logueado)');
       const token = await getFCMTokenWithRetry();
       if (cancelled) return;
       if (token) {
-        if (typeof window !== 'undefined') console.log('[FCM] Token obtenido, enviando al servidor');
         await registerToken(token);
-      } else if (typeof window !== 'undefined') {
-        console.warn('[FCM] No se pudo obtener el token después de reintentos');
       }
     })();
     return () => {

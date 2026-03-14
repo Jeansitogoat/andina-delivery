@@ -609,7 +609,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               No recibir pedidos
             </h3>
             <p className="text-sm text-gray-500 mb-2 ml-10">
-              Si estás saturado o tenés un inconveniente, podés pausar los pedidos. Los clientes verán &quot;Ocupado&quot; y no podrán agregar al carrito.
+              Si estás saturado o tenés un inconveniente, puedes pausar los pedidos. Los clientes verán &quot;Ocupado&quot; y no podrán agregar al carrito.
             </p>
             {tienePendientesNocturnos && (
               <p className="text-xs font-semibold text-red-600 mb-2 ml-10">

@@ -263,7 +263,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     const auth = getFirebaseAuth();
     const user = auth.currentUser;
     if (!user?.email) {
-      setMensajePassword({ tipo: 'error', text: 'Solo podés cambiar la contraseña si iniciaste sesión con correo.' });
+      setMensajePassword({ tipo: 'error', text: 'Solo puedes cambiar la contraseña si iniciaste sesión con correo.' });
       return;
     }
     setCambiandoPassword(true);

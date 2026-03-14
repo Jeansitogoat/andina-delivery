@@ -41,7 +41,7 @@ export default function PrivacidadPage() {
             <section>
               <h2 className="text-gray-900 font-bold text-base mb-2">1. Responsable del tratamiento</h2>
               <p>
-                El responsable del tratamiento de los datos personales es Andina, operado por el socio de la Compañía Virgen de la Merced, con atención en Piñas, El Oro, Ecuador. Para ejercer tus derechos o consultas sobre privacidad podés contactarnos por los medios indicados en la Plataforma (por ejemplo, teléfono o correo de soporte).
+                El responsable del tratamiento de los datos personales es Andina, operado por el socio de la Compañía Virgen de la Merced, con atención en Piñas, El Oro, Ecuador. Para ejercer tus derechos o consultas sobre privacidad puedes contactarnos por los medios indicados en la Plataforma (por ejemplo, teléfono o correo de soporte).
               </p>
             </section>
 
@@ -66,7 +66,7 @@ export default function PrivacidadPage() {
             <section>
               <h2 className="text-gray-900 font-bold text-base mb-2">4. Base legal</h2>
               <p>
-                El tratamiento se basa en la ejecución del contrato de uso del servicio, el cumplimiento de obligaciones legales y, cuando corresponda, en tu consentimiento (por ejemplo, para comunicaciones comerciales). Podés retirar tu consentimiento en cualquier momento sin que afecte la licitud del tratamiento previo.
+                El tratamiento se basa en la ejecución del contrato de uso del servicio, el cumplimiento de obligaciones legales y, cuando corresponda, en tu consentimiento (por ejemplo, para comunicaciones comerciales). Pueds retirar tu consentimiento en cualquier momento sin que afecte la licitud del tratamiento previo.
               </p>
             </section>
 
@@ -97,14 +97,14 @@ export default function PrivacidadPage() {
                 <li>Oponerte a determinados tratamientos (por ejemplo, comunicaciones comerciales).</li>
               </ul>
               <p className="mt-3">
-                Para ejercer estos derechos, contactanos por los canales indicados en la Plataforma (correo, teléfono o formulario de contacto). También podés presentar una reclamación ante la autoridad de protección de datos competente.
+                Para ejercer estos derechos, contactanos por los canales indicados en la Plataforma (correo, teléfono o formulario de contacto). También puedes presentar una reclamación ante la autoridad de protección de datos competente.
               </p>
             </section>
 
             <section>
               <h2 className="text-gray-900 font-bold text-base mb-2">8. Cookies y tecnologías similares</h2>
               <p>
-                La Plataforma puede utilizar cookies y tecnologías similares para el correcto funcionamiento, la seguridad y la mejora de la experiencia de uso. Podés configurar tu navegador para rechazar o limitar cookies; ello puede afectar algunas funcionalidades del sitio.
+                La Plataforma puede utilizar cookies y tecnologías similares para el correcto funcionamiento, la seguridad y la mejora de la experiencia de uso. Puedes configurar tu navegador para rechazar o limitar cookies; ello puede afectar algunas funcionalidades del sitio.
               </p>
             </section>
 

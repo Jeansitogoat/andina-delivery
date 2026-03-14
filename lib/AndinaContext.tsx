@@ -12,7 +12,7 @@ import type {
   ConfigTarifas,
   BannerItemPublic,
   ConfigAllResponse,
-  LocaleLight,
+  LocaleLightHome,
 } from '@/lib/types/config';
 
 type AndinaConfigValue = {
@@ -23,7 +23,7 @@ type AndinaConfigValue = {
 
 type AndinaState = {
   config: AndinaConfigValue;
-  localesLight: LocaleLight[];
+  localesLight: LocaleLightHome[];
   loading: boolean;
   error: boolean;
   refreshConfig: () => Promise<void>;
@@ -40,9 +40,25 @@ const DEFAULT_CONFIG: AndinaConfigValue = {
 
 const AndinaContext = createContext<AndinaState | undefined>(undefined);
 
+const STORAGE_KEY = 'andina_locales_light_v1';
+
+function readStoredLocales(): LocaleLightHome[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const valid = parsed.every((x) => x && typeof (x as { id?: unknown }).id === 'string');
+    return valid ? (parsed as LocaleLightHome[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 async function fetchAndinaConfig(): Promise<{
   config: AndinaConfigValue;
-  localesLight: LocaleLight[];
+  localesLight: LocaleLightHome[];
 }> {
   const [configRes, localesRes] = await Promise.all([
     fetch('/api/config/all'),
@@ -61,18 +77,25 @@ async function fetchAndinaConfig(): Promise<{
     config = { tarifas, banners, intervalSeconds };
   }
 
-  let localesLight: LocaleLight[] = [];
+  let localesLight: LocaleLightHome[] = [];
   if (localesRes.ok) {
     const json = await localesRes.json();
     const raw = Array.isArray(json?.locales) ? json.locales : [];
-    localesLight = raw.map((loc: any) => ({
-      id: String(loc.id),
+    localesLight = raw.map((loc: Record<string, unknown>): LocaleLightHome => ({
+      id: String(loc.id ?? ''),
       name: String(loc.name ?? ''),
-      logoUrl: typeof loc.logoUrl === 'string' ? loc.logoUrl : typeof loc.logo === 'string' ? loc.logo : '',
-      estadoAbierto:
-        typeof loc.estadoAbierto === 'boolean'
-          ? loc.estadoAbierto
-          : loc.status !== 'suspended',
+      logoUrl: typeof loc.logoUrl === 'string' ? loc.logoUrl : typeof loc.logo === 'string' ? (loc.logo as string) : '',
+      estadoAbierto: typeof loc.estadoAbierto === 'boolean' ? loc.estadoAbierto : loc.status !== 'suspended',
+      type: Array.isArray(loc.type) ? (loc.type as string[]) : ['Restaurantes'],
+      status: loc.status === 'active' || loc.status === 'suspended' ? loc.status : undefined,
+      lat: typeof loc.lat === 'number' ? loc.lat : undefined,
+      lng: typeof loc.lng === 'number' ? loc.lng : undefined,
+      isFeatured: Boolean(loc.isFeatured),
+      time: String(loc.time ?? '20-35 min'),
+      rating: Number(loc.rating ?? 0),
+      reviews: Number(loc.reviews ?? 0),
+      horarios: Array.isArray(loc.horarios) ? (loc.horarios as LocaleLightHome['horarios']) : undefined,
+      cerradoHasta: loc.cerradoHasta != null ? String(loc.cerradoHasta) : undefined,
     }));
   }
 
@@ -81,17 +104,23 @@ async function fetchAndinaConfig(): Promise<{
 
 export function AndinaProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<AndinaConfigValue>(DEFAULT_CONFIG);
-  const [localesLight, setLocalesLight] = useState<LocaleLight[]>([]);
+  const [localesLight, setLocalesLight] = useState<LocaleLightHome[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const hasLocalesRef = React.useRef(0);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (hasLocalesRef.current === 0) setLoading(true);
     setError(false);
     try {
       const { config: cfg, localesLight: locs } = await fetchAndinaConfig();
       setConfig(cfg);
       setLocalesLight(locs);
+      try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(locs));
+      } catch {
+        /* storage lleno o privado */
+      }
       setLoading(false);
       setError(false);
     } catch {
@@ -101,9 +130,16 @@ export function AndinaProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Carga inicial
+    const stored = readStoredLocales();
+    if (stored.length > 0) {
+      hasLocalesRef.current = stored.length;
+      setLocalesLight(stored);
+      setLoading(false);
+    }
     load();
   }, [load]);
+
+  hasLocalesRef.current = localesLight.length;
 
   const value = useMemo<AndinaState>(
     () => ({

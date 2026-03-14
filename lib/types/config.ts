@@ -39,3 +39,17 @@ export interface LocaleLight {
   /** true si el local está operativo (no suspendido) */
   estadoAbierto: boolean;
 }
+
+/** LocaleLight extendido para la Home: permite filtros, orden por distancia y estado abierto real. */
+export interface LocaleLightHome extends LocaleLight {
+  type: string[];
+  status?: 'active' | 'suspended';
+  lat?: number;
+  lng?: number;
+  isFeatured?: boolean;
+  time: string;
+  rating: number;
+  reviews: number;
+  horarios?: import('@/lib/data').HorarioItem[];
+  cerradoHasta?: string;
+}

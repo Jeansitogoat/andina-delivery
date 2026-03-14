@@ -51,10 +51,13 @@ function getSiguienteDiaAbierto(
   return null;
 }
 
+/** Tipo mínimo para determinar estado abierto (Local, LocaleLightHome, etc.) */
+export type LocalParaEstadoAbierto = Pick<Local, 'status' | 'cerradoHasta' | 'horarios'>;
+
 /**
  * Dado un local y una fecha/hora (por defecto ahora), devuelve si está abierto y mensajes para la UI.
  */
-export function getEstadoAbierto(local: Local, now: Date = new Date()): EstadoAbierto {
+export function getEstadoAbierto(local: LocalParaEstadoAbierto, now: Date = new Date()): EstadoAbierto {
   if (local.status === 'suspended') {
     return {
       abierto: false,

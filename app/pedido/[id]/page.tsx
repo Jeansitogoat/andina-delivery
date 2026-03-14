@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useRef } from 'react';
+import { use, useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   CheckCircle2,
@@ -17,6 +17,7 @@ import {
   Star,
   Bell,
   XCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { getIdToken } from '@/lib/authToken';
@@ -128,6 +129,8 @@ export default function SeguimientoPedidoPage({
   }, [permission, isSupported, requestPermission]);
 
   /* ── estado desde API (tiempo real) ── */
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [estadoActual, setEstadoActual] = useState<string>('confirmado');
   const [copiado, setCopiado] = useState(false);
   const [mostrarRating, setMostrarRating] = useState(false);
@@ -168,61 +171,74 @@ export default function SeguimientoPedidoPage({
 
   const { showToast } = useToast();
 
+  const [retryTrigger, setRetryTrigger] = useState(0);
+
   /* Polling: estado del pedido desde API cada 6 s (incluye codigo, paymentMethod, paymentConfirmed). Requiere auth; 401/403 → redirigir a Home. */
-  useEffect(() => {
-    let cancelled = false;
-    const fetchEstado = async () => {
-      try {
-        const token = await getIdToken();
-        const headers: HeadersInit = {};
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const res = await fetch(`/api/pedidos/${id}`, { headers });
-        if (res.status === 401 || res.status === 403) {
-          if (!cancelled) router.replace('/');
-          return;
-        }
-        if (!res.ok || cancelled) return;
-        const data = await res.json() as {
-          estado?: string;
-          riderNombre?: string;
-          riderRating?: number;
-          codigoVerificacion?: string;
-          paymentMethod?: 'efectivo' | 'transferencia';
-          paymentConfirmed?: boolean;
-          deliveryType?: 'delivery' | 'pickup';
-          restaurante?: string;
-          restauranteDireccion?: string;
-        };
-        const isPickup = data.deliveryType === 'pickup';
-        const uiEstado = mapApiEstadoToUI(data.estado || 'confirmado', isPickup);
-        if (!cancelled) {
-          setEstadoActual(uiEstado);
-          if (data.deliveryType) setDeliveryType(data.deliveryType);
-          if (data.restaurante) setRestauranteNombre(data.restaurante);
-          if (data.restauranteDireccion) setRestauranteDireccion(data.restauranteDireccion);
-          if (data.riderNombre) setRiderNombre(data.riderNombre);
-          if (data.riderRating != null) setRiderRating(data.riderRating);
-          if (data.codigoVerificacion) setCodigoVerificacion(data.codigoVerificacion);
-          if (data.paymentMethod) setPaymentMethod(data.paymentMethod);
-          if (data.paymentConfirmed !== undefined) setPaymentConfirmed(data.paymentConfirmed);
-          if (uiEstado === 'en_camino') setTiempoRestante((t) => Math.max(0, t > 15 ? 15 : t));
-          if (uiEstado === 'entregado') {
-            setTiempoRestante(0);
-            setTimeout(() => setMostrarRating(true), 1200);
-          }
-        }
-      } catch {
-        // silencioso
+  const fetchEstado = useCallback(async (isFirstLoad: boolean) => {
+    if (isFirstLoad) {
+      setLoading(true);
+      setFetchError(null);
+    }
+    try {
+      const token = await getIdToken();
+      const headers: HeadersInit = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`/api/pedidos/${id}`, { headers });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/');
+        return;
       }
-    };
-    fetchEstado();
+      if (res.status === 404) {
+        setLoading(false);
+        setFetchError('No encontramos este pedido. Revisa el número e intenta de nuevo.');
+        return;
+      }
+      if (!res.ok) {
+        setLoading(false);
+        setFetchError('No pudimos cargar el pedido. Revisa tu conexión e intenta de nuevo.');
+        return;
+      }
+      const data = await res.json() as {
+        estado?: string;
+        riderNombre?: string;
+        riderRating?: number;
+        codigoVerificacion?: string;
+        paymentMethod?: 'efectivo' | 'transferencia';
+        paymentConfirmed?: boolean;
+        deliveryType?: 'delivery' | 'pickup';
+        restaurante?: string;
+        restauranteDireccion?: string;
+      };
+      const isPickup = data.deliveryType === 'pickup';
+      const uiEstado = mapApiEstadoToUI(data.estado || 'confirmado', isPickup);
+      setLoading(false);
+      setFetchError(null);
+      setEstadoActual(uiEstado);
+      if (data.deliveryType) setDeliveryType(data.deliveryType);
+      if (data.restaurante) setRestauranteNombre(data.restaurante);
+      if (data.restauranteDireccion) setRestauranteDireccion(data.restauranteDireccion);
+      if (data.riderNombre) setRiderNombre(data.riderNombre);
+      if (data.riderRating != null) setRiderRating(data.riderRating);
+      if (data.codigoVerificacion) setCodigoVerificacion(data.codigoVerificacion);
+      if (data.paymentMethod) setPaymentMethod(data.paymentMethod);
+      if (data.paymentConfirmed !== undefined) setPaymentConfirmed(data.paymentConfirmed);
+      if (uiEstado === 'en_camino') setTiempoRestante((t) => Math.max(0, t > 15 ? 15 : t));
+      if (uiEstado === 'entregado') {
+        setTiempoRestante(0);
+        setTimeout(() => setMostrarRating(true), 1200);
+      }
+    } catch {
+      setLoading(false);
+      setFetchError('No pudimos cargar el pedido. Revisa tu conexión e intenta de nuevo.');
+    }
+  }, [id, router]);
+
+  useEffect(() => {
+    fetchEstado(true);
     const interval = paymentMethod === 'transferencia' && !paymentConfirmed ? 3000 : 8000;
-    const t = setInterval(fetchEstado, interval);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [id, paymentMethod, paymentConfirmed, router]);
+    const t = setInterval(() => fetchEstado(false), interval);
+    return () => clearInterval(t);
+  }, [fetchEstado, paymentMethod, paymentConfirmed, retryTrigger]);
 
   /* cuenta regresiva cuando está en camino */
   useEffect(() => {
@@ -269,6 +285,43 @@ export default function SeguimientoPedidoPage({
         </div>
       </header>
 
+      {/* Loading state */}
+      {loading && (
+        <div className="max-w-lg mx-auto px-4 py-12 flex flex-col items-center justify-center gap-4">
+          <div className="w-12 h-12 rounded-full border-4 border-rojo-andino border-t-transparent animate-spin" />
+          <p className="text-gray-500 text-sm">Cargando seguimiento del pedido…</p>
+        </div>
+      )}
+
+      {/* Error state */}
+      {fetchError && !loading && (
+        <div className="max-w-lg mx-auto px-4 py-12 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+            <XCircle className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="font-bold text-lg text-gray-900 mb-2">No se pudo cargar</h2>
+          <p className="text-gray-600 text-sm text-center mb-6">{fetchError}</p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setRetryTrigger((v) => v + 1)}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-rojo-andino text-white font-semibold hover:bg-rojo-andino/90 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reintentar
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="px-5 py-3 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+            >
+              Ir al inicio
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!loading && !fetchError && (
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
 
         {permission === 'default' && estadoActual !== 'entregado' && !estadoCancelado && (
@@ -655,6 +708,7 @@ export default function SeguimientoPedidoPage({
         )}
 
       </div>
+      )}
 
       {/* Modal confirmar cancelación por cliente */}
       {showCancelModal && (
