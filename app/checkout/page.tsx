@@ -297,6 +297,9 @@ export default function CheckoutPage() {
             id: orderId,
             restaurante: stop.local?.name ?? '—',
             restauranteDireccion: stop.local?.address ?? '—',
+            ...(stop.local && typeof stop.local.lat === 'number' && typeof stop.local.lng === 'number'
+              ? { restauranteLat: stop.local.lat, restauranteLng: stop.local.lng }
+              : {}),
             clienteNombre,
             clienteDireccion: direccion,
             ...(deliveryType === 'delivery' && direccionEntregarLatLng
@@ -502,6 +505,9 @@ export default function CheckoutPage() {
             id: orderId,
             restaurante: stop.local?.name ?? '—',
             restauranteDireccion: stop.local?.address ?? '—',
+            ...(stop.local && typeof stop.local.lat === 'number' && typeof stop.local.lng === 'number'
+              ? { restauranteLat: stop.local.lat, restauranteLng: stop.local.lng }
+              : {}),
             clienteNombre,
             clienteDireccion: direccion,
             ...(deliveryType === 'delivery' && direccionEntregarLatLng

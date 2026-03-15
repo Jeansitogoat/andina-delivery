@@ -35,7 +35,7 @@ export default function CampoUbicacionConMapa({
   const [lat, setLat] = useState<number | null>(initialLat ?? null);
   const [lng, setLng] = useState<number | null>(initialLng ?? null);
   const [buscando, setBuscando] = useState(false);
-  const [mostrarMapa, setMostrarMapa] = useState(false);
+  const [mostrarMapa, setMostrarMapa] = useState(initialLat == null && initialLng == null);
 
   useEffect(() => {
     if (initialLat != null && initialLng != null) {
@@ -141,9 +141,10 @@ export default function CampoUbicacionConMapa({
         <button
           type="button"
           onClick={() => setMostrarMapa(true)}
-          className="text-xs text-rojo-andino font-semibold hover:underline"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-amber-200 bg-amber-50/80 text-amber-800 font-semibold text-sm hover:bg-amber-100 hover:border-amber-300 transition-colors"
         >
-          Mostrar mapa para ubicar
+          <MapPin className="w-4 h-4" />
+          Mostrar mapa para ubicar el pin exacto
         </button>
       )}
     </div>

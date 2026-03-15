@@ -16,6 +16,8 @@ export interface PedidoCentral {
   clienteId?: string | null;
   restaurante: string;
   restauranteDireccion: string;
+  restauranteLat?: number | null;
+  restauranteLng?: number | null;
   clienteNombre: string;
   clienteDireccion: string;
   clienteTelefono: string;
@@ -65,6 +67,8 @@ export interface CarreraRider {
   pedidoId: string;
   restaurante: string;
   restauranteDireccion: string;
+  restauranteLat?: number | null;
+  restauranteLng?: number | null;
   clienteNombre: string;
   clienteDireccion: string;
   clienteLat?: number | null;

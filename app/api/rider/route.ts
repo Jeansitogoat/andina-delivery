@@ -59,6 +59,8 @@ export async function GET(request: Request) {
         pedidoId: d.id,
         restaurante: (data.restaurante as string) || '—',
         restauranteDireccion: (data.restauranteDireccion as string) || '—',
+        restauranteLat: typeof data.restauranteLat === 'number' ? data.restauranteLat : null,
+        restauranteLng: typeof data.restauranteLng === 'number' ? data.restauranteLng : null,
         clienteNombre: (data.clienteNombre as string) || 'Cliente',
         clienteDireccion: (data.clienteDireccion as string) || '—',
         clienteLat: typeof data.clienteLat === 'number' ? data.clienteLat : null,

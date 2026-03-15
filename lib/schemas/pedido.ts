@@ -10,6 +10,8 @@ export const pedidoPostSchema = z.object({
   id: z.string().min(1, 'El id del pedido es requerido'),
   restaurante: z.string().min(1, 'El nombre del restaurante es requerido'),
   restauranteDireccion: z.string().default('—'),
+  restauranteLat: z.number().optional(),
+  restauranteLng: z.number().optional(),
   clienteNombre: z.string().min(1, 'El nombre del cliente es requerido'),
   clienteDireccion: z.string().min(1, 'La dirección del cliente es requerida'),
   clienteLat: z.number().optional(),

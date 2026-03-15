@@ -55,6 +55,8 @@ function docToCarrera(d: { id: string; data: () => Record<string, unknown> }): C
     pedidoId: d.id,
     restaurante: (data.restaurante as string) || '—',
     restauranteDireccion: (data.restauranteDireccion as string) || '—',
+    restauranteLat: typeof data.restauranteLat === 'number' ? data.restauranteLat : null,
+    restauranteLng: typeof data.restauranteLng === 'number' ? data.restauranteLng : null,
     clienteNombre: (data.clienteNombre as string) || 'Cliente',
     clienteDireccion: (data.clienteDireccion as string) || '—',
     clienteLat: typeof data.clienteLat === 'number' ? data.clienteLat : null,
@@ -83,6 +85,16 @@ function getClienteMapsUrl(c: { clienteLat?: number | null; clienteLng?: number 
     return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
   }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((c.clienteDireccion || '') + ', Piñas, Ecuador')}`;
+}
+
+/** URL de Google Maps para ir al local: coords si existen, fallback búsqueda por texto. */
+function getRestauranteMapsUrl(c: { restauranteLat?: number | null; restauranteLng?: number | null; restauranteDireccion: string }): string {
+  const lat = c.restauranteLat;
+  const lng = c.restauranteLng;
+  if (typeof lat === 'number' && typeof lng === 'number' && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((c.restauranteDireccion || '') + ', Piñas, Ecuador')}`;
 }
 
 const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg: string }> = {
@@ -862,15 +874,17 @@ export default function PanelRiderPage() {
                 <p className="text-xs font-semibold text-blue-500 mb-1">RECOGER EN</p>
                 <p className="font-bold text-gray-900">{carreraActiva.restaurante}</p>
                 <p className="text-sm text-gray-500 mt-0.5">{carreraActiva.restauranteDireccion}</p>
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(carreraActiva.restauranteDireccion + ', Piñas, Ecuador')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-blue-600"
-                >
-                  <Navigation className="w-3.5 h-3.5" />
-                  Abrir en Maps
-                </a>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <a
+                    href={getRestauranteMapsUrl(carreraActiva)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 bg-blue-100 hover:bg-blue-200 transition-colors"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    Ir al Local
+                  </a>
+                </div>
               </div>
 
               {/* cliente */}
@@ -883,10 +897,10 @@ export default function PanelRiderPage() {
                     href={getClienteMapsUrl(carreraActiva)}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 bg-blue-50"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
                   >
                     <Navigation className="w-3.5 h-3.5" />
-                    Abrir en Maps
+                    Ir al Cliente
                   </a>
                   {carreraActiva.clienteTelefono && (() => {
                     const phoneNorm = normalizePhoneEcuador(carreraActiva.clienteTelefono);

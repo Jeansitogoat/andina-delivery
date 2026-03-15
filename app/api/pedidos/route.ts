@@ -18,6 +18,8 @@ function docToPedidoCentral(d: DocumentSnapshot): PedidoCentral {
     id: d.id,
     restaurante: data.restaurante || '—',
     restauranteDireccion: data.restauranteDireccion || '—',
+    restauranteLat: typeof data.restauranteLat === 'number' && !Number.isNaN(data.restauranteLat) ? data.restauranteLat : null,
+    restauranteLng: typeof data.restauranteLng === 'number' && !Number.isNaN(data.restauranteLng) ? data.restauranteLng : null,
     clienteNombre: data.clienteNombre || 'Cliente',
     clienteDireccion: data.clienteDireccion || '—',
     clienteTelefono: data.clienteTelefono || '',
@@ -316,6 +318,27 @@ export async function POST(request: Request) {
         !Number.isNaN(bodyParsed.clienteLat) && !Number.isNaN(bodyParsed.clienteLng)) {
       docData.clienteLat = bodyParsed.clienteLat;
       docData.clienteLng = bodyParsed.clienteLng;
+    }
+    // restauranteLat/restauranteLng: body primero, fallback a datos del local
+    let restauranteLat: number | null = null;
+    let restauranteLng: number | null = null;
+    if (typeof bodyParsed.restauranteLat === 'number' && typeof bodyParsed.restauranteLng === 'number' &&
+        !Number.isNaN(bodyParsed.restauranteLat) && !Number.isNaN(bodyParsed.restauranteLng)) {
+      restauranteLat = bodyParsed.restauranteLat;
+      restauranteLng = bodyParsed.restauranteLng;
+    } else if (localId) {
+      const localSnap = await db.collection('locales').doc(localId).get();
+      const localData = localSnap.data();
+      const lat = typeof localData?.lat === 'number' && !Number.isNaN(localData.lat) ? localData.lat : null;
+      const lng = typeof localData?.lng === 'number' && !Number.isNaN(localData.lng) ? localData.lng : null;
+      if (lat != null && lng != null) {
+        restauranteLat = lat;
+        restauranteLng = lng;
+      }
+    }
+    if (restauranteLat != null && restauranteLng != null) {
+      docData.restauranteLat = restauranteLat;
+      docData.restauranteLng = restauranteLng;
     }
     if (bodyParsed.itemsCart && typeof bodyParsed.itemsCart === 'object' && bodyParsed.itemsCart.localId && Array.isArray(bodyParsed.itemsCart.items)) {
       docData.itemsCart = {
