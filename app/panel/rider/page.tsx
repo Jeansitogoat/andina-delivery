@@ -57,6 +57,8 @@ function docToCarrera(d: { id: string; data: () => Record<string, unknown> }): C
     restauranteDireccion: (data.restauranteDireccion as string) || '—',
     clienteNombre: (data.clienteNombre as string) || 'Cliente',
     clienteDireccion: (data.clienteDireccion as string) || '—',
+    clienteLat: typeof data.clienteLat === 'number' ? data.clienteLat : null,
+    clienteLng: typeof data.clienteLng === 'number' ? data.clienteLng : null,
     clienteTelefono: (data.clienteTelefono as string) || '',
     total: (data.total as number) || 0,
     propina: (data.propina as number) || 0,
@@ -71,6 +73,16 @@ function docToCarrera(d: { id: string; data: () => Record<string, unknown> }): C
     paymentMethod: (data.paymentMethod as 'efectivo' | 'transferencia') || undefined,
     costoEnvio: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost as number) ? (data.serviceCost as number) : undefined,
   };
+}
+
+/** URL de Google Maps para direccion del cliente: coords si existen, fallback texto. */
+function getClienteMapsUrl(c: { clienteLat?: number | null; clienteLng?: number | null; clienteDireccion: string }): string {
+  const lat = c.clienteLat;
+  const lng = c.clienteLng;
+  if (typeof lat === 'number' && typeof lng === 'number' && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((c.clienteDireccion || '') + ', Piñas, Ecuador')}`;
 }
 
 const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg: string }> = {
@@ -794,7 +806,7 @@ export default function PanelRiderPage() {
                     </div>
                     <p className="text-xs text-gray-500 truncate">{c.restaurante} → {c.clienteDireccion}</p>
                     <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((c.clienteDireccion || '') + ', Piñas, Ecuador')}`}
+                      href={getClienteMapsUrl(c)}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-blue-600"
@@ -831,10 +843,10 @@ export default function PanelRiderPage() {
       {carreraActiva && !mostrarVerificacion && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/50">
           <div
-            className="bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto"
+            className="bg-white rounded-t-3xl max-h-[85vh] overflow-hidden flex flex-col"
             style={{ animation: 'slideUp 0.3s ease forwards' }}
           >
-            <div className="sticky top-0 bg-white px-5 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-black text-gray-900">Detalle de carrera</h3>
               <button
                 type="button"
@@ -844,7 +856,7 @@ export default function PanelRiderPage() {
                 <X className="w-4 h-4 text-gray-600" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="overflow-y-auto flex-1 min-h-0 p-5 space-y-4">
               {/* restaurante */}
               <div className="bg-blue-50 rounded-2xl p-4">
                 <p className="text-xs font-semibold text-blue-500 mb-1">RECOGER EN</p>
@@ -868,7 +880,7 @@ export default function PanelRiderPage() {
                 <p className="text-sm text-gray-500 mt-0.5">{carreraActiva.clienteDireccion}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(carreraActiva.clienteDireccion + ', Piñas, Ecuador')}`}
+                    href={getClienteMapsUrl(carreraActiva)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 bg-blue-50"
@@ -994,7 +1006,7 @@ export default function PanelRiderPage() {
       {mostrarVerificacion && carreraActiva && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
           <div
-            className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl"
+            className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl overflow-hidden"
             style={{ animation: 'scaleIn 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards' }}
           >
             {codigoOk ? (
@@ -1155,7 +1167,7 @@ function TarjetaCarreraBatch({
               <p className="font-semibold text-sm text-gray-900">{leader.clienteNombre}</p>
               <p className="text-xs text-gray-500 truncate">{leader.clienteDireccion}</p>
               <a
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((leader.clienteDireccion || '') + ', Piñas, Ecuador')}`}
+                href={getClienteMapsUrl(leader)}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-blue-600"
@@ -1286,7 +1298,7 @@ function TarjetaCarrera({
               <p className="font-bold text-sm text-gray-900 leading-tight">{carrera.clienteNombre}</p>
               <p className="text-xs text-gray-500 truncate">{carrera.clienteDireccion}</p>
               <a
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((carrera.clienteDireccion || '') + ', Piñas, Ecuador')}`}
+                href={getClienteMapsUrl(carrera)}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-blue-600 hover:text-blue-700"

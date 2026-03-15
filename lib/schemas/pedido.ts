@@ -12,6 +12,8 @@ export const pedidoPostSchema = z.object({
   restauranteDireccion: z.string().default('—'),
   clienteNombre: z.string().min(1, 'El nombre del cliente es requerido'),
   clienteDireccion: z.string().min(1, 'La dirección del cliente es requerida'),
+  clienteLat: z.number().optional(),
+  clienteLng: z.number().optional(),
   clienteTelefono: z.string().default(''),
   items: z.array(z.string()).min(1, 'Debe incluir al menos un ítem'),
   total: z.number().positive('El total debe ser mayor que cero'),

@@ -61,6 +61,8 @@ export async function GET(request: Request) {
         restauranteDireccion: (data.restauranteDireccion as string) || '—',
         clienteNombre: (data.clienteNombre as string) || 'Cliente',
         clienteDireccion: (data.clienteDireccion as string) || '—',
+        clienteLat: typeof data.clienteLat === 'number' ? data.clienteLat : null,
+        clienteLng: typeof data.clienteLng === 'number' ? data.clienteLng : null,
         clienteTelefono: (data.clienteTelefono as string) || '',
         total: (data.total as number) || 0,
         propina: (data.propina as number) || 0,

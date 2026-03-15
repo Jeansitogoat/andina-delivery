@@ -312,6 +312,11 @@ export async function POST(request: Request) {
     if (typeof bodyParsed.serviceCost === 'number' && !Number.isNaN(bodyParsed.serviceCost)) {
       docData.serviceCost = bodyParsed.serviceCost;
     }
+    if (typeof bodyParsed.clienteLat === 'number' && typeof bodyParsed.clienteLng === 'number' &&
+        !Number.isNaN(bodyParsed.clienteLat) && !Number.isNaN(bodyParsed.clienteLng)) {
+      docData.clienteLat = bodyParsed.clienteLat;
+      docData.clienteLng = bodyParsed.clienteLng;
+    }
     if (bodyParsed.itemsCart && typeof bodyParsed.itemsCart === 'object' && bodyParsed.itemsCart.localId && Array.isArray(bodyParsed.itemsCart.items)) {
       docData.itemsCart = {
         localId: String(bodyParsed.itemsCart.localId),

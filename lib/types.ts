@@ -67,6 +67,8 @@ export interface CarreraRider {
   restauranteDireccion: string;
   clienteNombre: string;
   clienteDireccion: string;
+  clienteLat?: number | null;
+  clienteLng?: number | null;
   clienteTelefono: string;
   total: number;
   propina: number;

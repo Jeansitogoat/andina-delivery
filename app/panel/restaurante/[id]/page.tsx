@@ -1076,7 +1076,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
       />
       {cancelOrderId && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl overflow-hidden">
             <h2 className="font-black text-gray-900 text-lg mb-2">Cancelar pedido</h2>
             <p className="text-sm text-gray-600 mb-3">
               ¿Seguro que deseas cancelar este pedido? El cliente será notificado y no se asignará rider.
@@ -1118,7 +1118,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
       )}
       {eliminarOrderId && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl overflow-hidden">
             <h2 className="font-black text-gray-900 text-lg mb-2">Eliminar pedido</h2>
             <p className="text-sm text-gray-600 mb-4">
               ¿Eliminar este pedido de la base de datos? No se puede deshacer.

@@ -181,7 +181,8 @@ export default function CheckoutPage() {
   }, [hydrated, cart.stops.length, confirmed]);
 
   const necesitaDireccion = !isPickup && !direccionEntregar;
-  const puedePedir = allLoaded && user && !authLoading && !isOrdering;
+  const necesitaCoords = !isPickup && !direccionEntregarLatLng;
+  const puedePedir = allLoaded && user && !authLoading && !isOrdering && !necesitaDireccion && !necesitaCoords;
 
   /* Detectar "Tarifa ajustada por distancia" al cambiar dirección */
   useEffect(() => {
@@ -201,6 +202,10 @@ export default function CheckoutPage() {
     if (isOrdering || confirmed) return;
     setAuthError(null);
     if (necesitaDireccion) {
+      setShowModalUbicacion(true);
+      return;
+    }
+    if (necesitaCoords) {
       setShowModalUbicacion(true);
       return;
     }
@@ -294,6 +299,9 @@ export default function CheckoutPage() {
             restauranteDireccion: stop.local?.address ?? '—',
             clienteNombre,
             clienteDireccion: direccion,
+            ...(deliveryType === 'delivery' && direccionEntregarLatLng
+              ? { clienteLat: direccionEntregarLatLng.lat, clienteLng: direccionEntregarLatLng.lng }
+              : {}),
             clienteTelefono: clienteTelefono || '',
             items: stop.enrichedItems.map((i) => `${i.qty}× ${i.name}`),
             total: stopTotal,
@@ -496,6 +504,9 @@ export default function CheckoutPage() {
             restauranteDireccion: stop.local?.address ?? '—',
             clienteNombre,
             clienteDireccion: direccion,
+            ...(deliveryType === 'delivery' && direccionEntregarLatLng
+              ? { clienteLat: direccionEntregarLatLng.lat, clienteLng: direccionEntregarLatLng.lng }
+              : {}),
             clienteTelefono: clienteTelefono || '',
             items: stop.enrichedItems.map((i) => `${i.qty}× ${i.name}`),
             total: stopTotal,
@@ -1137,6 +1148,11 @@ export default function CheckoutPage() {
               Agrega una dirección de entrega para continuar.
             </p>
           )}
+          {necesitaCoords && (
+            <p className="text-amber-700 text-sm font-medium mb-3 text-center">
+              ¡Ayúdanos a encontrarte! Mueve el pin en el mapa exactamente sobre tu casa para que el repartidor llegue volando.
+            </p>
+          )}
           <LoadingButton
             type="button"
             onClick={handleOrder}
@@ -1155,12 +1171,21 @@ export default function CheckoutPage() {
 
       {showModalUbicacion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-fade-in text-center">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-fade-in text-center overflow-hidden">
             <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
               <MapPin className="w-7 h-7 text-amber-600" />
             </div>
-            <h3 className="font-bold text-lg text-gray-900 mb-2">Necesitamos tu ubicación</h3>
-            <p className="text-sm text-gray-600 mb-5">Para calcular el envío y entrega, agrega o selecciona una dirección.</p>
+            {necesitaCoords && !necesitaDireccion ? (
+              <>
+                <h3 className="font-bold text-lg text-gray-900 mb-2">¡Ayúdanos a encontrarte!</h3>
+                <p className="text-sm text-gray-600 mb-5">Mueve el pin en el mapa exactamente sobre tu casa para que el repartidor llegue volando.</p>
+              </>
+            ) : (
+              <>
+                <h3 className="font-bold text-lg text-gray-900 mb-2">Necesitamos tu ubicación</h3>
+                <p className="text-sm text-gray-600 mb-5">Para calcular el envío y entrega, agrega o selecciona una dirección.</p>
+              </>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"

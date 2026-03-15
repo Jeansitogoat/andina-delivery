@@ -312,12 +312,12 @@ export default function AuthPage() {
     setPaso('login');
   }
 
-  // Iniciar sesión: misma interfaz que fotos 3/4 (fondo dorado, logo, formulario integrado)
+  // Iniciar sesión: fondo dark premium (negros, amber-900, dorados oscuros)
   if (paso === 'login') {
     return (
       <main
         className="min-h-screen flex flex-col"
-        style={{ background: 'linear-gradient(160deg, #c9960d 0%, #a67a08 60%, #7a5606 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #0c0805 0%, #1a1008 20%, #2d1f0a 40%, #451a03 60%, #292019 80%, #0f0d0a 100%)' }}
       >
         <div className="flex justify-end p-4">
           <button
@@ -355,7 +355,7 @@ export default function AuthPage() {
                   value={login.correo}
                   onChange={(e) => setLogin((l) => ({ ...l, correo: e.target.value }))}
                   placeholder="tu@correo.com"
-                  className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                  className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
                   required
                 />
               </div>
@@ -365,7 +365,7 @@ export default function AuthPage() {
                   value={login.contraseña}
                   onChange={(e) => setLogin((l) => ({ ...l, contraseña: e.target.value }))}
                   placeholder="Tu contraseña"
-                  className="px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                  className="px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation w-full"
                   required
                 />
               </div>
@@ -385,7 +385,7 @@ export default function AuthPage() {
                 type="button"
                 onClick={() => handleGoogle()}
                 disabled={googleLoading}
-                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl bg-white border-2 border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition-colors disabled:opacity-70"
+                className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-white border-2 border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition-colors disabled:opacity-70 touch-manipulation"
               >
                 {googleLoading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -431,7 +431,7 @@ export default function AuthPage() {
     return (
       <main
         className="min-h-screen flex flex-col"
-        style={{ background: 'linear-gradient(160deg, #c9960d 0%, #a67a08 60%, #7a5606 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #0c0805 0%, #1a1008 20%, #2d1f0a 40%, #451a03 60%, #292019 80%, #0f0d0a 100%)' }}
       >
         <header className="p-4">
           <button
@@ -461,7 +461,7 @@ export default function AuthPage() {
                   value={registro.nombres}
                   onChange={(e) => setRegistro((r) => ({ ...r, nombres: e.target.value }))}
                   placeholder="Ej. Juan Pérez"
-                  className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                  className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
                   required
                 />
               </div>
@@ -472,7 +472,7 @@ export default function AuthPage() {
                   value={registro.correo}
                   onChange={(e) => setRegistro((r) => ({ ...r, correo: e.target.value }))}
                   placeholder="tu@correo.com"
-                  className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                  className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
                   required
                 />
               </div>
@@ -482,7 +482,7 @@ export default function AuthPage() {
                   value={registro.contraseña}
                   onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
                   placeholder="Mínimo 6 caracteres"
-                  className="px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                  className="px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation w-full"
                   required
                   minLength={6}
                 />
@@ -494,7 +494,7 @@ export default function AuthPage() {
                   onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
                   onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
                   placeholder="Repite tu contraseña"
-                  className={`px-4 py-3.5 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors ${
+                  className={`px-5 py-4 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors text-base touch-manipulation w-full ${
                     errorConfirmar ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-200 focus:border-dorado-oro focus:ring-dorado-oro/20'
                   }`}
                   required
@@ -534,7 +534,7 @@ export default function AuthPage() {
     return (
       <main
         className="min-h-screen flex flex-col items-center justify-center px-6"
-        style={{ background: 'linear-gradient(160deg, #c9960d 0%, #a67a08 60%, #7a5606 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #0c0805 0%, #1a1008 20%, #2d1f0a 40%, #451a03 60%, #292019 80%, #0f0d0a 100%)' }}
       >
         <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 text-center animate-fade-in">
           <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
@@ -565,7 +565,7 @@ export default function AuthPage() {
     return (
       <main
         className="min-h-screen flex flex-col items-center justify-center px-6"
-        style={{ background: 'linear-gradient(160deg, #c9960d 0%, #a67a08 60%, #7a5606 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #0c0805 0%, #1a1008 20%, #2d1f0a 40%, #451a03 60%, #292019 80%, #0f0d0a 100%)' }}
       >
         <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 text-center animate-fade-in">
           <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
@@ -608,12 +608,12 @@ export default function AuthPage() {
     );
   }
 
-  // Formulario de registro (mismo estilo: fondo dorado, card blanca)
+  // Formulario de registro (mismo estilo: fondo dark premium, card blanca)
   if (paso === 'registro') {
     return (
       <main
         className="min-h-screen flex flex-col"
-        style={{ background: 'linear-gradient(160deg, #c9960d 0%, #a67a08 60%, #7a5606 100%)' }}
+        style={{ background: 'linear-gradient(165deg, #0c0805 0%, #1a1008 20%, #2d1f0a 40%, #451a03 60%, #292019 80%, #0f0d0a 100%)' }}
       >
         <header className="p-4">
           <button
@@ -641,7 +641,7 @@ export default function AuthPage() {
                 value={registro.nombres}
                 onChange={(e) => setRegistro((r) => ({ ...r, nombres: e.target.value }))}
                 placeholder="Ej. Juan Pérez"
-                className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
                 required
               />
             </div>
@@ -652,7 +652,7 @@ export default function AuthPage() {
                 value={registro.correo}
                 onChange={(e) => setRegistro((r) => ({ ...r, correo: e.target.value }))}
                 placeholder="tu@correo.com"
-                className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
                 required
               />
             </div>
@@ -662,7 +662,7 @@ export default function AuthPage() {
                 value={registro.contraseña}
                 onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
                 placeholder="Mínimo 6 caracteres"
-                className="px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                className="px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation w-full"
                 required
                 minLength={6}
               />
@@ -674,7 +674,7 @@ export default function AuthPage() {
                 onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
                 onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
                 placeholder="Repite tu contraseña"
-              className={`px-4 py-3.5 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors ${
+              className={`px-5 py-4 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors text-base touch-manipulation w-full ${
                     errorConfirmar ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-200 focus:border-dorado-oro focus:ring-dorado-oro/20'
                   }`}
                 required
@@ -701,7 +701,7 @@ export default function AuthPage() {
                 value={registro.celular}
                 onChange={(e) => setRegistro((r) => ({ ...r, celular: e.target.value }))}
                 placeholder="09X XXX XXXX"
-                className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors"
+                className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
                 required
               />
             </div>

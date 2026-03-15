@@ -76,9 +76,9 @@ export default function ProductDetailSheet({
         aria-hidden
       />
 
-      {/* Sheet */}
+      {/* Sheet - overflow-hidden para recorte curvo de la imagen superior */}
       <div
-        className={`fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-[2rem] shadow-2xl transition-transform duration-300 ease-out max-h-[92vh] ${
+        className={`fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-[2rem] shadow-2xl transition-transform duration-300 ease-out max-h-[92vh] overflow-hidden ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ maxWidth: '600px', margin: '0 auto' }}
@@ -90,8 +90,8 @@ export default function ProductDetailSheet({
 
         {/* Scroll area */}
         <div className="overflow-y-auto flex-1">
-          {/* Imagen */}
-          <div className="relative w-full bg-gray-100" style={{ aspectRatio: '4/3' }}>
+          {/* Imagen - object-cover + overflow padre recorta a la curva del sheet */}
+          <div className="relative w-full bg-gray-100 overflow-hidden" style={{ aspectRatio: '4/3' }}>
             {getSafeImageSrc(item.image) ? (
               <Image
                 src={getSafeImageSrc(item.image)!}

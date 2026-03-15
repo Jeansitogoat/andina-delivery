@@ -80,17 +80,15 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50 p-4">
-      <div
-        className="bg-white w-full max-w-lg rounded-3xl max-h-[90vh] overflow-y-auto shadow-2xl animate-fade-in"
-      >
-        <div className="sticky top-0 bg-white px-4 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="bg-white w-full max-w-lg rounded-3xl max-h-[90vh] overflow-hidden shadow-2xl animate-fade-in flex flex-col">
+        <div className="flex-shrink-0 px-4 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-bold text-lg text-gray-900">Nueva ubicación</h2>
           <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-4">
           <p className="text-sm text-gray-500">
             Esta dirección y la referencia se mostrarán al rider para la entrega.
           </p>

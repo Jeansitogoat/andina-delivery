@@ -518,7 +518,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
             onClick={() => setDeletingItem(null)}
             aria-hidden
           />
-          <div className="relative bg-white rounded-2xl shadow-xl border border-gray-100 p-5 w-full max-w-sm">
+          <div className="relative bg-white rounded-2xl shadow-xl border border-gray-100 p-5 w-full max-w-sm overflow-hidden">
             <h3 className="font-bold text-gray-900 text-lg mb-2">Eliminar producto</h3>
             <p className="text-gray-600 text-sm mb-4">
               ¿Eliminar &quot;{deletingItem.name}&quot;? Esta acción no se puede deshacer.

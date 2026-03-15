@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { solicitudPostSchema } from '@/lib/schemas/solicitudPost';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 const SOLICITUDES_COLLECTION = 'solicitudes';
 
@@ -52,6 +53,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const { ok } = checkRateLimit(ip, 'solicitudes');
+    if (!ok) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Intenta en unos minutos.' },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const parse = solicitudPostSchema.safeParse(body);
     if (!parse.success) {
