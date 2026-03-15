@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { signInWithPopup, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, UserCircle, Bike, User, Mail, Lock, Phone } from 'lucide-react';
 import PasswordInput from '@/components/PasswordInput';
 import { useAuth } from '@/lib/useAuth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
@@ -401,25 +401,25 @@ export default function AuthPage() {
               </button>
             </div>
 
-            <p className="text-center text-gray-500 text-sm mt-5">
-              ¿No tienes cuenta?{' '}
+            <div className="mt-5 flex flex-col gap-3">
+              <p className="text-center text-gray-500 text-xs font-medium">¿No tienes cuenta?</p>
               <button
                 type="button"
                 onClick={() => { setErrorForm(''); setPaso('registro'); }}
-                className="text-rojo-andino font-bold hover:underline"
+                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-3xl border-2 border-rojo-andino text-rojo-andino font-bold bg-rojo-andino/5 hover:bg-rojo-andino/10 shadow-sm hover:shadow-md transition-colors transition-shadow touch-manipulation"
               >
+                <UserCircle className="w-5 h-5 flex-shrink-0" />
                 Regístrate como cliente
               </button>
-            </p>
-            <p className="text-center text-gray-500 text-xs mt-2">
               <button
                 type="button"
                 onClick={() => { setErrorForm(''); setPaso('registro-rider'); }}
-                className="text-gray-600 font-semibold hover:underline"
+                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-3xl border-2 border-gray-300 text-gray-600 font-semibold bg-gray-50 hover:bg-gray-100 shadow-sm hover:shadow-md transition-colors transition-shadow touch-manipulation"
               >
+                <Bike className="w-5 h-5 flex-shrink-0" />
                 Soy motorizado / rider – crear cuenta
               </button>
-            </p>
+            </div>
           </div>
         </div>
       </main>
@@ -455,52 +455,63 @@ export default function AuthPage() {
 
             <form onSubmit={handleRegistroRider} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Nombres</label>
-                <input
-                  type="text"
-                  value={registro.nombres}
-                  onChange={(e) => setRegistro((r) => ({ ...r, nombres: e.target.value }))}
-                  placeholder="Ej. Juan Pérez"
-                  className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
-                  required
-                />
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Nombres</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={registro.nombres}
+                    onChange={(e) => setRegistro((r) => ({ ...r, nombres: e.target.value }))}
+                    placeholder="Ej. Juan Pérez"
+                    className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation"
+                    required
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Correo electrónico</label>
-                <input
-                  type="email"
-                  value={registro.correo}
-                  onChange={(e) => setRegistro((r) => ({ ...r, correo: e.target.value }))}
-                  placeholder="tu@correo.com"
-                  className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
-                  required
-                />
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Correo electrónico</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <input
+                    type="email"
+                    value={registro.correo}
+                    onChange={(e) => setRegistro((r) => ({ ...r, correo: e.target.value }))}
+                    placeholder="tu@correo.com"
+                    className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation"
+                    required
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Contraseña</label>
-                <PasswordInput
-                  value={registro.contraseña}
-                  onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
-                  placeholder="Mínimo 6 caracteres"
-                  className="px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation w-full"
-                  required
-                  minLength={6}
-                />
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Contraseña</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <PasswordInput
+                    value={registro.contraseña}
+                    onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
+                    placeholder="Mínimo 6 caracteres"
+                    className="pl-12 pr-12 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation w-full"
+                    required
+                    minLength={6}
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Confirmar contraseña</label>
-                <PasswordInput
-                  value={registro.confirmarContraseña}
-                  onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
-                  onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
-                  placeholder="Repite tu contraseña"
-                  className={`px-5 py-4 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors text-base touch-manipulation w-full ${
-                    errorConfirmar ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-200 focus:border-dorado-oro focus:ring-dorado-oro/20'
-                  }`}
-                  required
-                />
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Confirmar contraseña</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <PasswordInput
+                    value={registro.confirmarContraseña}
+                    onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
+                    onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
+                    placeholder="Repite tu contraseña"
+                    className={`pl-12 pr-12 py-4 rounded-2xl border-2 focus:outline-none focus:ring-2 focus:shadow-sm transition-all text-base touch-manipulation w-full ${
+                      errorConfirmar ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-200 focus:border-dorado-oro focus:ring-dorado-oro/20'
+                    }`}
+                    required
+                  />
                 {errorConfirmar ? (
-                  <div className="space-y-1">
+                  <div className="space-y-1 mt-1">
                     <p className="text-xs text-red-500 font-medium">{errorConfirmar}</p>
                     {errorForm.includes('ya está registrado') && (
                       <button
@@ -513,6 +524,7 @@ export default function AuthPage() {
                     )}
                   </div>
                 ) : null}
+                </div>
               </div>
               <button
                 type="submit"
@@ -635,50 +647,61 @@ export default function AuthPage() {
 
             <form onSubmit={handleRegistro} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Nombres</label>
-              <input
-                type="text"
-                value={registro.nombres}
-                onChange={(e) => setRegistro((r) => ({ ...r, nombres: e.target.value }))}
-                placeholder="Ej. Juan Pérez"
-                className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
-                required
-              />
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Nombres</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                <input
+                  type="text"
+                  value={registro.nombres}
+                  onChange={(e) => setRegistro((r) => ({ ...r, nombres: e.target.value }))}
+                  placeholder="Ej. Juan Pérez"
+                  className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation"
+                  required
+                />
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Correo electrónico</label>
-              <input
-                type="email"
-                value={registro.correo}
-                onChange={(e) => setRegistro((r) => ({ ...r, correo: e.target.value }))}
-                placeholder="tu@correo.com"
-                className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
-                required
-              />
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Correo electrónico</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                <input
+                  type="email"
+                  value={registro.correo}
+                  onChange={(e) => setRegistro((r) => ({ ...r, correo: e.target.value }))}
+                  placeholder="tu@correo.com"
+                  className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation"
+                  required
+                />
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Contraseña</label>
-              <PasswordInput
-                value={registro.contraseña}
-                onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
-                placeholder="Mínimo 6 caracteres"
-                className="px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation w-full"
-                required
-                minLength={6}
-              />
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Contraseña</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                <PasswordInput
+                  value={registro.contraseña}
+                  onChange={(e) => setRegistro((r) => ({ ...r, contraseña: e.target.value }))}
+                  placeholder="Mínimo 6 caracteres"
+                  className="pl-12 pr-12 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation w-full"
+                  required
+                  minLength={6}
+                />
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Confirmar contraseña</label>
-              <PasswordInput
-                value={registro.confirmarContraseña}
-                onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
-                onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
-                placeholder="Repite tu contraseña"
-              className={`px-5 py-4 rounded-2xl border-2 focus:outline-none focus:ring-2 transition-colors text-base touch-manipulation w-full ${
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Confirmar contraseña</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                <PasswordInput
+                  value={registro.confirmarContraseña}
+                  onChange={(e) => setRegistro((r) => ({ ...r, confirmarContraseña: e.target.value }))}
+                  onBlur={() => contraseñasNoCoinciden && setErrorForm('')}
+                  placeholder="Repite tu contraseña"
+                  className={`pl-12 pr-12 py-4 rounded-2xl border-2 focus:outline-none focus:ring-2 focus:shadow-sm transition-all text-base touch-manipulation w-full ${
                     errorConfirmar ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-200 focus:border-dorado-oro focus:ring-dorado-oro/20'
                   }`}
-                required
-              />
+                  required
+                />
                 {errorConfirmar ? (
                   <div className="space-y-1 mt-1">
                     <p className="text-xs text-red-500 font-medium">{errorConfirmar}</p>
@@ -693,17 +716,21 @@ export default function AuthPage() {
                     )}
                   </div>
                 ) : null}
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Celular</label>
-              <input
-                type="tel"
-                value={registro.celular}
-                onChange={(e) => setRegistro((r) => ({ ...r, celular: e.target.value }))}
-                placeholder="09X XXX XXXX"
-                className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 transition-colors text-base touch-manipulation"
-                required
-              />
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Celular</label>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                <input
+                  type="tel"
+                  value={registro.celular}
+                  onChange={(e) => setRegistro((r) => ({ ...r, celular: e.target.value }))}
+                  placeholder="09X XXX XXXX"
+                  className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation"
+                  required
+                />
+              </div>
             </div>
             <button
               type="submit"
