@@ -16,6 +16,7 @@ import {
   Search,
   MessageCircle,
   ExternalLink,
+  UtensilsCrossed,
 } from 'lucide-react';
 import type { MenuItem } from '@/lib/data';
 import { useCart } from '@/lib/useCart';
@@ -24,6 +25,7 @@ import { useLocal } from '@/lib/useLocal';
 import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
+import { normalizePhoneForWhatsApp } from '@/lib/utils/phone';
 import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import ProductDetailSheet from '@/components/ProductDetailSheet';
 import SkeletonRestaurante from '@/components/SkeletonRestaurante';
@@ -134,6 +136,38 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
   const estado = getEstadoAbierto(local);
   const cerrado = !estado.abierto;
 
+  const reviewsSection = reviews.length > 0 ? (
+    <section>
+      <h2 className="font-bold text-lg text-gray-900 mb-3 flex items-center gap-2">
+        <Star className="w-5 h-5 fill-dorado-oro text-dorado-oro" />
+        Opiniones
+        <span className="text-sm font-normal text-gray-400">
+          {local.reviews > 0 ? `${local.rating.toFixed(1)} · ${local.reviews} reseñas` : 'Sin opiniones aún'}
+        </span>
+      </h2>
+      <div className="space-y-3">
+        {reviews.map((r, i) => (
+          <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-3">
+            <div className="w-10 h-10 rounded-full bg-rojo-andino/10 flex items-center justify-center flex-shrink-0">
+              <span className="font-black text-rojo-andino text-sm">{r.author[0]}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-semibold text-gray-900 text-sm">{r.author}</p>
+                <div className="flex">
+                  {Array.from({ length: 5 }).map((_, j) => (
+                    <Star key={j} className={`w-3 h-3 ${j < r.rating ? 'fill-dorado-oro text-dorado-oro' : 'text-gray-200 fill-gray-200'}`} />
+                  ))}
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 leading-relaxed">{r.comment}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  ) : null;
+
   return (
     <>
       <main className="min-h-screen bg-gray-50 pb-28">
@@ -183,7 +217,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
         </div>
 
         {/* === INFO DEL LOCAL === */}
-        <div className="bg-white shadow-sm">
+        <section className="bg-white shadow-sm">
           <div className="max-w-3xl mx-auto px-4 pt-0 pb-4">
             <div className="flex items-end gap-4 -mt-10 mb-3">
               {/* Logo */}
@@ -266,17 +300,20 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                 )}
               </div>
             )}
-            {local.telefono?.trim() && (
-              <a
-                href={`https://wa.me/${local.telefono.replace(/\D/g, '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 mt-2 text-sm font-medium text-green-600 hover:text-green-700"
-              >
-                <MessageCircle className="w-4 h-4" />
-                Contactar por WhatsApp
-              </a>
-            )}
+            {local.telefono?.trim() && (() => {
+              const waNumber = normalizePhoneForWhatsApp(local.telefono);
+              return waNumber ? (
+                <a
+                  href={`https://wa.me/${waNumber}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-2 text-sm font-medium text-green-600 hover:text-green-700"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Contactar por WhatsApp
+                </a>
+              ) : null;
+            })()}
 
             {/* Aviso de disponibilidad */}
             {cerrado && (
@@ -290,154 +327,130 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
             {estado.abierto && estado.cierraA && (
               <p className="mt-2 text-xs text-gray-500">{estado.cierraA}</p>
             )}
-          </div>
 
-          {/* Barra de búsqueda */}
-          <div className="max-w-3xl mx-auto px-4 pb-3">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="search"
-                placeholder="Buscar productos..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30 focus:border-rojo-andino focus:bg-white transition-colors"
-              />
-            </div>
-          </div>
-
-          {/* === TABS DE CATEGORÍAS === */}
-          <div
-            ref={tabsRef}
-            className="flex gap-0 overflow-x-auto scrollbar-hide border-t border-gray-100 sticky top-0 bg-white z-10 shadow-sm"
-          >
-            {tabs.map((cat) => {
-              const isActive = activeCategory === VER_TODO
-                ? (cat === VER_TODO ? !scrollHighlightCategory : scrollHighlightCategory === cat)
-                : activeCategory === cat;
-              return (
-                <button
-                  key={cat}
-                  data-tab={cat}
-                  type="button"
-                  onClick={() => selectTab(cat)}
-                  className={`flex-shrink-0 px-4 py-3.5 text-sm font-semibold transition-all relative whitespace-nowrap ${
-                    isActive ? 'text-rojo-andino' : 'text-gray-500 hover:text-gray-800'
-                  }`}
-                >
-                  {cat}
-                  {isActive && (
-                    <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-rojo-andino rounded-full" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* === MENÚ POR CATEGORÍAS === */}
-        <div className="max-w-3xl mx-auto px-4 py-4 space-y-6">
-          {activeCategory === VER_TODO ? (
-            categories.map((cat) => {
-              const items = filteredItems(cat);
-              if (items.length === 0) return null;
-              return (
-                <section
-                  key={cat}
-                  data-category={cat}
-                  ref={(el) => { sectionRefs.current[cat] = el; }}
-                >
-                  <h2 className="font-bold text-lg text-gray-900 mb-3">{cat}</h2>
-                  <div className="space-y-0 bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
-                    {items.map((item, idx) => {
-                      const inCart = stopForThisLocal
-                        ? (stopForThisLocal.items.find((c) => c.id === item.id)?.qty ?? 0)
-                        : 0;
-                      return (
-                        <ProductRow
-                          key={item.id}
-                          item={item}
-                          inCart={inCart}
-                          isLast={idx === items.length - 1}
-                          cerrado={cerrado}
-                          onOpen={() => setSelectedItem(item)}
-                          onAdd={() => addItem(id, item.id)}
-                          onRemove={() => removeItem(item.id)}
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })
-          ) : (
-            (() => {
-              const items = filteredItems(activeCategory);
-              if (items.length === 0) {
-                return (
-                  <p className="text-gray-500 text-center py-8">No hay productos en esta categoría.</p>
-                );
-              }
-              return (
-                <section>
-                  <h2 className="font-bold text-lg text-gray-900 mb-3">{activeCategory}</h2>
-                  <div className="space-y-0 bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
-                    {items.map((item, idx) => {
-                      const inCart = stopForThisLocal
-                        ? (stopForThisLocal.items.find((c) => c.id === item.id)?.qty ?? 0)
-                        : 0;
-                      return (
-                        <ProductRow
-                          key={item.id}
-                          item={item}
-                          inCart={inCart}
-                          isLast={idx === items.length - 1}
-                          cerrado={cerrado}
-                          onOpen={() => setSelectedItem(item)}
-                          onAdd={() => addItem(id, item.id)}
-                          onRemove={() => removeItem(item.id)}
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })()
-          )}
-
-          {/* Reseñas */}
-          {reviews.length > 0 && (
-            <section>
-              <h2 className="font-bold text-lg text-gray-900 mb-3 flex items-center gap-2">
-                <Star className="w-5 h-5 fill-dorado-oro text-dorado-oro" />
-                Opiniones
-                <span className="text-sm font-normal text-gray-400">
-                  {local.reviews > 0 ? `${local.rating.toFixed(1)} · ${local.reviews} reseñas` : 'Sin opiniones aún'}
-                </span>
-              </h2>
-              <div className="space-y-3">
-                {reviews.map((r, i) => (
-                  <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-3">
-                    <div className="w-10 h-10 rounded-full bg-rojo-andino/10 flex items-center justify-center flex-shrink-0">
-                      <span className="font-black text-rojo-andino text-sm">{r.author[0]}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="font-semibold text-gray-900 text-sm">{r.author}</p>
-                        <div className="flex">
-                          {Array.from({ length: 5 }).map((_, j) => (
-                            <Star key={j} className={`w-3 h-3 ${j < r.rating ? 'fill-dorado-oro text-dorado-oro' : 'text-gray-200 fill-gray-200'}`} />
-                          ))}
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-600 leading-relaxed">{r.comment}</p>
-                    </div>
-                  </div>
-                ))}
+          {allItems.length === 0 && (
+            <div className="max-w-3xl mx-auto px-4 py-8">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 flex flex-col items-center justify-center text-center">
+                <UtensilsCrossed className="w-14 h-14 text-gray-300 mb-4" />
+                <p className="text-gray-600 font-medium">Este negocio cargará su menú pronto</p>
               </div>
-            </section>
+            </div>
           )}
-        </div>
+          {allItems.length > 0 && (
+            <>
+              <div className="max-w-3xl mx-auto px-4 pb-3">
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="search"
+                    placeholder="Buscar productos..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30 focus:border-rojo-andino focus:bg-white transition-colors"
+                  />
+                </div>
+              </div>
+              <div
+                ref={tabsRef}
+                className="flex gap-0 overflow-x-auto scrollbar-hide border-t border-gray-100 sticky top-0 bg-white z-10 shadow-sm"
+              >
+                {tabs.map((cat) => {
+                  const isActive = activeCategory === VER_TODO
+                    ? (cat === VER_TODO ? !scrollHighlightCategory : scrollHighlightCategory === cat)
+                    : activeCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      data-tab={cat}
+                      type="button"
+                      onClick={() => selectTab(cat)}
+                      className={`flex-shrink-0 px-4 py-3.5 text-sm font-semibold transition-all relative whitespace-nowrap ${
+                        isActive ? 'text-rojo-andino' : 'text-gray-500 hover:text-gray-800'
+                      }`}
+                    >
+                      {cat}
+                      {isActive && (
+                        <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-rojo-andino rounded-full" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="max-w-3xl mx-auto px-4 py-4 space-y-6">
+                {activeCategory === VER_TODO ? (
+                  categories.map((cat) => {
+                    const items = filteredItems(cat);
+                    if (items.length === 0) return null;
+                    return (
+                      <section
+                        key={cat}
+                        data-category={cat}
+                        ref={(el) => { sectionRefs.current[cat] = el; }}
+                      >
+                        <h2 className="font-bold text-lg text-gray-900 mb-3">{cat}</h2>
+                        <div className="space-y-0 bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+                          {items.map((item, idx) => {
+                            const inCart = stopForThisLocal
+                              ? (stopForThisLocal.items.find((c) => c.id === item.id)?.qty ?? 0)
+                              : 0;
+                            return (
+                              <ProductRow
+                                key={item.id}
+                                item={item}
+                                inCart={inCart}
+                                isLast={idx === items.length - 1}
+                                cerrado={cerrado}
+                                onOpen={() => setSelectedItem(item)}
+                                onAdd={() => addItem(id, item.id)}
+                                onRemove={() => removeItem(item.id)}
+                              />
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })
+                ) : (
+                  (() => {
+                    const items = filteredItems(activeCategory);
+                    if (items.length === 0) {
+                      return (
+                        <p className="text-gray-500 text-center py-8">No hay productos en esta categoría.</p>
+                      );
+                    }
+                    return (
+                      <section>
+                        <h2 className="font-bold text-lg text-gray-900 mb-3">{activeCategory}</h2>
+                        <div className="space-y-0 bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+                          {items.map((item, idx) => {
+                            const inCart = stopForThisLocal
+                              ? (stopForThisLocal.items.find((c) => c.id === item.id)?.qty ?? 0)
+                              : 0;
+                            return (
+                              <ProductRow
+                                key={item.id}
+                                item={item}
+                                inCart={inCart}
+                                isLast={idx === items.length - 1}
+                                cerrado={cerrado}
+                                onOpen={() => setSelectedItem(item)}
+                                onAdd={() => addItem(id, item.id)}
+                                onRemove={() => removeItem(item.id)}
+                              />
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })()
+                )}
+                      </div>
+                </>
+          )}
+
+          {reviewsSection}
+          </div>
+        </section>
       </main>
 
       {/* === BARRA FLOTANTE CARRITO (oculta cuando modal Nueva ubicación está abierto) === */}

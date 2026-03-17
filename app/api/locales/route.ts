@@ -150,15 +150,7 @@ export async function POST(request: Request) {
       commissionStartDate,
     };
 
-    const menuInicial: MenuItem[] = [
-      {
-        id: `${localId}-1`,
-        name: 'Menú (próximamente)',
-        price: 0,
-        description: 'El negocio cargará su menú desde el panel.',
-        category: 'Más pedidos',
-      },
-    ];
+    const menuInicial: MenuItem[] = [];
 
     await setLocalInFirestore(localId, newLocal, menuInicial);
 

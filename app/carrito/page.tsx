@@ -14,11 +14,23 @@ import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
 
+type EnrichedCartItem = {
+  id: string;
+  name: string;
+  price: number;
+  image?: string;
+  qty: number;
+  note?: string;
+  variationName?: string;
+  variationPrice?: number;
+  complementSelections?: Record<string, string>;
+};
+
 type StopData = {
   localId: string;
   local: Local | null;
   menu: MenuItem[];
-  enrichedItems: Array<{ id: string; name: string; price: number; image?: string; qty: number; note?: string }>;
+  enrichedItems: EnrichedCartItem[];
   subtotal: number;
 };
 
@@ -83,9 +95,18 @@ export default function CarritoPage() {
           .map((c) => {
             const item = menu.find((i) => i.id === c.id);
             if (!item) return null;
-            return { ...item, qty: c.qty, note: c.note };
+            const unitPrice = typeof c.variationPrice === 'number' && !Number.isNaN(c.variationPrice) ? c.variationPrice : item.price;
+            return {
+              ...item,
+              qty: c.qty,
+              note: c.note,
+              price: unitPrice,
+              variationName: c.variationName,
+              variationPrice: c.variationPrice,
+              complementSelections: c.complementSelections,
+            } as EnrichedCartItem;
           })
-          .filter(Boolean) as StopData['enrichedItems'];
+          .filter(Boolean) as EnrichedCartItem[];
         const subtotal = enrichedItems.reduce((s, i) => s + i.price * i.qty, 0);
         return { localId: stop.localId, local, menu, enrichedItems, subtotal };
       })
@@ -234,15 +255,26 @@ export default function CarritoPage() {
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="divide-y divide-gray-50">
-                {stop.enrichedItems.map((item) => (
-                  <div key={`${stop.localId}-${item.id}`} className="px-4 py-4 flex items-center gap-3">
+                {stop.enrichedItems.map((item) => {
+                  const compText = item.complementSelections && Object.keys(item.complementSelections).length > 0
+                    ? Object.values(item.complementSelections).join(', ')
+                    : '';
+                  const displayLabel = [item.name, item.variationName ? `(${item.variationName})` : '', compText ? ` · ${compText}` : ''].filter(Boolean).join(' ');
+                  const options = (item.variationName || item.complementSelections) ? {
+                    variationName: item.variationName,
+                    variationPrice: item.variationPrice,
+                    complementSelections: item.complementSelections,
+                  } : undefined;
+                  const lineKey = `${stop.localId}-${item.id}-${item.variationName ?? ''}-${JSON.stringify(item.complementSelections ?? {})}`;
+                  return (
+                  <div key={lineKey} className="px-4 py-4 flex items-center gap-3">
                     {getSafeImageSrc(item.image) && (
                       <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                         <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes="56px" unoptimized={item.image?.startsWith('data:')} />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{item.name}</p>
+                      <p className="font-semibold text-gray-900 text-sm truncate">{displayLabel}</p>
                       {item.note && (
                         <p className="text-xs text-gray-400 mt-0.5 italic truncate">{item.note}</p>
                       )}
@@ -253,7 +285,7 @@ export default function CarritoPage() {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <button
                         type="button"
-                        onClick={() => removeItem(item.id, stop.localId)}
+                        onClick={() => removeItem(item.id, stop.localId, options)}
                         className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors active:scale-90"
                       >
                         {item.qty === 1 ? (
@@ -265,14 +297,15 @@ export default function CarritoPage() {
                       <span className="font-black text-gray-900 text-base w-5 text-center">{item.qty}</span>
                       <button
                         type="button"
-                        onClick={() => addItem(stop.localId, item.id)}
+                        onClick={() => addItem(stop.localId, item.id, item.note, options)}
                         className="w-8 h-8 rounded-xl bg-rojo-andino hover:bg-rojo-andino/90 flex items-center justify-center transition-colors active:scale-90"
                       >
                         <Plus className="w-3.5 h-3.5 text-white" />
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, ShoppingBag, X, Save, CheckCircle2, Upload, ChevronUp, ChevronDown } from 'lucide-react';
 import NavPanel from '@/components/panel/NavPanel';
-import type { MenuItem } from '@/lib/data';
+import type { MenuItem, MenuItemVariation, MenuItemComplementGroup } from '@/lib/data';
 import { getIdToken } from '@/lib/authToken';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl } from '@/lib/validImageUrl';
@@ -20,6 +20,10 @@ function fileToBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+const MAX_VARIACIONES = 10;
+const MAX_GROUPS_COMPLEMENTOS = 5;
+const MAX_OPCIONES_PER_GROUP = 10;
 
 function MenuForm({
   editing,
@@ -37,6 +41,14 @@ function MenuForm({
   const [category, setCategory] = useState(editing?.category ?? categories[0] ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [image, setImage] = useState<string | null>(editing?.image ?? null);
+  const [tieneVariaciones, setTieneVariaciones] = useState(!!editing?.tieneVariaciones);
+  const [variaciones, setVariaciones] = useState<MenuItemVariation[]>(
+    editing?.variaciones?.length ? [...editing.variaciones] : [{ name: '', price: 0 }]
+  );
+  const [tieneComplementos, setTieneComplementos] = useState(!!editing?.tieneComplementos);
+  const [complementos, setComplementos] = useState<MenuItemComplementGroup[]>(
+    editing?.complementos?.length ? editing.complementos.map((g) => ({ groupLabel: g.groupLabel, options: [...g.options] })) : [{ groupLabel: '', options: [''] }]
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -45,6 +57,12 @@ function MenuForm({
     setCategory(editing?.category ?? categories[0] ?? '');
     setDescription(editing?.description ?? '');
     setImage(editing?.image ?? null);
+    setTieneVariaciones(!!editing?.tieneVariaciones);
+    setVariaciones(editing?.variaciones?.length ? [...editing.variaciones] : [{ name: '', price: 0 }]);
+    setTieneComplementos(!!editing?.tieneComplementos);
+    setComplementos(
+      editing?.complementos?.length ? editing.complementos.map((g) => ({ groupLabel: g.groupLabel, options: [...g.options] })) : [{ groupLabel: '', options: [''] }]
+    );
   }, [editing, categories]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -64,12 +82,41 @@ function MenuForm({
     e.preventDefault();
     const nameTrim = name.trim();
     const priceNum = parseFloat(price);
-    if (nameTrim && !isNaN(priceNum)) {
-      const imagePayload = image
-        ? (image.startsWith('data:') ? normalizeDataUrl(image) : image)
-        : undefined;
-      onSave({ name: nameTrim, price: priceNum, category, description: description.trim() || undefined, image: imagePayload });
+    if (!nameTrim || isNaN(priceNum)) return;
+    if (tieneVariaciones) {
+      const valid = variaciones.filter((v) => v.name.trim() && !Number.isNaN(v.price));
+      if (valid.length === 0) return;
     }
+    if (tieneComplementos) {
+      const valid = complementos.filter((g) => g.groupLabel.trim() && g.options.some((o) => o.trim()));
+      if (valid.length === 0) return;
+    }
+    const imagePayload = image ? (image.startsWith('data:') ? normalizeDataUrl(image) : image) : undefined;
+    const payload: Partial<MenuItem> & { name: string; price: number; category: string } = {
+      name: nameTrim,
+      price: priceNum,
+      category,
+      description: description.trim() || undefined,
+      image: imagePayload,
+    };
+    if (tieneVariaciones) {
+      payload.tieneVariaciones = true;
+      payload.variaciones = variaciones.filter((v) => v.name.trim() && !Number.isNaN(v.price));
+    } else {
+      payload.tieneVariaciones = false;
+      payload.variaciones = undefined;
+    }
+    if (tieneComplementos) {
+      payload.tieneComplementos = true;
+      payload.complementos = complementos
+        .filter((g) => g.groupLabel.trim())
+        .map((g) => ({ groupLabel: g.groupLabel.trim(), options: g.options.map((o) => o.trim()).filter(Boolean) }))
+        .filter((g) => g.options.length > 0);
+    } else {
+      payload.tieneComplementos = false;
+      payload.complementos = undefined;
+    }
+    onSave(payload);
   }
 
   return (
@@ -155,6 +202,162 @@ function MenuForm({
           <option key={c} value={c}>{c}</option>
         ))}
       </select>
+
+      {/* Switch: Habilitar Variaciones */}
+      <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 px-4 py-3">
+        <span className="text-sm font-medium text-gray-700">Habilitar Variaciones</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={tieneVariaciones}
+          onClick={() => setTieneVariaciones((v) => !v)}
+          className={`relative h-6 w-10 rounded-full transition-colors ${tieneVariaciones ? 'bg-rojo-andino' : 'bg-gray-300'}`}
+        >
+          <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${tieneVariaciones ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
+      </div>
+      {tieneVariaciones && (
+        <div className="rounded-3xl overflow-hidden shadow-xl border border-gray-100 bg-white p-4 space-y-3">
+          <p className="text-xs text-gray-500 font-medium">Ej. Media / Entera con precios distintos</p>
+          {variaciones.map((v, idx) => (
+            <div key={idx} className="flex gap-2 items-center">
+              <input
+                type="text"
+                placeholder="Nombre (ej. Media)"
+                value={v.name}
+                onChange={(e) =>
+                  setVariaciones((prev) => prev.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))
+                }
+                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+              />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Precio"
+                value={v.price || ''}
+                onChange={(e) =>
+                  setVariaciones((prev) => prev.map((x, i) => (i === idx ? { ...x, price: parseFloat(e.target.value) || 0 } : x)))
+                }
+                className="w-24 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+              />
+              <button
+                type="button"
+                onClick={() => setVariaciones((prev) => prev.filter((_, i) => i !== idx))}
+                className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50"
+                aria-label="Quitar variación"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {variaciones.length < MAX_VARIACIONES && (
+            <button
+              type="button"
+              onClick={() => setVariaciones((prev) => [...prev, { name: '', price: 0 }])}
+              className="text-sm font-medium text-rojo-andino hover:underline"
+            >
+              Añadir variación
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Switch: Habilitar Complementos */}
+      <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 px-4 py-3">
+        <span className="text-sm font-medium text-gray-700">Habilitar Complementos</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={tieneComplementos}
+          onClick={() => setTieneComplementos((v) => !v)}
+          className={`relative h-6 w-10 rounded-full transition-colors ${tieneComplementos ? 'bg-rojo-andino' : 'bg-gray-300'}`}
+        >
+          <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${tieneComplementos ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
+      </div>
+      {tieneComplementos && (
+        <div className="rounded-3xl overflow-hidden shadow-xl border border-gray-100 bg-white p-4 space-y-4">
+          <p className="text-xs text-gray-500 font-medium">Ej. Elige tu arroz: Moro, Blanco</p>
+          {complementos.map((g, gIdx) => (
+            <div key={gIdx} className="rounded-2xl border border-gray-100 p-3 space-y-2">
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="Nombre del grupo (ej. Elige tu guarnición)"
+                  value={g.groupLabel}
+                  onChange={(e) =>
+                    setComplementos((prev) => prev.map((x, i) => (i === gIdx ? { ...x, groupLabel: e.target.value } : x)))
+                  }
+                  className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                />
+                <button
+                  type="button"
+                  onClick={() => setComplementos((prev) => prev.filter((_, i) => i !== gIdx))}
+                  className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50"
+                  aria-label="Quitar grupo"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-1.5 pl-2">
+                {g.options.map((opt, oIdx) => (
+                  <div key={oIdx} className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      placeholder="Opción"
+                      value={opt}
+                      onChange={(e) =>
+                        setComplementos((prev) =>
+                          prev.map((x, i) =>
+                            i === gIdx ? { ...x, options: x.options.map((o, j) => (j === oIdx ? e.target.value : o)) } : x
+                          )
+                        )
+                      }
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setComplementos((prev) =>
+                          prev.map((x, i) => (i === gIdx ? { ...x, options: x.options.filter((_, j) => j !== oIdx) } : x))
+                        )
+                      }
+                      className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50"
+                      aria-label="Quitar opción"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {g.options.length < MAX_OPCIONES_PER_GROUP && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setComplementos((prev) =>
+                        prev.map((x, i) => (i === gIdx ? { ...x, options: [...x.options, ''] } : x))
+                      )
+                    }
+                    className="text-xs font-medium text-rojo-andino hover:underline"
+                  >
+                    Añadir opción
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {complementos.length < MAX_GROUPS_COMPLEMENTOS && (
+            <button
+              type="button"
+              onClick={() => setComplementos((prev) => [...prev, { groupLabel: '', options: [''] }])}
+              className="text-sm font-medium text-rojo-andino hover:underline"
+            >
+              Añadir grupo
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <button
           type="submit"
@@ -191,10 +394,15 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
   const [guardado, setGuardado] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
   const [deletingItem, setDeletingItem] = useState<MenuItem | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<{ oldName: string; newName: string } | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<{ name: string; targetCategory: string } | null>(null);
+  const [displayCount, setDisplayCount] = useState(15);
   const guardadoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setDisplayCount(15);
     fetch(`/api/locales/${localId}`)
       .then((res) => res.ok ? res.json() : null)
       .then((data: { menu?: MenuItem[]; local?: { categories?: string[] } } | null) => {
@@ -314,6 +522,35 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  async function handleRenameCategory(oldName: string, newName: string) {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) {
+      setEditingCategory(null);
+      return;
+    }
+    const newCategories = categories.map((c) => (c === oldName ? trimmed : c));
+    const newItems = items.map((i) => (i.category === oldName ? { ...i, category: trimmed } : i));
+    setCategories(newCategories);
+    setItems(newItems);
+    setEditingCategory(null);
+    await persistirMenu(newItems);
+    await persistirOrdenCategorias(newCategories);
+  }
+
+  async function handleDeleteCategory(catName: string, targetCategory: string) {
+    if (!targetCategory || targetCategory === catName) {
+      setDeletingCategory(null);
+      return;
+    }
+    const newItems = items.map((i) => (i.category === catName ? { ...i, category: targetCategory } : i));
+    const newCategories = categories.filter((c) => c !== catName);
+    setCategories(newCategories);
+    setItems(newItems);
+    setDeletingCategory(null);
+    await persistirMenu(newItems);
+    await persistirOrdenCategorias(newCategories);
+  }
+
   async function guardarTodo() {
     setGuardando(true);
     setErrorGuardado(null);
@@ -340,10 +577,12 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  const visibleItems = items.slice(0, displayCount);
   const byCategory = categories.reduce<Record<string, MenuItem[]>>((acc, cat) => {
-    acc[cat] = items.filter((i) => i.category === cat);
+    acc[cat] = visibleItems.filter((i) => i.category === cat);
     return acc;
   }, {});
+  const hasMoreItems = displayCount < items.length;
 
   return (
     <>
@@ -361,12 +600,24 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setEditMode((e) => !e)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                  editMode ? 'bg-white/20 border-2 border-white text-white' : 'border-2 border-white/80 text-white hover:bg-white/15'
+                }`}
+              >
+                <Pencil className="w-4 h-4" />
+                {editMode ? 'Vista cliente' : 'Editar menú'}
+              </button>
+              {editMode && (
+              <button
+                type="button"
                 onClick={() => { setEditing(null); setShowForm(true); }}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-white/80 text-white font-semibold text-sm hover:bg-white/15 transition-all"
               >
                 <Plus className="w-4 h-4" />
                 Agregar producto
               </button>
+              )}
               <button
               type="button"
               onClick={guardarTodo}
@@ -405,6 +656,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
         </header>
 
         <div className="p-4 space-y-6">
+          {editMode && (
           <div className="flex gap-2">
             <input
               type="text"
@@ -422,11 +674,13 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
               Agregar
             </button>
           </div>
+          )}
 
           {categories.map((cat, index) => (
             <div key={cat} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
               <div className="flex items-center justify-between px-4 py-3.5 bg-gray-50/80 border-b border-gray-100">
                 <div className="flex items-center gap-2">
+                  {editMode && (
                   <div className="flex flex-col gap-0">
                     <button
                       type="button"
@@ -447,7 +701,20 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
                       <ChevronDown className="w-4 h-4" />
                     </button>
                   </div>
+                  )}
                   <h2 className="font-bold text-gray-900">{cat}</h2>
+                  {editMode && (
+                    <>
+                      <button type="button" onClick={() => setEditingCategory({ oldName: cat, newName: cat })} className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-600 transition-colors" aria-label="Renombrar categoría">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {categories.length > 1 && (
+                      <button type="button" onClick={() => setDeletingCategory({ name: cat, targetCategory: categories.filter((c) => c !== cat)[0] ?? '' })} className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 transition-colors" aria-label="Eliminar categoría">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      )}
+                    </>
+                  )}
                 </div>
                 <span className="text-xs text-gray-500 font-medium">{(byCategory[cat] ?? []).length} productos</span>
               </div>
@@ -467,6 +734,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
                       <p className="font-semibold text-gray-900">{item.name}</p>
                       <p className="text-sm font-medium text-rojo-andino mt-0.5">${item.price.toFixed(2)}</p>
                     </div>
+                    {editMode && (
                     <div className="flex items-center gap-1">
                       <button type="button" onClick={() => { setEditing(item); setShowForm(true); }} className="p-2.5 rounded-xl hover:bg-gray-100 text-gray-600 transition-colors" aria-label="Editar">
                         <Pencil className="w-4 h-4" />
@@ -475,6 +743,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+                    )}
                   </div>
                 ))}
                 {(!byCategory[cat] || byCategory[cat].length === 0) && (
@@ -483,6 +752,18 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
           ))}
+
+          {hasMoreItems && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => setDisplayCount((prev) => Math.min(prev + 15, items.length))}
+                className="px-5 py-3 rounded-xl border-2 border-rojo-andino text-rojo-andino font-semibold text-sm hover:bg-rojo-andino hover:text-white transition-colors"
+              >
+                Cargar más productos
+              </button>
+            </div>
+          )}
 
         </div>
       </main>
@@ -497,7 +778,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
             onKeyDown={(e) => { if (e.key === 'Escape') { setShowForm(false); setEditing(null); } }}
             aria-label="Cerrar"
           />
-          <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl overflow-hidden shadow-xl bg-white">
             <MenuForm
               editing={editing}
               categories={categories}
@@ -511,6 +792,70 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
+      {editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setEditingCategory(null)} aria-hidden />
+          <div className="relative bg-white rounded-3xl shadow-xl border border-gray-100 p-6 w-full max-w-sm overflow-hidden">
+            <h3 className="font-bold text-gray-900 text-lg mb-3">Renombrar categoría</h3>
+            <input
+              type="text"
+              value={editingCategory.newName}
+              onChange={(e) => setEditingCategory((x) => x && { ...x, newName: e.target.value })}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30 focus:border-rojo-andino mb-4"
+              placeholder="Nombre de la categoría"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setEditingCategory(null)} className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => editingCategory && handleRenameCategory(editingCategory.oldName, editingCategory.newName)}
+                className="px-4 py-2.5 rounded-xl bg-rojo-andino text-white font-semibold text-sm hover:bg-rojo-andino/90"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeletingCategory(null)} aria-hidden />
+          <div className="relative bg-white rounded-3xl shadow-xl border border-gray-100 p-6 w-full max-w-sm overflow-hidden">
+            <h3 className="font-bold text-gray-900 text-lg mb-2">Eliminar categoría</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              ¿Eliminar &quot;{deletingCategory.name}&quot;? Los {(byCategory[deletingCategory.name] ?? []).length} productos se moverán a la categoría que elijas.
+            </p>
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Mover productos a</label>
+            <select
+              value={deletingCategory.targetCategory}
+              onChange={(e) => setDeletingCategory((x) => x && { ...x, targetCategory: e.target.value })}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30 focus:border-rojo-andino mb-4"
+            >
+              {categories.filter((c) => c !== deletingCategory.name).map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setDeletingCategory(null)} className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => deletingCategory && handleDeleteCategory(deletingCategory.name, deletingCategory.targetCategory)}
+                disabled={!deletingCategory.targetCategory}
+                className="px-4 py-2.5 rounded-xl bg-red-600 text-white font-semibold text-sm hover:bg-red-700 disabled:opacity-50"
+              >
+                Eliminar categoría
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deletingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -518,7 +863,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
             onClick={() => setDeletingItem(null)}
             aria-hidden
           />
-          <div className="relative bg-white rounded-2xl shadow-xl border border-gray-100 p-5 w-full max-w-sm overflow-hidden">
+          <div className="relative bg-white rounded-3xl shadow-xl border border-gray-100 p-5 w-full max-w-sm overflow-hidden">
             <h3 className="font-bold text-gray-900 text-lg mb-2">Eliminar producto</h3>
             <p className="text-gray-600 text-sm mb-4">
               ¿Eliminar &quot;{deletingItem.name}&quot;? Esta acción no se puede deshacer.

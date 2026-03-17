@@ -5,14 +5,15 @@ import Image from 'next/image';
 import { X, Plus, Minus, Flame, ShoppingBag } from 'lucide-react';
 import type { MenuItem } from '@/lib/data';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import type { AddItemOptions } from '@/lib/cartContext';
 
 interface ProductDetailSheetProps {
   item: MenuItem | null;
   localId: string;
   currentQty: number;
   onClose: () => void;
-  onAdd: (_localId: string, _itemId: string, _note?: string) => void;
-  onRemove: (_itemId: string) => void;
+  onAdd: (_localId: string, _itemId: string, _note?: string, _options?: AddItemOptions) => void;
+  onRemove: (_itemId: string, _localId?: string, _options?: Pick<AddItemOptions, 'variationName' | 'complementSelections'>) => void;
   cerrado?: boolean;
   cerradoMensaje?: string;
   cerradoAbreA?: string;
@@ -32,11 +33,22 @@ export default function ProductDetailSheet({
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState('');
   const [visible, setVisible] = useState(false);
+  const [selectedVariationIndex, setSelectedVariationIndex] = useState<number | null>(null);
+  const [selectedComplementos, setSelectedComplementos] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (item) {
       setQty(currentQty > 0 ? currentQty : 1);
       setNote('');
+      setSelectedVariationIndex(item.tieneVariaciones && item.variaciones?.length ? 0 : null);
+      setSelectedComplementos(
+        item.tieneComplementos && item.complementos?.length
+          ? item.complementos.reduce<Record<string, string>>((acc, g) => {
+              if (g.options.length > 0) acc[g.groupLabel] = g.options[0];
+              return acc;
+            }, {})
+          : {}
+      );
       requestAnimationFrame(() => setVisible(true));
     } else {
       setVisible(false);
@@ -48,22 +60,45 @@ export default function ProductDetailSheet({
     setTimeout(onClose, 280);
   };
 
+  const hasVariaciones = !!(item?.tieneVariaciones && item.variaciones?.length);
+  const hasComplementos = !!(item?.tieneComplementos && item.complementos?.length);
+  const selectedVariation = hasVariaciones && item && selectedVariationIndex != null && item.variaciones?.[selectedVariationIndex];
+  const effectivePrice = selectedVariation ? selectedVariation.price : (item?.price ?? 0);
+  const variacionValid = !hasVariaciones || selectedVariationIndex != null;
+  const complementosValid =
+    !hasComplementos ||
+    (item?.complementos?.every((g) => selectedComplementos[g.groupLabel]?.trim()) ?? true);
+  const canAdd = variacionValid && complementosValid;
+
+  const buildOptions = (): AddItemOptions | undefined => {
+    if (!item) return undefined;
+    if (!hasVariaciones && !hasComplementos) return undefined;
+    const opts: AddItemOptions = {};
+    if (selectedVariation) {
+      opts.variationName = selectedVariation.name;
+      opts.variationPrice = selectedVariation.price;
+    }
+    if (Object.keys(selectedComplementos).length > 0) opts.complementSelections = { ...selectedComplementos };
+    return Object.keys(opts).length > 0 ? opts : undefined;
+  };
+
   const handleAdd = () => {
     if (!item) return;
+    const options = buildOptions();
     const diff = qty - currentQty;
     if (diff > 0) {
-      for (let i = 0; i < diff; i++) onAdd(localId, item.id, note || undefined);
+      for (let i = 0; i < diff; i++) onAdd(localId, item.id, note || undefined, options);
     } else if (diff < 0) {
-      for (let i = 0; i < Math.abs(diff); i++) onRemove(item.id);
+      for (let i = 0; i < Math.abs(diff); i++) onRemove(item.id, localId, options);
     } else if (currentQty === 0) {
-      onAdd(localId, item.id, note || undefined);
+      onAdd(localId, item.id, note || undefined, options);
     }
     handleClose();
   };
 
   if (!item) return null;
 
-  const total = (item.price * qty).toFixed(2);
+  const total = (effectivePrice * qty).toFixed(2);
 
   return (
     <>
@@ -135,7 +170,67 @@ export default function ProductDetailSheet({
             {item.description && (
               <p className="text-gray-500 text-base mt-2 leading-relaxed">{item.description}</p>
             )}
-            <p className="text-rojo-andino font-bold text-2xl mt-3">${item.price.toFixed(2)}</p>
+            {!hasVariaciones && <p className="text-rojo-andino font-bold text-2xl mt-3">${item.price.toFixed(2)}</p>}
+            {hasVariaciones && (
+              <p className="text-rojo-andino font-bold text-2xl mt-3">
+                {selectedVariation ? `$${selectedVariation.price.toFixed(2)}` : 'Elige una opción'}
+              </p>
+            )}
+
+            {/* Variaciones — Chips */}
+            {hasVariaciones && item.variaciones && (
+              <div className="mt-4">
+                <p className="font-semibold text-gray-800 text-sm mb-2">Tamaño / variación</p>
+                <div className="flex flex-wrap gap-2">
+                  {item.variaciones.map((v, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedVariationIndex(idx)}
+                      className={`px-4 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                        selectedVariationIndex === idx
+                          ? 'bg-rojo-andino text-white shadow-md'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                      }`}
+                    >
+                      {v.name} — ${v.price.toFixed(2)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Complementos — Lista de selección */}
+            {hasComplementos && item.complementos && (
+              <div className="mt-5 space-y-4">
+                {item.complementos.map((g) => (
+                  <div key={g.groupLabel}>
+                    <p className="font-semibold text-gray-800 text-sm mb-2">{g.groupLabel}</p>
+                    <div className="space-y-1.5">
+                      {g.options.map((opt) => (
+                        <label
+                          key={opt}
+                          className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors ${
+                            selectedComplementos[g.groupLabel] === opt
+                              ? 'border-rojo-andino bg-rojo-andino/5'
+                              : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`complement-${g.groupLabel}`}
+                            checked={selectedComplementos[g.groupLabel] === opt}
+                            onChange={() => setSelectedComplementos((prev) => ({ ...prev, [g.groupLabel]: opt }))}
+                            className="w-4 h-4 text-rojo-andino border-gray-300 focus:ring-rojo-andino"
+                          />
+                          <span className="text-sm font-medium text-gray-900">{opt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Selector de cantidad */}
             <div className="mt-6 flex items-center justify-between">
@@ -187,12 +282,16 @@ export default function ProductDetailSheet({
           <button
             type="button"
             onClick={handleAdd}
-            className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold text-base flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg"
+            disabled={!canAdd}
+            className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold text-base flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-rojo-andino"
           >
             <span className="bg-white/20 rounded-xl px-2 py-0.5 text-sm font-black">{qty}</span>
             Agregar a mi pedido
             <span className="ml-auto font-bold">${total}</span>
           </button>
+          )}
+          {!canAdd && (hasVariaciones || hasComplementos) && (
+            <p className="text-center text-xs text-gray-500 mt-2">Elige las opciones indicadas para continuar</p>
           )}
         </div>
       </div>

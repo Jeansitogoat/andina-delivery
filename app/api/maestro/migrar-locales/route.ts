@@ -54,9 +54,7 @@ export async function POST(request: Request) {
         horarios: loc.horarios,
         transferencia: loc.transferencia,
       };
-      const menu: MenuItem[] = Array.isArray(menus[loc.id]) ? menus[loc.id] : [
-        { id: `${loc.id}-1`, name: 'Menú (próximamente)', price: 0, description: 'Cargar desde el panel.', category: 'Más pedidos' },
-      ];
+      const menu: MenuItem[] = Array.isArray(menus[loc.id]) ? menus[loc.id] : [];
       await setLocalInFirestore(local.id, local, menu);
       migrated++;
     }

@@ -105,11 +105,18 @@ export default function CheckoutPage() {
   const { showToast } = useToast();
 
   /** Datos por parada: local + menú + ítems enriquecidos y totales */
+  type EnrichedCheckoutItem = {
+    id: string;
+    name: string;
+    price: number;
+    qty: number;
+    displayName?: string;
+  };
   type StopData = {
     localId: string;
     local: Local | null;
     menu: Array<{ id: string; name: string; price: number }>;
-    enrichedItems: Array<{ id: string; name: string; price: number; qty: number }>;
+    enrichedItems: EnrichedCheckoutItem[];
     subtotal: number;
     shipping: number;
     totalPerStop: number;
@@ -136,9 +143,12 @@ export default function CheckoutPage() {
           .map((c) => {
             const item = menu.find((i) => i.id === c.id);
             if (!item) return null;
-            return { ...item, qty: c.qty };
+            const unitPrice = typeof c.variationPrice === 'number' && !Number.isNaN(c.variationPrice) ? c.variationPrice : item.price;
+            const compText = c.complementSelections && Object.keys(c.complementSelections).length > 0 ? Object.values(c.complementSelections).join(', ') : '';
+            const displayName = [item.name, c.variationName ? `(${c.variationName})` : '', compText ? ` · ${compText}` : ''].filter(Boolean).join(' ');
+            return { ...item, price: unitPrice, qty: c.qty, displayName } as EnrichedCheckoutItem;
           })
-          .filter(Boolean) as Array<{ id: string; name: string; price: number; qty: number }>;
+          .filter(Boolean) as EnrichedCheckoutItem[];
         const subtotal = enrichedItems.reduce((s, i) => s + i.price * i.qty, 0);
         const shipping = local?.shipping ?? 0;
         const totalPerStop = subtotal + shipping;
@@ -306,7 +316,7 @@ export default function CheckoutPage() {
               ? { clienteLat: direccionEntregarLatLng.lat, clienteLng: direccionEntregarLatLng.lng }
               : {}),
             clienteTelefono: clienteTelefono || '',
-            items: stop.enrichedItems.map((i) => `${i.qty}× ${i.name}`),
+            items: stop.enrichedItems.map((i) => `${i.qty}× ${i.displayName ?? i.name}`),
             total: stopTotal,
             subtotal: stop.subtotal,
             ...(index === 0 ? { serviceCost } : {}),
@@ -321,9 +331,23 @@ export default function CheckoutPage() {
             itemsCart: (() => {
               const cartStop = cart.stops.find((s) => s.localId === stop.localId);
               if (!cartStop?.items?.length) return undefined;
+              const menu = stop.menu as Array<{ id: string; name: string }>;
               return {
                 localId: stop.localId,
-                items: cartStop.items.map((i) => ({ id: i.id, qty: i.qty, ...(i.note ? { note: i.note } : {}) })),
+                items: cartStop.items.map((i) => {
+                  const name = menu.find((m) => m.id === i.id)?.name ?? i.id;
+                  const compText = i.complementSelections && Object.keys(i.complementSelections).length > 0 ? Object.values(i.complementSelections).join(', ') : '';
+                  const displayLabel = [name, i.variationName ? `(${i.variationName})` : '', compText ? ` - ${compText}` : ''].filter(Boolean).join(' ');
+                  return {
+                    id: i.id,
+                    qty: i.qty,
+                    ...(i.note ? { note: i.note } : {}),
+                    ...(i.variationName != null ? { variationName: i.variationName } : {}),
+                    ...(typeof i.variationPrice === 'number' ? { variationPrice: i.variationPrice } : {}),
+                    ...(i.complementSelections != null && Object.keys(i.complementSelections).length > 0 ? { complementSelections: i.complementSelections } : {}),
+                    ...(displayLabel ? { displayLabel } : {}),
+                  };
+                }),
               };
             })(),
           }),
@@ -514,7 +538,7 @@ export default function CheckoutPage() {
               ? { clienteLat: direccionEntregarLatLng.lat, clienteLng: direccionEntregarLatLng.lng }
               : {}),
             clienteTelefono: clienteTelefono || '',
-            items: stop.enrichedItems.map((i) => `${i.qty}× ${i.name}`),
+            items: stop.enrichedItems.map((i) => `${i.qty}× ${i.displayName ?? i.name}`),
             total: stopTotal,
             subtotal: stop.subtotal,
             ...(index === 0 ? { serviceCost } : {}),
@@ -529,9 +553,23 @@ export default function CheckoutPage() {
             itemsCart: (() => {
               const cartStop = cart.stops.find((s) => s.localId === stop.localId);
               if (!cartStop?.items?.length) return undefined;
+              const menu = stop.menu as Array<{ id: string; name: string }>;
               return {
                 localId: stop.localId,
-                items: cartStop.items.map((i) => ({ id: i.id, qty: i.qty, ...(i.note ? { note: i.note } : {}) })),
+                items: cartStop.items.map((i) => {
+                  const name = menu.find((m) => m.id === i.id)?.name ?? i.id;
+                  const compText = i.complementSelections && Object.keys(i.complementSelections).length > 0 ? Object.values(i.complementSelections).join(', ') : '';
+                  const displayLabel = [name, i.variationName ? `(${i.variationName})` : '', compText ? ` - ${compText}` : ''].filter(Boolean).join(' ');
+                  return {
+                    id: i.id,
+                    qty: i.qty,
+                    ...(i.note ? { note: i.note } : {}),
+                    ...(i.variationName != null ? { variationName: i.variationName } : {}),
+                    ...(typeof i.variationPrice === 'number' ? { variationPrice: i.variationPrice } : {}),
+                    ...(i.complementSelections != null && Object.keys(i.complementSelections).length > 0 ? { complementSelections: i.complementSelections } : {}),
+                    ...(displayLabel ? { displayLabel } : {}),
+                  };
+                }),
               };
             })(),
           };

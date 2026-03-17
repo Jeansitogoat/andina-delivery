@@ -497,17 +497,10 @@ export default function Home() {
                       <span>· {local.type.join(', ')}</span>
                     </p>
                     <div className="flex flex-wrap items-center gap-2 mt-2">
-                      {originLatLng && typeof local.lat === 'number' && typeof local.lng === 'number' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-dorado-oro/10 text-dorado-oro/90 text-xs font-medium">
-                          <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                          A {distanceText} de ti
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-gray-500" title="Distancia">
-                          <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                          {distanceText}
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-500" title="Distancia">
+                        <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                        {originLatLng && typeof local.lat === 'number' && typeof local.lng === 'number' ? `A ${distanceText} de ti` : distanceText}
+                      </span>
                     </div>
                     <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                       <span className="inline-flex items-center gap-1">

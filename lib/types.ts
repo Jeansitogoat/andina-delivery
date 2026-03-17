@@ -44,7 +44,18 @@ export interface PedidoCentral {
   /** Costo de envío (para transferencia: cobrar solo envío) */
   serviceCost?: number;
   /** Para "Volver a pedir": estructura del carrito al momento del pedido (opcional) */
-  itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
+  itemsCart?: {
+    localId: string;
+    items: {
+      id: string;
+      qty: number;
+      note?: string;
+      variationName?: string;
+      variationPrice?: number;
+      complementSelections?: Record<string, string>;
+      displayLabel?: string;
+    }[];
+  };
 }
 
 export interface RiderCentral {

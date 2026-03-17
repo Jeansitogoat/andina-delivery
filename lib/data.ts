@@ -1,3 +1,15 @@
+/** Variación de tamaño/precio (ej. Media 7.50, Completa 12) */
+export interface MenuItemVariation {
+  name: string;
+  price: number;
+}
+
+/** Grupo de complementos (ej. "Elige tu arroz" con opciones Moro, Blanco) */
+export interface MenuItemComplementGroup {
+  groupLabel: string;
+  options: string[];
+}
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -6,6 +18,12 @@ export interface MenuItem {
   image?: string;
   bestseller?: boolean;
   category: string;
+  /** Si true, se muestran variaciones y se usa su precio en lugar del base */
+  tieneVariaciones?: boolean;
+  variaciones?: MenuItemVariation[];
+  /** Si true, el cliente debe elegir una opción por cada grupo */
+  tieneComplementos?: boolean;
+  complementos?: MenuItemComplementGroup[];
 }
 
 export interface Review {

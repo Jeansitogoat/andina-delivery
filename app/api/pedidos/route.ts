@@ -343,10 +343,14 @@ export async function POST(request: Request) {
     if (bodyParsed.itemsCart && typeof bodyParsed.itemsCart === 'object' && bodyParsed.itemsCart.localId && Array.isArray(bodyParsed.itemsCart.items)) {
       docData.itemsCart = {
         localId: String(bodyParsed.itemsCart.localId),
-        items: bodyParsed.itemsCart.items.map((i) => ({
+        items: bodyParsed.itemsCart.items.map((i: { id: string; qty: number; note?: string; variationName?: string; variationPrice?: number; complementSelections?: Record<string, string>; displayLabel?: string }) => ({
           id: String(i.id),
           qty: Number(i.qty) || 1,
           ...(typeof i.note === 'string' ? { note: i.note } : {}),
+          ...(typeof i.variationName === 'string' ? { variationName: i.variationName } : {}),
+          ...(typeof i.variationPrice === 'number' && !Number.isNaN(i.variationPrice) ? { variationPrice: i.variationPrice } : {}),
+          ...(i.complementSelections && typeof i.complementSelections === 'object' ? { complementSelections: i.complementSelections } : {}),
+          ...(typeof i.displayLabel === 'string' ? { displayLabel: i.displayLabel } : {}),
         })),
       };
     }

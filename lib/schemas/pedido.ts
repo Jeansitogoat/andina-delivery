@@ -4,6 +4,10 @@ const itemsCartItemSchema = z.object({
   id: z.string().min(1, 'El ítem debe tener un id'),
   qty: z.number().int().positive('La cantidad debe ser un número entero positivo'),
   note: z.string().optional(),
+  variationName: z.string().optional(),
+  variationPrice: z.number().optional(),
+  complementSelections: z.record(z.string(), z.string()).optional(),
+  displayLabel: z.string().optional(),
 });
 
 export const pedidoPostSchema = z.object({

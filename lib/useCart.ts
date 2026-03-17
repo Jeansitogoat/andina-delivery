@@ -8,4 +8,5 @@ export {
   type CartItem,
   type CartStop,
   type CartState,
+  type AddItemOptions,
 } from '@/lib/cartContext';

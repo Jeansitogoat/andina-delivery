@@ -6,10 +6,20 @@ import { getFirestoreDb } from '@/lib/firebase/client';
 import { useAuth } from '@/lib/useAuth';
 import { saveCart, type CartState } from '@/lib/cartFirestore';
 
+/** Opciones al agregar un producto con variaciones/complementos */
+export interface AddItemOptions {
+  variationName?: string;
+  variationPrice?: number;
+  complementSelections?: Record<string, string>;
+}
+
 export interface CartItem {
   id: string;
   qty: number;
   note?: string;
+  variationName?: string;
+  variationPrice?: number;
+  complementSelections?: Record<string, string>;
 }
 
 export interface CartStop {
@@ -20,6 +30,23 @@ export interface CartStop {
 export type { CartState };
 
 const STORAGE_KEY = 'andina_cart';
+
+/** Compara complementSelections de forma estable (claves ordenadas) */
+function complementSelectionsKey(sel?: Record<string, string>): string {
+  if (!sel || Object.keys(sel).length === 0) return '';
+  return JSON.stringify(
+    Object.keys(sel)
+      .sort()
+      .reduce((acc, k) => ({ ...acc, [k]: sel[k] }), {} as Record<string, string>)
+  );
+}
+
+/** Dos ítems son la misma línea si coinciden id, variationName y complementSelections */
+function sameCartLine(a: CartItem, b: CartItem): boolean {
+  if (a.id !== b.id) return false;
+  if ((a.variationName ?? '') !== (b.variationName ?? '')) return false;
+  return complementSelectionsKey(a.complementSelections) === complementSelectionsKey(b.complementSelections);
+}
 
 function loadCartFromStorage(): CartState {
   if (typeof window === 'undefined') return { stops: [] };
@@ -51,14 +78,14 @@ type CartContextType = {
   cartCount: number;
   hydrated: boolean;
   saving: boolean;
-  addItem: (_localId: string, _itemId: string, _note?: string) => void;
-  removeItem: (_itemId: string, _localId?: string) => void;
+  addItem: (_localId: string, _itemId: string, _note?: string, _options?: AddItemOptions) => void;
+  removeItem: (_itemId: string, _localId?: string, _options?: Pick<AddItemOptions, 'variationName' | 'complementSelections'>) => void;
   clearCart: () => void;
   replaceCart: (_stops: CartStop[]) => void;
   /** Reemplaza el carrito y devuelve una promesa que se resuelve cuando se guardó en Firestore. */
   replaceCartAndSave: (_stops: CartStop[]) => Promise<void>;
   clearStop: (_localId: string) => void;
-  setItemNote: (_itemId: string, _note: string, _localId?: string) => void;
+  setItemNote: (_itemId: string, _note: string, _localId?: string, _options?: Pick<AddItemOptions, 'variationName' | 'complementSelections'>) => void;
   localId: string | null;
   items: CartItem[];
 };
@@ -192,16 +219,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addItem = useCallback(
-    (localId: string, itemId: string, note?: string) => {
+    (localId: string, itemId: string, note?: string, options?: AddItemOptions) => {
       updateCart((prev) => {
         const stopIndex = prev.stops.findIndex((s) => s.localId === localId);
         const baseStop = stopIndex >= 0 ? prev.stops[stopIndex] : { localId, items: [] as CartItem[] };
-        const existing = baseStop.items.find((i) => i.id === itemId);
+        const candidate: CartItem = {
+          id: itemId,
+          qty: 1,
+          note,
+          variationName: options?.variationName,
+          variationPrice: options?.variationPrice,
+          complementSelections: options?.complementSelections,
+        };
+        const existing = baseStop.items.find((i) => sameCartLine(i, candidate));
         const newItems = existing
           ? baseStop.items.map((i) =>
-              i.id === itemId ? { ...i, qty: i.qty + 1, note: note ?? i.note } : i
+              sameCartLine(i, candidate) ? { ...i, qty: i.qty + 1, note: note ?? i.note } : i
             )
-          : [...baseStop.items, { id: itemId, qty: 1, note }];
+          : [...baseStop.items, candidate];
         const newStop = { localId, items: newItems };
         if (stopIndex >= 0) {
           const stops = [...prev.stops];
@@ -215,19 +250,35 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const removeItem = useCallback(
-    (itemId: string, localId?: string) => {
+    (itemId: string, localId?: string, options?: Pick<AddItemOptions, 'variationName' | 'complementSelections'>) => {
       updateCart((prev) => {
-        const targetStopIndex = localId != null
-          ? prev.stops.findIndex((s) => s.localId === localId)
-          : prev.stops.findIndex((s) => s.items.some((i) => i.id === itemId));
+        const targetStopIndex =
+          localId != null
+            ? prev.stops.findIndex((s) => s.localId === localId)
+            : prev.stops.findIndex((s) =>
+                s.items.some((i) =>
+                  sameCartLine(i, {
+                    id: itemId,
+                    qty: 0,
+                    variationName: options?.variationName,
+                    complementSelections: options?.complementSelections,
+                  })
+                )
+              );
         if (targetStopIndex < 0) return prev;
         const stop = prev.stops[targetStopIndex];
-        const existing = stop.items.find((i) => i.id === itemId);
+        const target: CartItem = {
+          id: itemId,
+          qty: 0,
+          variationName: options?.variationName,
+          complementSelections: options?.complementSelections,
+        };
+        const existing = stop.items.find((i) => sameCartLine(i, target));
         if (!existing) return prev;
         const newItems =
           existing.qty === 1
-            ? stop.items.filter((i) => i.id !== itemId)
-            : stop.items.map((i) => (i.id === itemId ? { ...i, qty: i.qty - 1 } : i));
+            ? stop.items.filter((i) => !sameCartLine(i, target))
+            : stop.items.map((i) => (sameCartLine(i, target) ? { ...i, qty: i.qty - 1 } : i));
         const stops = [...prev.stops];
         if (newItems.length === 0) stops.splice(targetStopIndex, 1);
         else stops[targetStopIndex] = { ...stop, items: newItems };
@@ -283,15 +334,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setItemNote = useCallback(
-    (itemId: string, note: string, localId?: string) => {
+    (
+      itemId: string,
+      note: string,
+      localId?: string,
+      options?: Pick<AddItemOptions, 'variationName' | 'complementSelections'>
+    ) => {
+      const target: CartItem = {
+        id: itemId,
+        qty: 0,
+        variationName: options?.variationName,
+        complementSelections: options?.complementSelections,
+      };
       updateCart((prev) => ({
         stops: prev.stops.map((s) => {
           if (localId != null && s.localId !== localId) return s;
-          const hasItem = s.items.some((i) => i.id === itemId);
+          const hasItem = s.items.some((i) => sameCartLine(i, target));
           if (!hasItem) return s;
           return {
             ...s,
-            items: s.items.map((i) => (i.id === itemId ? { ...i, note } : i)),
+            items: s.items.map((i) => (sameCartLine(i, target) ? { ...i, note } : i)),
           };
         }),
       }));
