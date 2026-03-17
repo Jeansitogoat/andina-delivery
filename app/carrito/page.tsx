@@ -91,7 +91,14 @@ export default function CarritoPage() {
         const data = res as { local: Local; menu?: MenuItem[] } | null;
         const local = data?.local ?? null;
         const menu = data?.menu ?? [];
-        const enrichedItems = stop.items
+        const enrichedItems = (stop.items as Array<{
+          id: string;
+          qty: number;
+          note?: string;
+          variationName?: string;
+          variationPrice?: number;
+          complementSelections?: Record<string, string>;
+        }>)
           .map((c) => {
             const item = menu.find((i) => i.id === c.id);
             if (!item) return null;

@@ -139,7 +139,14 @@ export default function CheckoutPage() {
         const data = res as { local: Local; menu?: Array<{ id: string; name: string; price: number }> } | null;
         const local = data?.local ?? null;
         const menu = data?.menu ?? [];
-        const enrichedItems = stop.items
+        const enrichedItems = (stop.items as Array<{
+          id: string;
+          qty: number;
+          note?: string;
+          variationName?: string;
+          variationPrice?: number;
+          complementSelections?: Record<string, string>;
+        }>)
           .map((c) => {
             const item = menu.find((i) => i.id === c.id);
             if (!item) return null;
@@ -334,7 +341,15 @@ export default function CheckoutPage() {
               const menu = stop.menu as Array<{ id: string; name: string }>;
               return {
                 localId: stop.localId,
-                items: cartStop.items.map((i) => {
+                items: cartStop.items.map((iRaw) => {
+                  const i = iRaw as {
+                    id: string;
+                    qty: number;
+                    note?: string;
+                    variationName?: string;
+                    variationPrice?: number;
+                    complementSelections?: Record<string, string>;
+                  };
                   const name = menu.find((m) => m.id === i.id)?.name ?? i.id;
                   const compText = i.complementSelections && Object.keys(i.complementSelections).length > 0 ? Object.values(i.complementSelections).join(', ') : '';
                   const displayLabel = [name, i.variationName ? `(${i.variationName})` : '', compText ? ` - ${compText}` : ''].filter(Boolean).join(' ');
@@ -556,7 +571,15 @@ export default function CheckoutPage() {
               const menu = stop.menu as Array<{ id: string; name: string }>;
               return {
                 localId: stop.localId,
-                items: cartStop.items.map((i) => {
+                items: cartStop.items.map((iRaw) => {
+                  const i = iRaw as {
+                    id: string;
+                    qty: number;
+                    note?: string;
+                    variationName?: string;
+                    variationPrice?: number;
+                    complementSelections?: Record<string, string>;
+                  };
                   const name = menu.find((m) => m.id === i.id)?.name ?? i.id;
                   const compText = i.complementSelections && Object.keys(i.complementSelections).length > 0 ? Object.values(i.complementSelections).join(', ') : '';
                   const displayLabel = [name, i.variationName ? `(${i.variationName})` : '', compText ? ` - ${compText}` : ''].filter(Boolean).join(' ');
