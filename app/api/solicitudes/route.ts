@@ -26,6 +26,11 @@ function toSolicitud(data: Record<string, unknown>, id: string): Solicitud {
     direccion: String(data.direccion ?? ''),
     tipoNegocio: String(data.tipoNegocio ?? ''),
     localACalle: Boolean(data.localACalle),
+    // Fase 1: incluir campos URL
+    logoUrl: data.logoUrl as string | undefined,
+    bannerUrl: data.bannerUrl as string | undefined,
+    menuFotosUrls: data.menuFotosUrls as string[] | undefined,
+    // Legacy
     logoBase64: data.logoBase64 as string | undefined,
     bannerBase64: data.bannerBase64 as string | undefined,
     menuFotosBase64: data.menuFotosBase64 as string[] | undefined,
@@ -97,6 +102,11 @@ export async function POST(request: Request) {
       direccion,
       tipoNegocio,
       localACalle,
+      // Fase 1: URLs de Storage (preferido)
+      logoUrl,
+      bannerUrl,
+      menuFotosUrls,
+      // Legacy Base64 (compatibilidad con clientes antiguos)
       logoBase64,
       bannerBase64,
       menuFotosBase64,
@@ -115,16 +125,24 @@ export async function POST(request: Request) {
       direccion: direccion.trim(),
       tipoNegocio: tipoNegocio,
       localACalle: Boolean(localACalle),
-      logoBase64: logoBase64 ?? undefined,
-      bannerBase64: bannerBase64 ?? undefined,
-      menuFotosBase64: Array.isArray(menuFotosBase64) ? menuFotosBase64 : undefined,
+      // Preferir URLs de Storage; fallback a Base64 legacy
+      logoBase64: logoUrl ? undefined : (logoBase64 ?? undefined),
+      bannerBase64: bannerUrl ? undefined : (bannerBase64 ?? undefined),
+      menuFotosBase64: menuFotosUrls?.length ? undefined : (Array.isArray(menuFotosBase64) ? menuFotosBase64 : undefined),
     };
 
     const db = getAdminFirestore();
-    await db.collection(SOLICITUDES_COLLECTION).doc(solicitud.id).set({
-      ...solicitud,
-      updatedAt: FieldValue.serverTimestamp(),
+    // Construir el documento excluyendo campos undefined para Firestore
+    const docPayload: Record<string, unknown> = { ...solicitud, updatedAt: FieldValue.serverTimestamp() };
+    // Agregar campos URL si los hay
+    if (logoUrl) docPayload.logoUrl = logoUrl;
+    if (bannerUrl) docPayload.bannerUrl = bannerUrl;
+    if (menuFotosUrls?.length) docPayload.menuFotosUrls = menuFotosUrls.filter(Boolean);
+    // Eliminar campos undefined
+    Object.keys(docPayload).forEach((k) => {
+      if (docPayload[k] === undefined) delete docPayload[k];
     });
+    await db.collection(SOLICITUDES_COLLECTION).doc(solicitud.id).set(docPayload);
 
     return NextResponse.json({ ok: true, id: solicitud.id });
   } catch (e) {

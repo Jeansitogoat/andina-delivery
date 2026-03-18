@@ -364,17 +364,19 @@ export async function POST(request: Request) {
         })),
       };
     }
-    if (typeof bodyParsed.comprobanteBase64 === 'string' && bodyParsed.comprobanteBase64.trim()) {
+    // Fase 1: preferir URL de Storage; fallback a Base64 legacy para clientes desactualizados.
+    if (typeof bodyParsed.comprobanteUrl === 'string' && bodyParsed.comprobanteUrl.trim()) {
+      docData.comprobanteUrl = bodyParsed.comprobanteUrl;
+      if (typeof bodyParsed.fileName === 'string') docData.comprobanteFileName = bodyParsed.fileName;
+      if (typeof bodyParsed.mimeType === 'string') docData.comprobanteMimeType = bodyParsed.mimeType;
+    } else if (typeof bodyParsed.comprobanteBase64 === 'string' && bodyParsed.comprobanteBase64.trim()) {
+      // Legacy: clientes que todavía envían Base64 (versión antigua del frontend)
       const normalized = bodyParsed.comprobanteBase64.startsWith('data:')
         ? normalizeDataUrl(bodyParsed.comprobanteBase64)
         : bodyParsed.comprobanteBase64;
       docData.comprobanteBase64 = normalized;
-      if (typeof bodyParsed.fileName === 'string') {
-        docData.comprobanteFileName = bodyParsed.fileName;
-      }
-      if (typeof bodyParsed.mimeType === 'string') {
-        docData.comprobanteMimeType = bodyParsed.mimeType;
-      }
+      if (typeof bodyParsed.fileName === 'string') docData.comprobanteFileName = bodyParsed.fileName;
+      if (typeof bodyParsed.mimeType === 'string') docData.comprobanteMimeType = bodyParsed.mimeType;
     }
     await docRef.set(sanitizeForFirestore(docData));
 

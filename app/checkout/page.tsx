@@ -41,6 +41,7 @@ import {
 } from '@/lib/orderStorage';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
+import { uploadComprobante } from '@/lib/storageUpload';
 
 const TIP_OPTIONS = [
   { label: 'Ahora no', value: 0 },
@@ -456,19 +457,19 @@ export default function CheckoutPage() {
       setIsUploadingComprobante(true);
 
       try {
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = typeof reader.result === 'string' ? reader.result : '';
-            if (!result) {
-              reject(new Error('No se pudo leer el archivo de comprobante.'));
-            } else {
-              resolve(result);
-            }
-          };
-          reader.onerror = () => reject(new Error('No se pudo leer el archivo de comprobante.'));
-          reader.readAsDataURL(comprobanteFile);
-        });
+        // Fase 1: subir el comprobante a Firebase Storage en lugar de convertirlo a Base64.
+        // El ID del pedido se genera antes de subir para usarlo como ruta de Storage.
+        const baseNum = transferBaseNum ?? Date.now().toString().slice(-6);
+        const orderId0 = `A-${baseNum}-0`;
+
+        let comprobanteUrl: string;
+        try {
+          comprobanteUrl = await uploadComprobante(orderId0, comprobanteFile);
+        } catch {
+          setIsUploadingComprobante(false);
+          showToast({ type: 'error', message: 'No se pudo subir el comprobante. Verifica tu conexión e intenta de nuevo.' });
+          return;
+        }
 
         const token = await getIdToken();
         if (!token) {
@@ -482,7 +483,6 @@ export default function CheckoutPage() {
           Authorization: `Bearer ${token}`,
         };
 
-        const baseNum = transferBaseNum ?? Date.now().toString().slice(-6);
         const isPickupHere = deliveryType === 'pickup';
         const batchIdBase = !isPickupHere && stopsData.length > 1 ? `A-${baseNum}` : null;
         const batchLeaderLocalId = !isPickupHere && stopsData.length > 1 ? stopsData[0].localId : null;
@@ -575,7 +575,8 @@ export default function CheckoutPage() {
           };
 
           if (index === 0) {
-            body.comprobanteBase64 = base64;
+            // Fase 1: enviar la URL de Storage en lugar del Base64
+            body.comprobanteUrl = comprobanteUrl;
             body.fileName = comprobanteFile.name;
             body.mimeType = comprobanteFile.type;
           }
@@ -738,10 +739,30 @@ export default function CheckoutPage() {
                     </button>
                   )}
                 </div>
-                {transferencia?.codigoBase64 && (
+                {(transferencia?.codigoUrl || transferencia?.codigoBase64) && (
                   <div className="px-4 pb-4 border-t border-gray-50 pt-3">
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Código para pagar</p>
-                    {transferencia.codigoMimeType?.startsWith('image/') ? (
+                    {/* Fase 1: mostrar desde URL de Storage; fallback a Base64 legacy */}
+                    {transferencia.codigoUrl ? (
+                      transferencia.codigoMimeType?.startsWith('image/') || !transferencia.codigoMimeType ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={transferencia.codigoUrl}
+                          alt="Código de pago"
+                          className="w-full max-h-48 object-contain rounded-xl border border-gray-200 bg-white"
+                        />
+                      ) : (
+                        <a
+                          href={transferencia.codigoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2 py-2 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold text-sm"
+                        >
+                          <FileText className="w-4 h-4 text-red-600" />
+                          Ver PDF del código
+                        </a>
+                      )
+                    ) : transferencia.codigoMimeType?.startsWith('image/') ? (
                       getSafeImageSrc(transferencia.codigoBase64) ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
@@ -749,11 +770,7 @@ export default function CheckoutPage() {
                           alt="Código de pago"
                           className="w-full max-h-48 object-contain rounded-xl border border-gray-200 bg-white"
                         />
-                      ) : (
-                        <div className="w-full max-h-48 flex items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 text-sm">
-                          Código de pago no disponible
-                        </div>
-                      )
+                      ) : null
                     ) : (
                       <a
                         href={transferencia.codigoBase64}

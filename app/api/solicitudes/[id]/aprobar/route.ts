@@ -72,8 +72,9 @@ export async function POST(
         ? programStartDate.slice(0, 10)
         : today;
 
-    const logoRaw = (solData.logoBase64 as string) || '/logos/rhk.png';
-    const coverRaw = (solData.bannerBase64 as string) || '/food/food-pollo-brasa-mitad.png';
+    // Fase 1: preferir URLs de Storage; fallback a Base64 legacy; fallback a imagen por defecto
+    const logoRaw = (solData.logoUrl as string) || (solData.logoBase64 as string) || '/logos/rhk.png';
+    const coverRaw = (solData.bannerUrl as string) || (solData.bannerBase64 as string) || '/food/food-pollo-brasa-mitad.png';
     const logo = logoRaw.startsWith('data:') ? normalizeDataUrl(logoRaw) : logoRaw;
     const cover = coverRaw.startsWith('data:') ? normalizeDataUrl(coverRaw) : coverRaw;
 

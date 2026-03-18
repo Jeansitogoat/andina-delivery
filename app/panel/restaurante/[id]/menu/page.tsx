@@ -9,9 +9,11 @@ import type { MenuItem, MenuItemVariation, MenuItemComplementGroup } from '@/lib
 import { getIdToken } from '@/lib/authToken';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl } from '@/lib/validImageUrl';
+import { uploadMenuItemImage } from '@/lib/storageUpload';
 
 const DEFAULT_CATEGORIES = ['Más pedidos', 'Pollos', 'Combos', 'Bebidas'];
 
+/** @deprecated Solo para fallback si Storage falla */
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -28,11 +30,13 @@ const MAX_OPCIONES_PER_GROUP = 10;
 function MenuForm({
   editing,
   categories,
+  localId,
   onSave,
   onCancel,
 }: {
   editing: MenuItem | null;
   categories: string[];
+  localId: string;
   onSave: (_payload: Partial<MenuItem> & { name: string; price: number; category: string }) => void;
   onCancel: () => void;
 }) {
@@ -41,6 +45,7 @@ function MenuForm({
   const [category, setCategory] = useState(editing?.category ?? categories[0] ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [image, setImage] = useState<string | null>(editing?.image ?? null);
+  const [imageUploading, setImageUploading] = useState(false);
   const [tieneVariaciones, setTieneVariaciones] = useState(!!editing?.tieneVariaciones);
   const [variaciones, setVariaciones] = useState<MenuItemVariation[]>(
     editing?.variaciones?.length ? [...editing.variaciones] : [{ name: '', price: 0 }]
@@ -68,12 +73,23 @@ function MenuForm({
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
+    setImageUploading(true);
     try {
-      const compressed = await compressImage(file, 'product');
-      const base64 = await fileToBase64(compressed);
-      setImage(base64.startsWith('data:') ? normalizeDataUrl(base64) : base64);
+      // Fase 1: subir imagen a Firebase Storage en lugar de convertir a Base64
+      const itemId = editing?.id ?? `temp-${Date.now().toString(36)}`;
+      const url = await uploadMenuItemImage(localId, itemId, file);
+      setImage(url);
     } catch {
-      // silencioso
+      // Fallback: si Storage falla, usar Base64 comprimido
+      try {
+        const compressed = await compressImage(file, 'product');
+        const base64 = await fileToBase64(compressed);
+        setImage(base64.startsWith('data:') ? normalizeDataUrl(base64) : base64);
+      } catch {
+        // silencioso
+      }
+    } finally {
+      setImageUploading(false);
     }
     e.target.value = '';
   }
@@ -161,9 +177,9 @@ function MenuForm({
           />
           <label
             htmlFor="menu-image"
-            className="inline-block px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer"
+            className={`inline-block px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer ${imageUploading ? 'opacity-60 cursor-wait' : ''}`}
           >
-            {image ? 'Cambiar foto' : 'Subir foto'}
+            {imageUploading ? 'Subiendo...' : (image ? 'Cambiar foto' : 'Subir foto')}
           </label>
         </div>
       </div>
@@ -782,6 +798,7 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
             <MenuForm
               editing={editing}
               categories={categories}
+              localId={localId}
               onSave={async (item) => {
                 const ok = await handleSave(item);
                 if (ok) { setShowForm(false); setEditing(null); }

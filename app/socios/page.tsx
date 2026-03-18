@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { uploadSolicitudLogo, uploadSolicitudBanner, uploadSolicitudMenuFoto } from '@/lib/storageUpload';
 
 const WHATSAPP_NUMERO = process.env.NEXT_PUBLIC_WHATSAPP_SOCIOS || '593983511866';	
 const MENSAJE_WHATSAPP = 'Hola, vengo de Andina y quiero registrar mi negocio.';
@@ -51,61 +52,95 @@ export default function SociosPage() {
   const [direccion, setDireccion] = useState('');
   const [tipoNegocio, setTipoNegocio] = useState('Restaurante');
   const [localACalle, setLocalACalle] = useState<boolean>(true);
-  const [logoBase64, setLogoBase64] = useState<string | null>(null);
-  const [bannerBase64, setBannerBase64] = useState<string | null>(null);
-  const [menuFotosBase64, setMenuFotosBase64] = useState<string[]>([]);
+  // Fase 1: almacenar URLs de Storage en lugar de Base64
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+  const [menuFotosUrls, setMenuFotosUrls] = useState<string[]>([]);
+  const [menuFotosPreviews, setMenuFotosPreviews] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  // tempId para rutas de Storage (se genera al inicio y se mantiene durante la sesión)
+  const [solicitudTempId] = useState(() => `temp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const menuInputRef = useRef<HTMLInputElement>(null);
 
-  function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    compressImage(file, 'solicitudLogo').then((compressed) => {
-      const reader = new FileReader();
-      reader.onload = () => setLogoBase64(reader.result as string);
-      reader.readAsDataURL(compressed);
-    });
-  }
-
-  function handleBanner(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    compressImage(file, 'solicitudCover').then((compressed) => {
-      const reader = new FileReader();
-      reader.onload = () => setBannerBase64(reader.result as string);
-      reader.readAsDataURL(compressed);
-    });
-  }
-
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
   const MAX_MENU_FOTOS = 3;
+
+  async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImages(true);
+    try {
+      // Mostrar preview inmediato con blob URL
+      const previewUrl = URL.createObjectURL(file);
+      setLogoPreview(previewUrl);
+      // Subir a Storage
+      const url = await uploadSolicitudLogo(solicitudTempId, file);
+      setLogoUrl(url);
+    } catch {
+      // Fallback: mostrar preview sin URL de Storage
+      const reader = new FileReader();
+      reader.onload = () => setLogoPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } finally {
+      setUploadingImages(false);
+    }
+    e.target.value = '';
+  }
+
+  async function handleBanner(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImages(true);
+    try {
+      const previewUrl = URL.createObjectURL(file);
+      setBannerPreview(previewUrl);
+      const url = await uploadSolicitudBanner(solicitudTempId, file);
+      setBannerUrl(url);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => setBannerPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } finally {
+      setUploadingImages(false);
+    }
+    e.target.value = '';
+  }
 
   async function handleMenuFotos(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files?.length) return;
     const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
     if (imageFiles.length === 0) return;
+    setUploadingImages(true);
     try {
-      const compressed = await Promise.all(imageFiles.map((f) => compressImage(f, 'solicitudMenu')));
-      const base64List = await Promise.all(compressed.map((f) => fileToBase64(f)));
-      setMenuFotosBase64((prev) => [...prev, ...base64List].slice(0, MAX_MENU_FOTOS));
+      const currentCount = menuFotosUrls.length;
+      const toUpload = imageFiles.slice(0, MAX_MENU_FOTOS - currentCount);
+      const results = await Promise.all(
+        toUpload.map(async (file, i) => {
+          const preview = URL.createObjectURL(file);
+          try {
+            const url = await uploadSolicitudMenuFoto(solicitudTempId, currentCount + i, file);
+            return { url, preview };
+          } catch {
+            return { url: null, preview };
+          }
+        })
+      );
+      const urls = results.map((r) => r.url ?? '');
+      const previews = results.map((r) => r.preview);
+      setMenuFotosUrls((prev) => [...prev, ...urls].slice(0, MAX_MENU_FOTOS));
+      setMenuFotosPreviews((prev) => [...prev, ...previews].slice(0, MAX_MENU_FOTOS));
     } catch {
       // silencioso
+    } finally {
+      setUploadingImages(false);
     }
     e.target.value = '';
   }
-
-  const MAX_PAYLOAD_BYTES = 800 * 1024; // Firestore doc limit 1 MiB; dejar margen
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -122,6 +157,7 @@ export default function SociosPage() {
       setError('Completá todos los campos obligatorios.');
       return;
     }
+    // Fase 1: enviar URLs de Storage en lugar de Base64
     const payload = {
       nombreLocal: nombreLocal.trim(),
       nombre: nombre.trim(),
@@ -132,21 +168,16 @@ export default function SociosPage() {
       direccion: direccion.trim(),
       tipoNegocio,
       localACalle,
-      logoBase64: logoBase64 || undefined,
-      bannerBase64: bannerBase64 || undefined,
-      menuFotosBase64: menuFotosBase64.length ? menuFotosBase64 : undefined,
+      logoUrl: logoUrl || undefined,
+      bannerUrl: bannerUrl || undefined,
+      menuFotosUrls: menuFotosUrls.filter(Boolean).length ? menuFotosUrls.filter(Boolean) : undefined,
     };
-    const bodyStr = JSON.stringify(payload);
-    if (new Blob([bodyStr]).size > MAX_PAYLOAD_BYTES) {
-      setError('Las imágenes ocupan demasiado. Quitá alguna foto del menú o sube imágenes más pequeñas.');
-      return;
-    }
     setSending(true);
     try {
       const res = await fetch('/api/solicitudes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: bodyStr,
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al enviar');
@@ -368,20 +399,22 @@ export default function SociosPage() {
             <button
               type="button"
               onClick={() => logoInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors"
+              disabled={uploadingImages}
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors disabled:opacity-60"
             >
-              {getSafeImageSrc(logoBase64) ? (
+              {logoPreview ? (
                 <Image
-                  src={getSafeImageSrc(logoBase64)!}
+                  src={logoPreview}
                   alt="Logo"
                   width={48}
                   height={48}
                   className="w-12 h-12 rounded-lg object-cover"
+                  unoptimized
                 />
               ) : (
                 <>
                   <Camera className="w-5 h-5" />
-                  <span className="text-sm">Subir logo</span>
+                  <span className="text-sm">{uploadingImages ? 'Subiendo...' : 'Subir logo'}</span>
                 </>
               )}
             </button>
@@ -393,20 +426,22 @@ export default function SociosPage() {
             <button
               type="button"
               onClick={() => bannerInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors"
+              disabled={uploadingImages}
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors disabled:opacity-60"
             >
-              {getSafeImageSrc(bannerBase64) ? (
+              {bannerPreview ? (
                 <Image
-                  src={getSafeImageSrc(bannerBase64)!}
+                  src={bannerPreview}
                   alt="Banner"
                   width={80}
                   height={48}
                   className="h-12 w-20 rounded-lg object-cover"
+                  unoptimized
                 />
               ) : (
                 <>
                   <Camera className="w-5 h-5" />
-                  <span className="text-sm">Subir banner</span>
+                  <span className="text-sm">{uploadingImages ? 'Subiendo...' : 'Subir banner'}</span>
                 </>
               )}
             </button>
@@ -418,11 +453,21 @@ export default function SociosPage() {
             <button
               type="button"
               onClick={() => menuInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors"
+              disabled={uploadingImages}
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-500 hover:border-rojo-andino hover:text-rojo-andino transition-colors disabled:opacity-60"
             >
               <ClipboardList className="w-5 h-5" />
-              <span className="text-sm">{menuFotosBase64.length ? `${menuFotosBase64.length}/3 foto(s)` : 'Subir fotos del menú (máx. 3)'}</span>
+              <span className="text-sm">
+                {uploadingImages ? 'Subiendo...' : (menuFotosUrls.length ? `${menuFotosUrls.length}/3 foto(s)` : 'Subir fotos del menú (máx. 3)')}
+              </span>
             </button>
+            {menuFotosPreviews.length > 0 && (
+              <div className="mt-2 flex gap-2 flex-wrap">
+                {menuFotosPreviews.map((preview, i) => (
+                  <Image key={i} src={preview} alt={`Foto ${i + 1}`} width={56} height={56} className="w-14 h-14 rounded-lg object-cover border border-gray-200" unoptimized />
+                ))}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -430,10 +475,10 @@ export default function SociosPage() {
           )}
           <button
             type="submit"
-            disabled={sending}
+            disabled={sending || uploadingImages}
             className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 disabled:opacity-70 text-white font-bold shadow-lg transition-colors"
           >
-            {sending ? 'Enviando...' : 'Enviar solicitud'}
+            {sending ? 'Enviando...' : uploadingImages ? 'Subiendo imágenes...' : 'Enviar solicitud'}
           </button>
         </form>
 

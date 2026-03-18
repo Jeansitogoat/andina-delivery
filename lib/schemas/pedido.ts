@@ -37,11 +37,14 @@ export const pedidoPostSchema = z.object({
     localId: z.string().min(1, 'localId es requerido'),
     items: z.array(itemsCartItemSchema).min(1, 'Debe incluir al menos un ítem en el carrito'),
   }).optional(),
-  // Datos opcionales de comprobante de transferencia (checkout transferencia)
-  // Límite de 700KB en Base64 (~520KB binario) para no superar el límite de 1MiB de Firestore
-  comprobanteBase64: z.string().max(700_000, 'El comprobante excede el tamaño máximo permitido (700 KB). Usa una imagen comprimida o un PDF más liviano.').optional(),
+  // Fase 1: comprobante como URL de Firebase Storage (preferido).
+  /** URL de Firebase Storage del comprobante de transferencia. Reemplaza comprobanteBase64. */
+  comprobanteUrl: z.string().url('URL de comprobante inválida').optional(),
   fileName: z.string().max(255).optional(),
   mimeType: z.string().max(100).optional(),
+  // @deprecated Mantener para compatibilidad con versiones anteriores del cliente.
+  // Límite de 700KB para no superar el límite de 1MiB de Firestore.
+  comprobanteBase64: z.string().max(700_000, 'El comprobante excede el tamaño máximo (700 KB). Comprime la imagen o sube primero a Storage.').optional(),
 });
 
 export type PedidoPostInput = z.infer<typeof pedidoPostSchema>;
