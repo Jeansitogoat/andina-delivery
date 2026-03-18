@@ -40,15 +40,10 @@ export default function ProductDetailSheet({
     if (item) {
       setQty(currentQty > 0 ? currentQty : 1);
       setNote('');
-      setSelectedVariationIndex(item.tieneVariaciones && item.variaciones?.length ? 0 : null);
-      setSelectedComplementos(
-        item.tieneComplementos && item.complementos?.length
-          ? item.complementos.reduce<Record<string, string>>((acc, g) => {
-              if (g.options.length > 0) acc[g.groupLabel] = g.options[0];
-              return acc;
-            }, {})
-          : {}
-      );
+      // Importante: que el usuario NO llegue con nada preseleccionado.
+      // El botón "Agregar" debe quedar deshabilitado hasta completar las opciones obligatorias.
+      setSelectedVariationIndex(null);
+      setSelectedComplementos({});
       requestAnimationFrame(() => setVisible(true));
     } else {
       setVisible(false);
@@ -63,7 +58,12 @@ export default function ProductDetailSheet({
   const hasVariaciones = !!(item?.tieneVariaciones && item.variaciones?.length);
   const hasComplementos = !!(item?.tieneComplementos && item.complementos?.length);
   const selectedVariation = hasVariaciones && item && selectedVariationIndex != null && item.variaciones?.[selectedVariationIndex];
-  const effectivePrice = selectedVariation ? selectedVariation.price : (item?.price ?? 0);
+  // Si hay variaciones pero el usuario no eligió ninguna, no mostramos precio base.
+  const effectivePrice = selectedVariation
+    ? selectedVariation.price
+    : hasVariaciones
+      ? 0
+      : item?.price ?? 0;
   const variacionValid = !hasVariaciones || selectedVariationIndex != null;
   const complementosValid =
     !hasComplementos ||
@@ -98,7 +98,7 @@ export default function ProductDetailSheet({
 
   if (!item) return null;
 
-  const total = (effectivePrice * qty).toFixed(2);
+  const totalText = hasVariaciones && !selectedVariation ? '—' : `$${(effectivePrice * qty).toFixed(2)}`;
 
   return (
     <>
@@ -187,13 +187,18 @@ export default function ProductDetailSheet({
                       key={idx}
                       type="button"
                       onClick={() => setSelectedVariationIndex(idx)}
-                      className={`px-4 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                      className={`px-4 py-2.5 rounded-full text-sm font-semibold transition-all border ${
                         selectedVariationIndex === idx
-                          ? 'bg-rojo-andino text-white shadow-md'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                          ? 'bg-rojo-andino text-white border-rojo-andino shadow-md'
+                          : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200'
                       }`}
                     >
-                      {v.name} — ${v.price.toFixed(2)}
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-gray-900">{v.name}</span>
+                        <span className={selectedVariationIndex === idx ? 'text-white/85' : 'text-gray-500'}>
+                          ${v.price.toFixed(2)}
+                        </span>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -204,16 +209,19 @@ export default function ProductDetailSheet({
             {hasComplementos && item.complementos && (
               <div className="mt-5 space-y-4">
                 {item.complementos.map((g) => (
-                  <div key={g.groupLabel}>
-                    <p className="font-semibold text-gray-800 text-sm mb-2">{g.groupLabel}</p>
-                    <div className="space-y-1.5">
+                  <div
+                    key={g.groupLabel}
+                    className="p-4 rounded-3xl overflow-hidden bg-gray-50/70 border border-gray-100"
+                  >
+                    <p className="font-semibold text-gray-800 text-sm mb-3">{g.groupLabel}</p>
+                    <div className="space-y-2">
                       {g.options.map((opt) => (
                         <label
                           key={opt}
-                          className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors ${
+                          className={`flex items-center gap-3 px-4 py-3 rounded-2xl border cursor-pointer transition-colors ${
                             selectedComplementos[g.groupLabel] === opt
                               ? 'border-rojo-andino bg-rojo-andino/5'
-                              : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'
+                              : 'border-gray-200 bg-white hover:bg-gray-50'
                           }`}
                         >
                           <input
@@ -287,7 +295,7 @@ export default function ProductDetailSheet({
           >
             <span className="bg-white/20 rounded-xl px-2 py-0.5 text-sm font-black">{qty}</span>
             Agregar a mi pedido
-            <span className="ml-auto font-bold">${total}</span>
+            <span className="ml-auto font-bold">{totalText}</span>
           </button>
           )}
           {!canAdd && (hasVariaciones || hasComplementos) && (

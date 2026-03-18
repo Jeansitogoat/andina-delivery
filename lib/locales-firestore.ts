@@ -185,6 +185,10 @@ export async function updateLocalInFirestore(
   localId: string,
   updates: Partial<Pick<Local, 'name' | 'address' | 'telefono' | 'status' | 'transferencia' | 'time' | 'shipping' | 'logo' | 'cover' | 'categories' | 'ownerName' | 'ownerPhone' | 'ownerEmail' | 'lat' | 'lng'>> & { cerradoHasta?: string | null; horarios?: HorarioItem[] }
 ): Promise<void> {
+  // El menú vive en la subcolección productos; no actualizar el documento raíz con menu.
+  const u = updates as Record<string, unknown>;
+  if ('menu' in u) delete u.menu;
+
   const db = getAdminFirestore();
   const ref = db.collection(LOCALES_COLLECTION).doc(localId);
   const snap = await ref.get();
