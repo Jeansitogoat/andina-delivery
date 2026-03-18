@@ -24,9 +24,10 @@ function getCommissionStartDate(programStartDate: string): string {
 const CACHE_REVALIDATE = 60;
 
 async function fetchLocalesData(incluirSuspendidos: boolean) {
-  const { locales, menus } = await getLocalesFromFirestore();
-  const reviews: Record<string, import('@/lib/data').Review[]> = {};
-  let localesResult = locales.map((loc) => loc).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  // Fase 2: getLocalesFromFirestore() ya no descarga los menús (subcolección productos).
+  // El listado del home solo necesita metadatos del local.
+  const { locales } = await getLocalesFromFirestore();
+  let localesResult = locales.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
   if (!incluirSuspendidos) {
     localesResult = localesResult.filter((loc) => loc.status !== 'suspended');
   }
@@ -40,7 +41,7 @@ async function fetchLocalesData(incluirSuspendidos: boolean) {
     const cover = coverNorm && isValidImageUrl(coverNorm) ? coverNorm : '';
     return { ...loc, logo, cover };
   });
-  return { locales: localesResult, menus, reviews };
+  return { locales: localesResult };
 }
 
 export async function GET(request: Request) {
