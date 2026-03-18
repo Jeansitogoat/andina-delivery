@@ -144,7 +144,11 @@ export async function PATCH(
               cooperativa: transferencia.cooperativa ?? '',
               titular: transferencia.titular,
               tipoCuenta: transferencia.tipoCuenta,
-              codigoBase64: transferencia.codigoBase64,
+              // Fase 1: guardar URL de Storage preferentemente; legacy Base64 para compatibilidad
+              codigoUrl: (transferencia as { codigoUrl?: string }).codigoUrl,
+              codigoBase64: !(transferencia as { codigoUrl?: string }).codigoUrl
+                ? transferencia.codigoBase64
+                : undefined,
               codigoMimeType: transferencia.codigoMimeType,
             };
     }

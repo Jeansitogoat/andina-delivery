@@ -29,6 +29,7 @@ import { getFirebaseAuth, getFirebaseStorage } from '@/lib/firebase/client';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl } from '@/lib/validImageUrl';
+import { uploadLocalQr } from '@/lib/storageUpload';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 
 const HORARIOS_DEFAULT = [
@@ -68,9 +69,12 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   const [cooperativa, setCooperativa] = useState('');
   const [titular, setTitular] = useState('');
   const [tipoCuenta, setTipoCuenta] = useState('');
-  const [codigoBase64, setCodigoBase64] = useState('');
+  const [codigoUrl, setCodigoUrl] = useState('');
+  // Legacy: mantenemos codigoBase64 solo para mostrar datos existentes cargados de Firestore
+  const [codigoBase64Legacy, setCodigoBase64Legacy] = useState('');
   const [codigoMimeType, setCodigoMimeType] = useState('');
   const [codigoFileName, setCodigoFileName] = useState('');
+  const [codigoUploading, setCodigoUploading] = useState(false);
 
   const [passwordActual, setPasswordActual] = useState('');
   const [passwordNueva, setPasswordNueva] = useState('');
@@ -100,9 +104,15 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
             setCooperativa(loc.transferencia.cooperativa ?? '');
             setTitular(loc.transferencia.titular ?? '');
             setTipoCuenta(loc.transferencia.tipoCuenta ?? '');
-            setCodigoBase64(loc.transferencia.codigoBase64 ?? '');
-            setCodigoMimeType(loc.transferencia.codigoMimeType ?? '');
-            setCodigoFileName(loc.transferencia.codigoBase64 ? 'Código subido' : '');
+            // Fase 1: preferir codigoUrl; fallback a codigoBase64 legacy
+            if (loc.transferencia.codigoUrl) {
+              setCodigoUrl(loc.transferencia.codigoUrl);
+              setCodigoFileName('Código subido');
+            } else if (loc.transferencia.codigoBase64) {
+              setCodigoBase64Legacy(loc.transferencia.codigoBase64);
+              setCodigoMimeType(loc.transferencia.codigoMimeType ?? '');
+              setCodigoFileName('Código subido (legacy)');
+            }
           }
         }
       })
@@ -164,16 +174,30 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     e.target.value = '';
   }
 
-  function handleCodigoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleCodigoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCodigoBase64(reader.result as string);
+    if (!file || !id) return;
+    setCodigoUploading(true);
+    try {
+      // Fase 1: subir QR directamente a Firebase Storage
+      const url = await uploadLocalQr(id, file);
+      setCodigoUrl(url);
+      setCodigoBase64Legacy('');
       setCodigoMimeType(file.type);
       setCodigoFileName(file.name);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      // Fallback legacy: si falla el upload, usar Base64
+      const reader = new FileReader();
+      reader.onload = () => {
+        setCodigoBase64Legacy(reader.result as string);
+        setCodigoMimeType(file.type);
+        setCodigoFileName(file.name);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setCodigoUploading(false);
+    }
+    e.target.value = '';
   }
 
   async function guardar() {
@@ -186,7 +210,9 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
             cooperativa: cooperativa.trim(),
             titular: titular.trim() || undefined,
             tipoCuenta: tipoCuenta.trim() || undefined,
-            codigoBase64: codigoBase64 || undefined,
+            // Fase 1: preferir codigoUrl (Storage); mantener codigoBase64 legacy si no hay URL
+            codigoUrl: codigoUrl || undefined,
+            codigoBase64: !codigoUrl ? (codigoBase64Legacy || undefined) : undefined,
             codigoMimeType: codigoMimeType || undefined,
           }
         : null;
@@ -563,24 +589,34 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                 <button
                   type="button"
                   onClick={() => codigoRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-4 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-dorado-oro/50 hover:bg-amber-50/30 transition-colors text-sm font-semibold text-gray-700"
+                  disabled={codigoUploading}
+                  className="w-full flex items-center justify-center gap-2 py-4 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-dorado-oro/50 hover:bg-amber-50/30 transition-colors text-sm font-semibold text-gray-700 disabled:opacity-60"
                 >
-                  <Upload className="w-5 h-5 text-gray-500" />
-                  {codigoFileName || 'Subir imagen o PDF del código'}
+                  {codigoUploading ? <Loader2 className="w-5 h-5 animate-spin text-gray-400" /> : <Upload className="w-5 h-5 text-gray-500" />}
+                  {codigoUploading ? 'Subiendo...' : (codigoFileName || 'Subir imagen o PDF del código')}
                 </button>
-                {codigoBase64 && (
+                {(codigoUrl || codigoBase64Legacy) && (
                   <div className="mt-2 flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
-                    {codigoMimeType?.startsWith('image/') ? (
-                      getSafeImageSrc(codigoBase64) ? (
+                    {codigoUrl ? (
+                      codigoMimeType?.startsWith('image/') ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
-                          src={getSafeImageSrc(codigoBase64)}
+                          src={codigoUrl}
                           alt="Código"
                           className="w-14 h-14 rounded-lg object-cover border border-gray-200"
                         />
                       ) : (
-                        <div className="w-14 h-14 rounded-lg bg-gray-200 flex items-center justify-center text-gray-500 text-xs">No válida</div>
+                        <div className="w-14 h-14 rounded-lg bg-red-100 flex items-center justify-center">
+                          <FileText className="w-7 h-7 text-red-600" />
+                        </div>
                       )
+                    ) : codigoMimeType?.startsWith('image/') && getSafeImageSrc(codigoBase64Legacy) ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={getSafeImageSrc(codigoBase64Legacy)}
+                        alt="Código"
+                        className="w-14 h-14 rounded-lg object-cover border border-gray-200"
+                      />
                     ) : (
                       <div className="w-14 h-14 rounded-lg bg-red-100 flex items-center justify-center">
                         <FileText className="w-7 h-7 text-red-600" />
@@ -590,12 +626,14 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                       <p className="text-sm font-semibold text-gray-900 truncate">{codigoFileName}</p>
                       <p className="text-xs text-gray-500">
                         {codigoMimeType?.startsWith('image/') ? 'Imagen' : 'PDF'}
+                        {codigoUrl && <span className="ml-1 text-green-600">· En Storage</span>}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
-                        setCodigoBase64('');
+                        setCodigoUrl('');
+                        setCodigoBase64Legacy('');
                         setCodigoMimeType('');
                         setCodigoFileName('');
                       }}

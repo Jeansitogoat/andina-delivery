@@ -1,12 +1,25 @@
 /**
- * Lectura/escritura de locales en Firestore (colección locales).
- * Cada documento tiene id = localId y campos de Local + menu (MenuItem[]).
+ * Lectura/escritura de locales en Firestore.
+ *
+ * Fase 2 — Normalización de datos:
+ * El menú ya no vive en el campo `menu[]` del documento raíz del local.
+ * Cada ítem es un documento independiente en la subcolección `productos`.
+ *
+ * Esquema:
+ *   locales/{localId}                   ← <5KB: solo metadatos del local
+ *   locales/{localId}/productos/{itemId} ← un documento por ítem de menú
+ *
+ * Compatibilidad backward:
+ * Al leer el menú, si la subcolección `productos` está vacía se lee el campo
+ * `menu[]` legacy del documento raíz como fallback. Esto permite convivencia
+ * durante la migración sin downtime.
  */
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { Local, MenuItem, HorarioItem } from '@/lib/data';
 
 const LOCALES_COLLECTION = 'locales';
+const PRODUCTOS_SUBCOLLECTION = 'productos';
 
 /** Firestore no acepta undefined; eliminamos esas claves del payload. */
 function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
@@ -52,19 +65,64 @@ function docToLocal(data: Record<string, unknown>, id: string): Local {
   };
 }
 
-export async function getLocalesFromFirestore(): Promise<{ locales: Local[]; menus: Record<string, MenuItem[]> }> {
+function docToMenuItem(data: Record<string, unknown>, id: string): MenuItem {
+  return {
+    id,
+    name: String(data.name ?? ''),
+    price: Number(data.price ?? 0),
+    description: data.description != null ? String(data.description) : undefined,
+    image: data.image != null ? String(data.image) : undefined,
+    bestseller: Boolean(data.bestseller),
+    category: String(data.category ?? ''),
+    tieneVariaciones: Boolean(data.tieneVariaciones),
+    variaciones: Array.isArray(data.variaciones) ? (data.variaciones as MenuItem['variaciones']) : undefined,
+    tieneComplementos: Boolean(data.tieneComplementos),
+    complementos: Array.isArray(data.complementos) ? (data.complementos as MenuItem['complementos']) : undefined,
+  };
+}
+
+/**
+ * Lee todos los locales (solo metadatos, sin menú).
+ * Usado en GET /api/locales para el listado del home. Más rápido y liviano.
+ */
+export async function getLocalesFromFirestore(): Promise<{ locales: Local[] }> {
   const db = getAdminFirestore();
   const snap = await db.collection(LOCALES_COLLECTION).get();
   const locales: Local[] = [];
-  const menus: Record<string, MenuItem[]> = {};
   snap.docs.forEach((d) => {
     const data = d.data() as Record<string, unknown>;
     locales.push(docToLocal(data, d.id));
-    menus[d.id] = Array.isArray(data.menu) ? (data.menu as MenuItem[]) : [];
   });
-  return { locales, menus };
+  return { locales };
 }
 
+/**
+ * Lee el menú de un local desde la subcolección `productos`.
+ * Fallback: si la subcolección está vacía, lee el campo `menu[]` legacy del documento raíz.
+ */
+export async function getMenuFromFirestore(localId: string): Promise<MenuItem[]> {
+  const db = getAdminFirestore();
+  const prodSnap = await db
+    .collection(LOCALES_COLLECTION)
+    .doc(localId)
+    .collection(PRODUCTOS_SUBCOLLECTION)
+    .orderBy('_order', 'asc')
+    .get();
+
+  if (!prodSnap.empty) {
+    return prodSnap.docs.map((d) => docToMenuItem(d.data() as Record<string, unknown>, d.id));
+  }
+
+  // Fallback legacy: leer campo `menu[]` del documento raíz.
+  const rootSnap = await db.collection(LOCALES_COLLECTION).doc(localId).get();
+  if (!rootSnap.exists) return [];
+  const data = rootSnap.data() as Record<string, unknown>;
+  return Array.isArray(data.menu) ? (data.menu as MenuItem[]) : [];
+}
+
+/**
+ * Lee un local completo (metadatos + menú) para las páginas de detalle.
+ */
 export async function getLocalFromFirestore(
   localId: string
 ): Promise<{ local: Local; menu: MenuItem[] } | null> {
@@ -72,12 +130,18 @@ export async function getLocalFromFirestore(
   const doc = await db.collection(LOCALES_COLLECTION).doc(localId).get();
   if (!doc.exists) return null;
   const data = doc.data() as Record<string, unknown>;
+  const menu = await getMenuFromFirestore(localId);
   return {
     local: docToLocal(data, doc.id),
-    menu: Array.isArray(data.menu) ? (data.menu as MenuItem[]) : [],
+    menu,
   };
 }
 
+/**
+ * Escribe todos los metadatos del local + menú (para migración y creación inicial).
+ * El menú se escribe en la subcolección `productos` (batch de escrituras).
+ * Borra el campo `menu` legacy del documento raíz si existía.
+ */
 export async function setLocalInFirestore(
   localId: string,
   local: Local,
@@ -85,15 +149,34 @@ export async function setLocalInFirestore(
 ): Promise<void> {
   const db = getAdminFirestore();
   const { id: _id, ...rest } = local;
-  const payload = stripUndefined({
+
+  // Escribir el documento raíz sin el campo menu[]
+  const rootPayload = stripUndefined({
     ...rest,
-    menu,
     updatedAt: FieldValue.serverTimestamp(),
   });
-  await db
-    .collection(LOCALES_COLLECTION)
-    .doc(localId)
-    .set(payload, { merge: true });
+  // Eliminar el campo menu legacy si existe
+  (rootPayload as Record<string, unknown>).menu = FieldValue.delete();
+
+  await db.collection(LOCALES_COLLECTION).doc(localId).set(rootPayload, { merge: true });
+
+  // Escribir cada ítem como documento en la subcolección (batch de máx 500)
+  if (menu.length > 0) {
+    const batchSize = 400;
+    for (let i = 0; i < menu.length; i += batchSize) {
+      const chunk = menu.slice(i, i + batchSize);
+      const batch = db.batch();
+      chunk.forEach((item, idx) => {
+        const ref = db
+          .collection(LOCALES_COLLECTION)
+          .doc(localId)
+          .collection(PRODUCTOS_SUBCOLLECTION)
+          .doc(item.id);
+        batch.set(ref, { ...stripUndefined(item as unknown as Record<string, unknown>), _order: i + idx });
+      });
+      await batch.commit();
+    }
+  }
 }
 
 export type { HorarioItem };
@@ -127,14 +210,47 @@ export async function updateLocalInFirestore(
   await ref.update(obj);
 }
 
+/**
+ * Escribe el menú completo en la subcolección `productos`.
+ * Borra los documentos anteriores que ya no están en el nuevo menú.
+ * Elimina el campo `menu` legacy del documento raíz.
+ */
 export async function setMenuInFirestore(localId: string, menu: MenuItem[]): Promise<void> {
   const db = getAdminFirestore();
+  const colRef = db.collection(LOCALES_COLLECTION).doc(localId).collection(PRODUCTOS_SUBCOLLECTION);
+
+  // Obtener los IDs actuales para borrar los eliminados
+  const existing = await colRef.listDocuments();
+  const existingIds = new Set(existing.map((r) => r.id));
+  const newIds = new Set(menu.map((i) => i.id));
+
+  const batch = db.batch();
+
+  // Borrar ítems eliminados
+  existing.forEach((ref) => {
+    if (!newIds.has(ref.id)) batch.delete(ref);
+  });
+
+  // Crear o actualizar los nuevos ítems
+  menu.forEach((item, idx) => {
+    const ref = colRef.doc(item.id);
+    batch.set(ref, { ...stripUndefined(item as unknown as Record<string, unknown>), _order: idx });
+    existingIds.delete(item.id);
+  });
+
+  await batch.commit();
+
+  // Eliminar el campo menu legacy del documento raíz y actualizar timestamp
   await db.collection(LOCALES_COLLECTION).doc(localId).update({
-    menu,
+    menu: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 }
 
+/**
+ * Obtiene solo los IDs de los locales existentes (sin descargar contenido).
+ * Usa listDocuments() para evitar el full-scan con descarga de documentos.
+ */
 export async function getExistingLocalIdsFromFirestore(): Promise<Set<string>> {
   const db = getAdminFirestore();
   // listDocuments() obtiene solo las referencias (IDs) sin descargar el contenido de los documentos.

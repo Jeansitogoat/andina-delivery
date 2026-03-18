@@ -37,6 +37,9 @@ export interface TransferenciaLocal {
   cooperativa: string;
   titular?: string;
   tipoCuenta?: string;
+  /** URL de Firebase Storage del QR/código de pago (Fase 1). Reemplaza codigoBase64. */
+  codigoUrl?: string;
+  /** @deprecated Usar codigoUrl. Mantenido para compatibilidad con documentos legacy. */
   codigoBase64?: string;
   codigoMimeType?: string;
 }
