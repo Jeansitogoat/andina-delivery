@@ -41,10 +41,25 @@ export async function GET(request: Request) {
     throw r;
   }
   try {
+    const { searchParams } = new URL(request.url);
+    const limitParam = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10) || 50, 1), 100);
+    const cursor = searchParams.get('cursor') || null;
+
     const db = getAdminFirestore();
-    const snap = await db.collection(SOLICITUDES_COLLECTION).orderBy('createdAt', 'desc').get();
+    let query = db
+      .collection(SOLICITUDES_COLLECTION)
+      .orderBy('createdAt', 'desc')
+      .limit(limitParam);
+
+    if (cursor) {
+      const cursorSnap = await db.collection(SOLICITUDES_COLLECTION).doc(cursor).get();
+      if (cursorSnap.exists) query = query.startAfter(cursorSnap);
+    }
+
+    const snap = await query.get();
     const list: Solicitud[] = snap.docs.map((d) => toSolicitud(d.data() as Record<string, unknown>, d.id));
-    return NextResponse.json(list);
+    const nextCursor = snap.docs.length === limitParam ? snap.docs[snap.docs.length - 1].id : null;
+    return NextResponse.json({ solicitudes: list, nextCursor });
   } catch (e) {
     console.error('GET /api/solicitudes', e);
     return NextResponse.json({ error: 'Error al leer solicitudes' }, { status: 500 });

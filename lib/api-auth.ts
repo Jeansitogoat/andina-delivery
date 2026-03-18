@@ -19,7 +19,7 @@ function isTokenExpiredOrInvalid(e: unknown): boolean {
 export async function requireAuth(
   request: Request,
   allowedRoles: UserRole[]
-): Promise<{ uid: string; rol: UserRole }> {
+): Promise<{ uid: string; rol: UserRole; localId: string | null }> {
   const authHeader = request.headers.get('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!token) {
@@ -34,7 +34,8 @@ export async function requireAuth(
     if (!allowedRoles.includes(rol)) {
       throw new Response(JSON.stringify({ error: 'Rol no permitido' }), { status: 403 });
     }
-    return { uid, rol };
+    const localId = typeof data?.localId === 'string' ? data.localId : null;
+    return { uid, rol, localId };
   } catch (e) {
     if (e instanceof Response) throw e;
     if (isTokenExpiredOrInvalid(e)) {

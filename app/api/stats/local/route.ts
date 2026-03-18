@@ -19,10 +19,32 @@ export async function GET(request: Request) {
     }
 
     const db = getAdminFirestore();
-    const snap = await db
-      .collection('pedidos')
-      .where('localId', '==', localId)
-      .get();
+    // Filtrar por los últimos 90 días para evitar full-scans históricos ilimitados.
+    // El período de 90 días cubre hoy + semana + mes (30d) con margen amplio.
+    const noventaDiasAtras = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    let snap;
+    try {
+      snap = await db
+        .collection('pedidos')
+        .where('localId', '==', localId)
+        .where('timestamp', '>=', noventaDiasAtras)
+        .orderBy('timestamp', 'desc')
+        .limit(2000)
+        .get();
+    } catch (err) {
+      const msg = (err as Error)?.message ?? '';
+      if (msg.includes('index') || msg.includes('Index')) {
+        // Fallback sin índice compuesto: filtro solo por localId, límite de 2000
+        snap = await db
+          .collection('pedidos')
+          .where('localId', '==', localId)
+          .orderBy('timestamp', 'desc')
+          .limit(2000)
+          .get();
+      } else {
+        throw err;
+      }
+    }
 
     interface PedidoRow {
       total: number;

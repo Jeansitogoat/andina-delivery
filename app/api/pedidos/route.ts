@@ -206,6 +206,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // Rechazar payloads que superen 900KB antes de leer el body o tocar Firestore.
+  // Evita el Error 500 causado por comprobanteBase64 demasiado grande (límite Firestore: 1MiB).
+  const contentLength = parseInt(request.headers.get('content-length') ?? '0', 10);
+  if (contentLength > 900_000) {
+    return NextResponse.json(
+      { error: 'El comprobante es demasiado grande. Máximo 700 KB. Comprime la imagen o usa una captura de pantalla.' },
+      { status: 413 }
+    );
+  }
+
   let uid: string;
   try {
     const auth = await requireAuth(request, ['cliente', 'maestro']);

@@ -78,14 +78,20 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let auth: { uid: string; rol: string; localId: string | null };
   try {
-    await requireAuth(request, ['local', 'maestro']);
+    auth = await requireAuth(request, ['local', 'maestro']);
   } catch (r) {
     if (r instanceof Response) return r;
     throw r;
   }
   try {
     const { id } = await params;
+
+    // Verificar que el usuario 'local' solo modifique su propio local
+    if (auth.rol === 'local' && auth.localId !== id) {
+      return NextResponse.json({ error: 'No autorizado para modificar este local' }, { status: 403 });
+    }
     const body = await request.json();
     const parse = localPatchSchema.safeParse(body);
     if (!parse.success) {

@@ -38,9 +38,10 @@ export const pedidoPostSchema = z.object({
     items: z.array(itemsCartItemSchema).min(1, 'Debe incluir al menos un ítem en el carrito'),
   }).optional(),
   // Datos opcionales de comprobante de transferencia (checkout transferencia)
-  comprobanteBase64: z.string().optional(),
-  fileName: z.string().optional(),
-  mimeType: z.string().optional(),
+  // Límite de 700KB en Base64 (~520KB binario) para no superar el límite de 1MiB de Firestore
+  comprobanteBase64: z.string().max(700_000, 'El comprobante excede el tamaño máximo permitido (700 KB). Usa una imagen comprimida o un PDF más liviano.').optional(),
+  fileName: z.string().max(255).optional(),
+  mimeType: z.string().max(100).optional(),
 });
 
 export type PedidoPostInput = z.infer<typeof pedidoPostSchema>;

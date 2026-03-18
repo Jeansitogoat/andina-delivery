@@ -12,7 +12,9 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
   const secret = process.env.CRON_SECRET;
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  // CRON_SECRET es obligatorio. Si no está configurado, el endpoint rechaza toda solicitud
+  // para evitar exposición pública del cron de comisiones.
+  if (!secret || authHeader !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
