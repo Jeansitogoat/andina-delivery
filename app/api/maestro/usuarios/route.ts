@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { getAdminAuth, getAdminFirestore, setUserClaims } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import type { UserRole } from '@/lib/useAuth';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -32,16 +32,20 @@ export async function POST(request: Request) {
       displayName: displayName?.trim() || undefined,
     });
 
+    const resolvedLocalId = role === 'local' && localId ? String(localId).trim() : null;
     const docData = {
       uid: userRecord.uid,
       email: userRecord.email,
       displayName: displayName?.trim() || userRecord.displayName || null,
       rol: role as UserRole,
-      localId: role === 'local' && localId ? String(localId).trim() : null,
+      localId: resolvedLocalId,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
     await db.collection('users').doc(userRecord.uid).set(docData);
+
+    // Fijar custom claim para que requireAuth no necesite leer Firestore en cada request.
+    await setUserClaims(userRecord.uid, { rol: role, localId: resolvedLocalId });
 
     return NextResponse.json({
       ok: true,

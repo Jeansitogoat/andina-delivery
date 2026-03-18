@@ -1,13 +1,15 @@
 rules_version = '2';
-// Andina Express – Reglas definitivas. Ver docs/FIRESTORE_RULES_PROMPT.md.
+// Andina Express – Reglas v2 con Custom Claims (Fase 3).
+// El rol se lee desde request.auth.token.rol (JWT claim) en lugar de get(users/{uid}).
+// Esto elimina las lecturas extra de Firestore que generaba la función getRole().
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: obtiene el rol del usuario desde /users/{uid}
+    // Helper: obtiene el rol del usuario desde el JWT custom claim.
+    // Cero lecturas adicionales de Firestore — el claim viaja en el token.
+    // Fallback vacío para usuarios legacy que aún no tienen el claim fijado.
     function getRole() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('rol', '')
-        : '';
+      return request.auth.token.get('rol', '');
     }
 
     // 1. Usuarios: cada uno solo puede leer/escribir su propio documento

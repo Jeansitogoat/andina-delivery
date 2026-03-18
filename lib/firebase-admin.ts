@@ -1,5 +1,5 @@
 /**
- * Firebase Admin SDK para uso en API routes (Firestore, Auth).
+ * Firebase Admin SDK para uso en API routes (Firestore, Auth, Storage).
  * Solo usa FIREBASE_SERVICE_ACCOUNT_JSON (contenido del JSON en una variable de entorno).
  */
 const admin = require('firebase-admin') as typeof import('firebase-admin');
@@ -26,7 +26,10 @@ function loadCredential(): import('firebase-admin').credential.Credential {
 
 function ensureInit(): void {
   if (admin.apps.length > 0) return;
-  admin.initializeApp({ credential: loadCredential() });
+  admin.initializeApp({
+    credential: loadCredential(),
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  });
 }
 
 export function getAdminFirestore(): import('firebase-admin/firestore').Firestore {
@@ -44,7 +47,43 @@ export function getAdminAuth(): import('firebase-admin/auth').Auth {
   return admin.auth();
 }
 
-export async function verifyIdToken(token: string): Promise<{ uid: string }> {
+export function getAdminStorage(): import('firebase-admin/storage').Storage {
+  ensureInit();
+  return admin.storage();
+}
+
+export interface DecodedToken {
+  uid: string;
+  /** Custom claim: rol del usuario (maestro | local | central | rider | cliente) */
+  rol?: string;
+  /** Custom claim: localId asociado al usuario (solo rol local) */
+  localId?: string | null;
+}
+
+/**
+ * Verifica el ID token y retorna el decoded token incluyendo custom claims.
+ * Los custom claims (rol, localId) están disponibles directamente sin leer Firestore.
+ */
+export async function verifyIdToken(token: string): Promise<DecodedToken> {
   const d = await getAdminAuth().verifyIdToken(token);
-  return { uid: d.uid };
+  return {
+    uid: d.uid,
+    rol: d['rol'] as string | undefined,
+    localId: d['localId'] as string | null | undefined,
+  };
+}
+
+/**
+ * Establece los custom claims del usuario en Firebase Auth.
+ * Los claims se incluyen en el JWT en el siguiente login o refresh de token.
+ * Para forzar el refresh en el cliente, llamar a user.getIdToken(true) después.
+ */
+export async function setUserClaims(
+  uid: string,
+  claims: { rol: string; localId?: string | null }
+): Promise<void> {
+  await getAdminAuth().setCustomUserClaims(uid, {
+    rol: claims.rol,
+    ...(claims.localId !== undefined ? { localId: claims.localId } : {}),
+  });
 }

@@ -124,6 +124,17 @@ export function useAuth() {
       lastAndinaUserRef.current = andinaUser;
       setState({ user: andinaUser, loading: false });
 
+      // Sincronizar custom claims en background para que el próximo token incluya el rol.
+      // Después refrescamos el token para que las API routes lo vean de inmediato.
+      cred.user.getIdToken().then((idToken) => {
+        fetch('/api/users/sync-claims', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}` },
+        })
+          .then(() => cred.user.getIdToken(true))
+          .catch(() => {});
+      }).catch(() => {});
+
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem('andina_visitado', '1');
@@ -188,6 +199,19 @@ export function useAuth() {
       } catch (err) {
         await deleteUser(user);
         throw err;
+      }
+
+      // 3. Sincronizar custom claim (rol) con Firebase Auth para futuras verificaciones sin lectura de Firestore.
+      try {
+        const idToken = await user.getIdToken();
+        await fetch('/api/users/sync-claims', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        // Forzar refresh del token para que el claim esté disponible de inmediato.
+        await user.getIdToken(true);
+      } catch {
+        // No bloquear el registro si falla la sincronización de claims.
       }
 
       setState({ user: andinaUser, loading: false });
