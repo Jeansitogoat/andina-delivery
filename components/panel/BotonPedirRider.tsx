@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Truck } from 'lucide-react';
 import { getIdToken } from '@/lib/authToken';
 import { isNightMode } from '@/lib/time';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 interface BotonPedirRiderProps {
   orderId: string;
@@ -63,7 +64,7 @@ export default function BotonPedirRider({
     return encodeURIComponent(mensaje);
   }, [orderId, restaurante, direccion, baseUrl, metodoPago, total, costoEnvio]);
 
-  const whatsappHref = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
+  const whatsappHref = `${formatWhatsAppLink(whatsappNumber)}?text=${whatsappText}`;
 
   async function handlePedirRider() {
     if (solicitado || solicitando || !canPedirRider) return;

@@ -5,6 +5,7 @@ import { TrendingUp, ShoppingBag, Users, DollarSign, Flame, Percent, Loader2, Me
 import NavPanel from '@/components/panel/NavPanel';
 import type { MenuItem } from '@/lib/data';
 import { getIdToken } from '@/lib/authToken';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 const LABELS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -224,7 +225,7 @@ export default function PanelStatsIdPage({ params }: { params: Promise<{ id: str
               )}
               {adminConfig && adminConfig.whatsappAdmin && (
                 <a
-                  href={`https://wa.me/${adminConfig.whatsappAdmin.replace(/\D/g, '')}?text=${encodeURIComponent(localName ? `Hola, soy ${localName} y tengo una consulta.` : 'Hola, tengo una consulta sobre mi negocio.')}`}
+                  href={`${formatWhatsAppLink(adminConfig.whatsappAdmin)}?text=${encodeURIComponent(localName ? `Hola, soy ${localName} y tengo una consulta.` : 'Hola, tengo una consulta sobre mi negocio.')}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 w-full py-2 px-3 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold"

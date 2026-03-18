@@ -40,7 +40,7 @@ import type { EstadoCarrera, EstadoRider, CarreraRider } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
-import { normalizePhoneEcuador } from '@/lib/normalizePhoneEcuador';
+import { normalizePhoneForWhatsApp, formatWhatsAppLink } from '@/lib/utils/phone';
 
 function mapEstado(estadoPedido: string): EstadoCarrera {
   if (estadoPedido === 'en_camino') return 'en_camino';
@@ -903,7 +903,7 @@ export default function PanelRiderPage() {
                     Ir al Cliente
                   </a>
                   {carreraActiva.clienteTelefono && (() => {
-                    const phoneNorm = normalizePhoneEcuador(carreraActiva.clienteTelefono);
+                    const phoneNorm = normalizePhoneForWhatsApp(carreraActiva.clienteTelefono);
                     if (!phoneNorm) return null;
                     return (
                     <>
@@ -915,7 +915,7 @@ export default function PanelRiderPage() {
                         Llamar cliente
                       </a>
                       <a
-                        href={`https://wa.me/${phoneNorm}?text=${encodeURIComponent(
+                        href={`${formatWhatsAppLink(carreraActiva.clienteTelefono)}?text=${encodeURIComponent(
                           `Hola, soy tu rider de Andina. Estoy en camino con tu pedido desde ${carreraActiva.restaurante}.`
                         )}`}
                         target="_blank"

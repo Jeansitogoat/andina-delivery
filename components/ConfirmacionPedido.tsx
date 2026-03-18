@@ -6,6 +6,7 @@ import { CheckCircle2, Clock, Truck, Bell } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { sendNotification, showLocalNotification, canShowLocalNotification, DEMO_NEED_PERMISSION_MESSAGE } from '@/lib/notifications';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 export interface ItemConfirmado {
   id: string;
@@ -110,7 +111,7 @@ export default function ConfirmacionPedido({
         )}
 
         <a
-          href="https://wa.me/593992250333"
+          href={formatWhatsAppLink('593992250333')}
           target="_blank"
           rel="noreferrer"
           className="block w-full py-3.5 rounded-2xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm mb-3 transition-colors"

@@ -1,18 +1,17 @@
 /**
  * Normaliza un número de teléfono para enlaces wa.me (Ecuador: código 593).
- * Elimina caracteres no numéricos y aplica formato internacional sin el símbolo +.
+ * Solo dígitos, quitar 0 inicial si existe, anteponer 593 si no está.
  */
-export function normalizePhoneForWhatsApp(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 0) return '';
-  if (digits.length === 9 && digits.startsWith('0')) {
-    return '593' + digits.slice(1);
-  }
-  if (digits.length === 9 && !digits.startsWith('0')) {
-    return '593' + digits;
-  }
-  if (digits.length === 12 && digits.startsWith('593')) {
-    return digits;
-  }
-  return digits;
+export function normalizePhoneForWhatsApp(phone: string | null | undefined): string {
+  if (phone == null) return '';
+  let clean = String(phone).replace(/\D/g, '');
+  if (clean.startsWith('0')) clean = clean.substring(1);
+  if (!clean.startsWith('593')) clean = '593' + clean;
+  return clean || '';
+}
+
+/** Devuelve el href de wa.me listo para usar; vacío si no hay número válido. */
+export function formatWhatsAppLink(telefono: string | null | undefined): string {
+  const num = normalizePhoneForWhatsApp(telefono);
+  return num ? `https://wa.me/${num}` : '';
 }

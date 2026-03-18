@@ -18,6 +18,7 @@ import {
   Clock,
 } from 'lucide-react';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 // ---- Tipos ----
 interface MandadoForm {
@@ -202,7 +203,7 @@ export default function ExpressPage() {
           </div>
 
           <a
-            href={`https://wa.me/593992250333?text=${encodeURIComponent(
+            href={`${formatWhatsAppLink('593992250333')}?text=${encodeURIComponent(
               `Hola! Solicité un mandado:\n¿Qué? ${form.que}\nDesde: ${form.desde}\nHasta: ${form.hasta}`
             )}`}
             target="_blank"

@@ -21,24 +21,26 @@ const transferenciaSchema = z.object({
   codigoMimeType: z.string().max(100).optional(),
 }).nullable();
 
-export const localPatchSchema = z.object({
-  name: z.string().optional(),
-  address: z.string().optional(),
-  telefono: z.string().optional(),
-  status: z.enum(['active', 'suspended'], { error: 'Estado debe ser active o suspended' }).optional(),
-  time: z.string().optional(),
-  shipping: z.number().optional(),
-  /** URL de Firebase Storage o path relativo para logo */
-  logo: z.string().optional(),
-  /** URL de Firebase Storage o path relativo para portada */
-  cover: z.string().optional(),
-  horarios: z.array(horarioSchema).optional(),
-  cerradoHasta: z.string().nullable().optional(),
-  categories: z.array(z.string()).optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  transferencia: transferenciaSchema.optional(),
-  isFeatured: z.boolean().optional(),
-});
+export const localPatchSchema = z
+  .object({
+    name: z.string().optional(),
+    address: z.string().optional(),
+    telefono: z.union([z.string(), z.number()]).optional().transform((v) => (v == null ? undefined : String(v))),
+    status: z.enum(['active', 'suspended'], { error: 'Estado debe ser active o suspended' }).optional(),
+    time: z.string().optional(),
+    shipping: z.number().optional(),
+    /** URL de Firebase Storage o path relativo para logo */
+    logo: z.string().optional(),
+    /** URL de Firebase Storage o path relativo para portada */
+    cover: z.string().optional(),
+    horarios: z.array(horarioSchema).optional(),
+    cerradoHasta: z.string().nullable().optional(),
+    categories: z.array(z.string()).optional(),
+    lat: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
+    lng: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
+    transferencia: transferenciaSchema.optional(),
+    isFeatured: z.boolean().optional(),
+  })
+  .passthrough();
 
 export type LocalPatchInput = z.infer<typeof localPatchSchema>;

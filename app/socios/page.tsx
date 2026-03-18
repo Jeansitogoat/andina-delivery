@@ -20,8 +20,9 @@ import {
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { uploadSolicitudLogo, uploadSolicitudBanner, uploadSolicitudMenuFoto } from '@/lib/storageUpload';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
-const WHATSAPP_NUMERO = process.env.NEXT_PUBLIC_WHATSAPP_SOCIOS || '593983511866';	
+const WHATSAPP_NUMERO = process.env.NEXT_PUBLIC_WHATSAPP_SOCIOS || '593983511866';
 const MENSAJE_WHATSAPP = 'Hola, vengo de Andina y quiero registrar mi negocio.';
 
 const TIPOS_NEGOCIO = [
@@ -33,7 +34,7 @@ const TIPOS_NEGOCIO = [
 ];
 
 function getWhatsAppLink(): string {
-  return `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(MENSAJE_WHATSAPP)}`;
+  return `${formatWhatsAppLink(WHATSAPP_NUMERO)}?text=${encodeURIComponent(MENSAJE_WHATSAPP)}`;
 }
 
 export default function SociosPage() {

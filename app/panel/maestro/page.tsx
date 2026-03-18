@@ -35,6 +35,7 @@ import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 import { useAndinaConfig } from '@/lib/AndinaContext';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 interface Solicitud {
   id: string;
@@ -1598,7 +1599,7 @@ export default function PanelMaestroPage() {
                             <div className="flex gap-2 flex-shrink-0">
                               {waPhone && (
                                 <a
-                                  href={`https://wa.me/593${waPhone.replace(/^0/, '')}`}
+                                  href={formatWhatsAppLink(waPhone)}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="flex items-center gap-1 px-3 py-2 rounded-xl bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors"
@@ -1885,7 +1886,7 @@ export default function PanelMaestroPage() {
                       </button>
                       {waPhone && (
                         <a
-                          href={`https://wa.me/593${waPhone.replace(/^0/, '')}`}
+                          href={formatWhatsAppLink(waPhone)}
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors"

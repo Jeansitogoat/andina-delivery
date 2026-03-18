@@ -25,7 +25,7 @@ import { useLocal } from '@/lib/useLocal';
 import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
-import { normalizePhoneForWhatsApp } from '@/lib/utils/phone';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import ProductDetailSheet from '@/components/ProductDetailSheet';
 import SkeletonRestaurante from '@/components/SkeletonRestaurante';
@@ -301,10 +301,10 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
               </div>
             )}
             {local.telefono?.trim() && (() => {
-              const waNumber = normalizePhoneForWhatsApp(local.telefono);
-              return waNumber ? (
+              const waHref = formatWhatsAppLink(local.telefono);
+              return waHref ? (
                 <a
-                  href={`https://wa.me/${waNumber}`}
+                  href={waHref}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 mt-2 text-sm font-medium text-green-600 hover:text-green-700"

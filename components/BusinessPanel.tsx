@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { X, ShoppingBag, CheckCircle, Truck, Star, TrendingUp, Phone, ChevronRight, Bell } from 'lucide-react';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 type OrderStatus = 'nuevo' | 'preparando' | 'listo' | 'entregado';
 
@@ -353,7 +354,7 @@ export default function BusinessPanel({ isOpen, onClose, localName = 'Tu negocio
                 <div className="text-sm">
                   <p className="font-bold text-gray-900">¿Necesitas ayuda?</p>
                   <p className="text-gray-500 text-xs mt-0.5">Contacta al equipo Andina</p>
-                  <a href="tel:+593992250333" className="text-rojo-andino font-bold text-sm mt-1 block">https://wa.me/593992250333</a>
+                  <a href={formatWhatsAppLink('593992250333')} target="_blank" rel="noreferrer" className="text-rojo-andino font-bold text-sm mt-1 block">Contactar por WhatsApp</a>
                 </div>
               </div>
             </div>

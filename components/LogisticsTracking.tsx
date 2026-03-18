@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Truck, Phone, X, CheckCircle2, Clock, ChevronUp, ChevronDown, MapPin } from 'lucide-react';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 interface LogisticsTrackingProps {
   isActive: boolean;
@@ -124,7 +125,7 @@ export default function LogisticsTracking({ isActive, onClose }: LogisticsTracki
                 </div>
               </div>
               <a
-                href="https://wa.me/593992250333"
+                href={formatWhatsAppLink('593992250333')}
                 target="_blank"
                 rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
