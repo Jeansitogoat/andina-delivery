@@ -137,8 +137,10 @@ export async function setMenuInFirestore(localId: string, menu: MenuItem[]): Pro
 
 export async function getExistingLocalIdsFromFirestore(): Promise<Set<string>> {
   const db = getAdminFirestore();
-  const snap = await db.collection(LOCALES_COLLECTION).get();
+  // listDocuments() obtiene solo las referencias (IDs) sin descargar el contenido de los documentos.
+  // Evita el full-scan con descarga de menu[] completo que haría un .get() normal.
+  const refs = await db.collection(LOCALES_COLLECTION).listDocuments();
   const ids = new Set<string>();
-  snap.docs.forEach((d) => ids.add(d.id));
+  refs.forEach((ref) => ids.add(ref.id));
   return ids;
 }

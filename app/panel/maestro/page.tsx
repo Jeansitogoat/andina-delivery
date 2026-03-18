@@ -215,7 +215,7 @@ export default function PanelMaestroPage() {
         }
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        if (!cancelled) setSolicitudes(Array.isArray(data) ? data : []);
+        if (!cancelled) setSolicitudes(Array.isArray(data) ? data : Array.isArray(data?.solicitudes) ? data.solicitudes : []);
       })
       .catch(() => {
         if (!cancelled) setSolicitudes([]);
@@ -355,7 +355,7 @@ export default function PanelMaestroPage() {
           return;
         }
         const data = await res.ok ? await res.json() : [];
-        setSolicitudes(Array.isArray(data) ? data : []);
+        setSolicitudes(Array.isArray(data) ? data : Array.isArray(data?.solicitudes) ? data.solicitudes : []);
       })
       .catch(() => setSolicitudes([]))
       .finally(() => setSolicitudesLoading(false));
