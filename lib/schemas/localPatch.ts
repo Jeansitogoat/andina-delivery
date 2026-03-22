@@ -23,24 +23,23 @@ const transferenciaSchema = z.object({
 
 export const localPatchSchema = z
   .object({
-    name: z.string().optional(),
-    address: z.string().optional(),
-    telefono: z.union([z.string(), z.number()]).optional().transform((v) => (v == null ? undefined : String(v))),
+    name: z.string().max(100, 'El nombre no puede superar 100 caracteres').optional(),
+    address: z.string().max(200, 'La dirección no puede superar 200 caracteres').optional(),
+    telefono: z.union([z.string().max(20, 'Teléfono demasiado largo'), z.number()]).optional().transform((v) => (v == null ? undefined : String(v))),
     status: z.enum(['active', 'suspended'], { error: 'Estado debe ser active o suspended' }).optional(),
-    time: z.string().optional(),
+    time: z.string().max(50, 'El tiempo estimado no puede superar 50 caracteres').optional(),
     shipping: z.number().optional(),
     /** URL de Firebase Storage o path relativo para logo */
-    logo: z.string().optional(),
+    logo: z.string().max(500).optional(),
     /** URL de Firebase Storage o path relativo para portada */
-    cover: z.string().optional(),
+    cover: z.string().max(500).optional(),
     horarios: z.array(horarioSchema).optional(),
     cerradoHasta: z.string().nullable().optional(),
-    categories: z.array(z.string()).optional(),
+    categories: z.array(z.string().max(50)).max(20).optional(),
     lat: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
     lng: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
     transferencia: transferenciaSchema.optional(),
     isFeatured: z.boolean().optional(),
-  })
-  .passthrough();
+  });
 
 export type LocalPatchInput = z.infer<typeof localPatchSchema>;

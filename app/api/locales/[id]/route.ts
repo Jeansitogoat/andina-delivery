@@ -116,6 +116,16 @@ export async function PATCH(
     const lng = bodyData.lng;
     const isFeatured = bodyData.isFeatured;
 
+    // El rol 'local' no puede auto-asignarse como destacado ni cambiar su estado
+    if (auth.rol === 'local') {
+      if (isFeatured !== undefined) {
+        return NextResponse.json({ error: 'Solo el maestro puede cambiar el estado de destacado' }, { status: 403 });
+      }
+      if (status !== undefined) {
+        return NextResponse.json({ error: 'Solo el maestro puede cambiar el estado del local' }, { status: 403 });
+      }
+    }
+
     const fromFirestore = await getLocalFromFirestore(id);
     if (!fromFirestore) {
       return NextResponse.json({ error: 'Local no encontrado' }, { status: 404 });

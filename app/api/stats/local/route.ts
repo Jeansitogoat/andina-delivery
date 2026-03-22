@@ -4,8 +4,9 @@ import { requireAuth } from '@/lib/api-auth';
 
 /** GET /api/stats/local?localId=xxx → estadísticas del local (pedidos, ingresos, clientes) */
 export async function GET(request: Request) {
+  let auth: { uid: string; rol: string; localId?: string | null };
   try {
-    await requireAuth(request, ['local', 'maestro', 'central']);
+    auth = await requireAuth(request, ['local', 'maestro', 'central']);
   } catch (r) {
     if (r instanceof Response) return r;
     throw r;
@@ -16,6 +17,9 @@ export async function GET(request: Request) {
     const localId = searchParams.get('localId');
     if (!localId) {
       return NextResponse.json({ error: 'localId requerido' }, { status: 400 });
+    }
+    if (auth.rol === 'local' && auth.localId !== localId) {
+      return NextResponse.json({ error: 'No autorizado para ver las estadísticas de este local' }, { status: 403 });
     }
 
     const db = getAdminFirestore();

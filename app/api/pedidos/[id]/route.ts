@@ -204,7 +204,7 @@ export async function PATCH(
       }
     }
 
-    /* Rider: rechazar carrera (solo servidor aplica riderId: null y estado) */
+    /* Rider: solo puede rechazar_carrera. Cualquier otra acción queda bloqueada. */
     if (auth.rol === 'rider') {
       const accion = typeof body.accion === 'string' ? body.accion.trim() : '';
       if (accion === 'rechazar_carrera') {
@@ -220,6 +220,8 @@ export async function PATCH(
         );
         return NextResponse.json({ ok: true });
       }
+      // Cualquier otro payload de un rider queda bloqueado explícitamente
+      return NextResponse.json({ error: 'Acción no permitida para el rol rider' }, { status: 403 });
     }
 
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };

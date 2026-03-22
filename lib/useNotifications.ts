@@ -1,8 +1,13 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { getFCMToken, getFCMTokenWithRetry, setupFCMForegroundListener } from '@/lib/fcm-client';
+import { getFCMToken, getFCMTokenWithRetry, setupFCMForegroundListener, waitForServiceWorker } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
+
+function isPWA(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches;
+}
 
 export type NotificationRole = 'central' | 'rider' | 'restaurant' | 'user';
 
@@ -105,6 +110,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
 
   useEffect(() => {
     if (permission !== 'granted') return;
+    if (!isPWA()) return;
     let cleanup: (() => void) | undefined;
     setupFCMForegroundListener().then((c) => {
       cleanup = c;
@@ -117,6 +123,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   // Re-sincronizar token al abrir la app o recuperar foco: si el token cambió o fue invalidado, se registra de nuevo.
   useEffect(() => {
     if (typeof window === 'undefined' || permission !== 'granted' || optedOut) return;
+    if (!isPWA()) return;
     const syncToken = () => {
       getFCMToken().then((token) => {
         if (!token) return;
@@ -140,6 +147,10 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       setError('Tu navegador no soporta notificaciones');
       return;
     }
+    if (!isPWA()) {
+      // Fuera de PWA no pedimos nada: evita errores en navegadores móviles
+      return;
+    }
     try {
       localStorage.removeItem(OPTED_OUT_KEY);
     } catch {
@@ -156,15 +167,27 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         return;
       }
       if (result === 'granted') {
+        console.log('[FCM] Permiso concedido. Esperando sincronización...');
+        // Delay táctico: da tiempo al navegador para propagar el permiso al SDK de Firebase
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        // Esperar a que el Service Worker esté totalmente activo
+        await waitForServiceWorker();
+        console.log('[FCM] SW listo. Obteniendo token...');
         const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 2000 });
         if (token) {
-          const maxRegisterAttempts = 3;
-          const registerDelayMs = 2000;
+          console.log('[FCM] Token generado:', token.slice(0, 20) + '...');
           let registered = await registerToken(token, true);
-          for (let attempt = 1; !registered && attempt < maxRegisterAttempts; attempt++) {
-            await new Promise((r) => setTimeout(r, registerDelayMs));
+          for (let attempt = 1; !registered && attempt < 3; attempt++) {
+            await new Promise((r) => setTimeout(r, 2000));
             registered = await registerToken(token, true);
           }
+          if (registered) {
+            console.log('[FCM] ÉXITO en Firestore.');
+          } else {
+            console.warn('[FCM] Registro pendiente. Se reintentará al recuperar foco.');
+          }
+        } else {
+          console.warn('[FCM] No se obtuvo token FCM tras 3 intentos.');
         }
       }
     } catch {

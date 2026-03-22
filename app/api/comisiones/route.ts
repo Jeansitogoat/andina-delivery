@@ -14,8 +14,9 @@ export interface ComisionDoc {
 
 /** GET /api/comisiones?localId=xxx → comisiones del local (local, maestro o central) */
 export async function GET(request: Request) {
+  let auth: { uid: string; rol: string; localId?: string | null };
   try {
-    await requireAuth(request, ['local', 'maestro', 'central']);
+    auth = await requireAuth(request, ['local', 'maestro', 'central']);
   } catch (r) {
     if (r instanceof Response) return r;
     throw r;
@@ -26,9 +27,12 @@ export async function GET(request: Request) {
     if (!localId) {
       return NextResponse.json({ error: 'localId requerido' }, { status: 400 });
     }
+    if (auth.rol === 'local' && auth.localId !== localId) {
+      return NextResponse.json({ error: 'No autorizado para ver las comisiones de este local' }, { status: 403 });
+    }
 
     const db = getAdminFirestore();
-    const snap = await db.collection('comisiones').where('localId', '==', localId).get();
+    const snap = await db.collection('comisiones').where('localId', '==', localId).orderBy('fecha', 'desc').limit(200).get();
 
     const comisiones: ComisionDoc[] = snap.docs.map((d) => {
       const data = d.data();

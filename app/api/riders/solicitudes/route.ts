@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   }
   try {
     const db = getAdminFirestore();
-    const snap = await db.collection('users').where('rol', '==', 'rider').where('riderStatus', '==', 'pending').get();
+    const snap = await db.collection('users').where('rol', '==', 'rider').where('riderStatus', '==', 'pending').limit(100).get();
     const list: RiderDoc[] = snap.docs.map((d) => {
       const data = d.data();
       return {

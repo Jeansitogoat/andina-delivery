@@ -39,6 +39,7 @@ export async function GET(request: Request) {
     const snap = await db
       .collection('comisiones')
       .where('pagado', '==', false)
+      .limit(500)
       .get();
 
     const comisiones = snap.docs.map((d) => {
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
     const totalSemana =
       Math.round(comisionesSemana.reduce((s, c) => s + c.montoComision, 0) * 100) / 100;
 
-    const localesSnap = await db.collection('locales').get();
+    const localesSnap = await db.collection('locales').limit(200).get();
     const localesMap = new Map<string, { name: string; commissionStartDate: string }>();
     localesSnap.docs.forEach((d) => {
       const data = d.data();
@@ -81,7 +82,6 @@ export async function GET(request: Request) {
         periodEnd += cycleMs;
       }
       periodEnd -= cycleMs;
-      if (now < periodEnd) return;
       const periodEndStr = new Date(periodEnd).toISOString().slice(0, 10);
       const periodStart = periodEnd - cycleMs;
       const totalPendiente =

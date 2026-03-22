@@ -41,7 +41,13 @@ export async function sendFCMToRole(
     try {
       await messaging.send({
         token: token.trim(),
+        notification: { title, body },
         data: fullData,
+        android: { priority: 'high' },
+        apns: {
+          headers: { 'apns-priority': '10' },
+          payload: { aps: { sound: 'default' } },
+        },
       });
       sent++;
     } catch (e) {
@@ -87,7 +93,13 @@ export async function sendFCMToRestaurantByLocalId(
     try {
       await messaging.send({
         token: token.trim(),
+        notification: { title, body },
         data: fullData,
+        android: { priority: 'high' },
+        apns: {
+          headers: { 'apns-priority': '10' },
+          payload: { aps: { sound: 'default' } },
+        },
       });
       sent++;
     } catch (e) {
@@ -130,7 +142,13 @@ export async function sendFCMToUser(
   try {
     await messaging.send({
       token: token.trim(),
+      notification: { title, body },
       data: fullData,
+      android: { priority: 'high' },
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { sound: 'default' } },
+      },
     });
     console.log('[FCM] Sent to user', uid);
     return true;
@@ -175,7 +193,13 @@ export async function sendFCMToRider(
   try {
     await messaging.send({
       token: token.trim(),
+      notification: { title, body },
       data: fullData,
+      android: { priority: 'high' },
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { sound: 'default' } },
+      },
     });
     console.log('[FCM] Sent to rider', uid);
     return true;

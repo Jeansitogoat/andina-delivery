@@ -32,6 +32,8 @@ export async function GET(request: Request) {
     const pedidosSnap = await db
       .collection('pedidos')
       .where('timestamp', '>=', desde)
+      .orderBy('timestamp', 'desc')
+      .limit(50)
       .get();
 
     const pedidos: PedidoCentral[] = pedidosSnap.docs
@@ -55,6 +57,9 @@ export async function GET(request: Request) {
           codigoVerificacion: data.codigoVerificacion || '',
           propina: data.propina || 0,
           deliveryType: (data.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
+          batchId: data.batchId || null,
+          batchIndex: data.batchIndex ?? null,
+          batchLeaderLocalId: data.batchLeaderLocalId || null,
         };
       })
       .filter((p) => p.deliveryType !== 'pickup')

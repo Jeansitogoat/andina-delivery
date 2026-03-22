@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { getIdToken } from '@/lib/authToken';
 import {
@@ -286,10 +286,7 @@ export default function PanelCentralPage() {
     const rider = riders.find((r) => r.id === riderId);
     const pedido = pedidos.find((p) => p.id === pedidoId);
     if (batchId) {
-      const batchLeader = pedido?.batchLeaderLocalId ?? null;
-      const paradas = pedidos.filter(
-        (p) => p.batchId === batchId && (p.batchLeaderLocalId ?? null) === batchLeader
-      );
+      const paradas = pedidos.filter((p) => p.batchId === batchId);
       const resumenRuta = paradas
         .slice()
         .sort((a, b) => (a.batchIndex ?? 0) - (b.batchIndex ?? 0))
@@ -441,7 +438,7 @@ export default function PanelCentralPage() {
   const ridersDisponibles = riders.filter((r) => r.estado === 'disponible').length;
 
   /* filtros */
-  const pedidosFiltrados = pedidos.filter((p) => {
+  const pedidosFiltrados = useMemo(() => pedidos.filter((p) => {
     const coincideBusqueda =
       busqueda === '' ||
       p.clienteNombre.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -449,14 +446,14 @@ export default function PanelCentralPage() {
       p.id.includes(busqueda);
     const coincideEstado = filtroEstado === 'todos' || p.estado === filtroEstado;
     return coincideBusqueda && coincideEstado;
-  });
+  }), [pedidos, busqueda, filtroEstado]);
 
-  const pedidosActivos = pedidosFiltrados.filter(
+  const pedidosActivos = useMemo(() => pedidosFiltrados.filter(
     (p) => p.estado !== 'entregado' && p.estado !== 'cancelado_local' && p.estado !== 'cancelado_cliente'
-  );
-  const pedidosHistorial = pedidosFiltrados.filter(
+  ), [pedidosFiltrados]);
+  const pedidosHistorial = useMemo(() => pedidosFiltrados.filter(
     (p) => p.estado === 'entregado' || p.estado === 'cancelado_local' || p.estado === 'cancelado_cliente'
-  );
+  ), [pedidosFiltrados]);
 
   if (loading || !user || (user.rol !== 'central' && user.rol !== 'maestro')) {
     return (
@@ -664,13 +661,8 @@ export default function PanelCentralPage() {
                     })
                     .map((pedido) => {
                       const esMultiStop = !!pedido.batchId;
-                      const batchLeader = pedido.batchLeaderLocalId ?? null;
                       const totalParadas = esMultiStop
-                        ? pedidosActivos.filter(
-                            (p) =>
-                              p.batchId === pedido.batchId &&
-                              (p.batchLeaderLocalId ?? null) === batchLeader
-                          ).length
+                        ? pedidosActivos.filter((p) => p.batchId === pedido.batchId).length
                         : null;
                       const numeroParada = esMultiStop
                         ? ((pedido.batchIndex ?? 0) + 1)
@@ -1233,7 +1225,7 @@ export default function PanelCentralPage() {
 }
 
 /* ─────────────── tarjeta de pedido ─────────────── */
-function TarjetaPedidoCentral({
+const TarjetaPedidoCentral = memo(function TarjetaPedidoCentral({
   pedido,
   riders,
   isNuevo,
@@ -1391,4 +1383,4 @@ function TarjetaPedidoCentral({
       `}</style>
     </div>
   );
-}
+});

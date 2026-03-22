@@ -44,7 +44,6 @@ const categories: { key: CategoryKey; name: string; icon: typeof UtensilsCrossed
   { key: 'Farmacias', name: 'Farmacias', icon: Pill },
 ];
 
-const DIRECCIONES_EJEMPLO: string[] = [];
 
 export default function Home() {
   const router = useRouter();

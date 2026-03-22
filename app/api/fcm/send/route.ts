@@ -25,7 +25,10 @@ export async function POST(request: Request) {
     }
     const data = (parse.data.data ?? {}) as Record<string, string>;
     let effectiveUid = typeof uid === 'string' && uid.trim() ? uid.trim() : null;
-    if (targetStr === 'user' && !effectiveUid && auth.rol === 'cliente') {
+    // Un cliente nunca puede enviar notificaciones a otro usuario: forzar siempre su propio uid
+    if (auth.rol === 'cliente') {
+      effectiveUid = auth.uid;
+    } else if (targetStr === 'user' && !effectiveUid) {
       effectiveUid = auth.uid;
     }
     let sent = 0;

@@ -87,7 +87,7 @@ function docToMenuItem(data: Record<string, unknown>, id: string): MenuItem {
  */
 export async function getLocalesFromFirestore(): Promise<{ locales: Local[] }> {
   const db = getAdminFirestore();
-  const snap = await db.collection(LOCALES_COLLECTION).get();
+  const snap = await db.collection(LOCALES_COLLECTION).limit(200).get();
   const locales: Local[] = [];
   snap.docs.forEach((d) => {
     const data = d.data() as Record<string, unknown>;

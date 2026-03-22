@@ -187,6 +187,7 @@ export default function PanelRiderPage() {
       setCarreras(activas);
     }, (err) => {
       console.error('onSnapshot pedidos rider (activas)', err);
+      showGlobalToast({ type: 'error', message: 'Error al cargar carreras. Recargá la página.' });
     });
 
     const qHistorial = query(
@@ -208,6 +209,7 @@ export default function PanelRiderPage() {
       setHistorialHoy(list.filter((c) => (c.timestamp ?? 0) >= desde));
     }, (err) => {
       console.error('onSnapshot pedidos rider (historial)', err);
+      showGlobalToast({ type: 'error', message: 'Error al cargar historial. Recargá la página.' });
     });
 
     return () => {
@@ -664,6 +666,7 @@ export default function PanelRiderPage() {
                       if (auth.currentUser) await updateProfile(auth.currentUser, { photoURL: url });
                     } catch (err) {
                       console.error('Error subiendo foto', err);
+                      showGlobalToast({ type: 'error', message: 'Error al subir la foto. Intentá de nuevo.' });
                     } finally {
                       setSubiendoFoto(false);
                     }

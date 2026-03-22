@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const estado = searchParams.get('estado') ?? 'todos';
     const db = getAdminFirestore();
-    const snap = await db.collection('users').where('rol', '==', 'rider').get();
+    const snap = await db.collection('users').where('rol', '==', 'rider').limit(100).get();
     let list: RiderDoc[] = snap.docs.map((d) => {
       const data = d.data();
       return {

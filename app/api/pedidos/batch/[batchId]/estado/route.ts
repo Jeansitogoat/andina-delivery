@@ -9,8 +9,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ batchId: string }> }
 ) {
+  let auth: { uid: string; rol: string };
   try {
-    await requireAuth(request, ['rider', 'maestro']);
+    auth = await requireAuth(request, ['rider', 'maestro']);
   } catch (r) {
     if (r instanceof Response) return r;
     throw r;
@@ -40,6 +41,14 @@ export async function PATCH(
 
     if (snap.empty) {
       return NextResponse.json({ error: 'Batch no encontrado' }, { status: 404 });
+    }
+
+    // Verificar que el rider esté asignado a al menos un pedido del batch
+    if (auth.rol === 'rider') {
+      const pertenece = snap.docs.some((d) => d.data().riderId === auth.uid);
+      if (!pertenece) {
+        return NextResponse.json({ error: 'No estás asignado a este batch' }, { status: 403 });
+      }
     }
 
     for (const d of snap.docs) {

@@ -559,39 +559,38 @@ export default function PanelMaestroPage() {
     }
   };
 
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
   const handleNuevoLocalLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file?.type.startsWith('image/')) return;
+    e.target.value = '';
     try {
       const compressed = await compressImage(file, 'solicitudLogo');
-      const dataUrl = await fileToBase64(compressed);
-      setNuevoLocalManual((prev) => ({ ...prev, logo: dataUrl }));
+      const storage = getFirebaseStorage();
+      const path = `locales/logos/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, compressed);
+      const url = await getDownloadURL(storageRef);
+      setNuevoLocalManual((prev) => ({ ...prev, logo: url }));
     } catch {
-      showToast('Error al comprimir imagen');
+      showToast('Error al subir logo');
     }
-    e.target.value = '';
   };
 
   const handleNuevoLocalCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file?.type.startsWith('image/')) return;
+    e.target.value = '';
     try {
       const compressed = await compressImage(file, 'solicitudCover');
-      const dataUrl = await fileToBase64(compressed);
-      setNuevoLocalManual((prev) => ({ ...prev, cover: dataUrl }));
+      const storage = getFirebaseStorage();
+      const path = `locales/covers/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, compressed);
+      const url = await getDownloadURL(storageRef);
+      setNuevoLocalManual((prev) => ({ ...prev, cover: url }));
     } catch {
-      showToast('Error al comprimir imagen');
+      showToast('Error al subir cover');
     }
-    e.target.value = '';
   };
 
   const handleCrearLocalManual = async (e: React.FormEvent) => {
@@ -700,27 +699,35 @@ export default function PanelMaestroPage() {
   const handleEditLocalLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file?.type.startsWith('image/')) return;
+    e.target.value = '';
     try {
       const compressed = await compressImage(file, 'solicitudLogo');
-      const dataUrl = await fileToBase64(compressed);
-      setEditLocalForm((prev) => ({ ...prev, logo: dataUrl }));
+      const storage = getFirebaseStorage();
+      const path = `locales/logos/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, compressed);
+      const url = await getDownloadURL(storageRef);
+      setEditLocalForm((prev) => ({ ...prev, logo: url }));
     } catch {
-      showToast('Error al comprimir imagen');
+      showToast('Error al subir logo');
     }
-    e.target.value = '';
   };
 
   const handleEditLocalCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file?.type.startsWith('image/')) return;
+    e.target.value = '';
     try {
       const compressed = await compressImage(file, 'solicitudCover');
-      const dataUrl = await fileToBase64(compressed);
-      setEditLocalForm((prev) => ({ ...prev, cover: dataUrl }));
+      const storage = getFirebaseStorage();
+      const path = `locales/covers/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, compressed);
+      const url = await getDownloadURL(storageRef);
+      setEditLocalForm((prev) => ({ ...prev, cover: url }));
     } catch {
-      showToast('Error al comprimir imagen');
+      showToast('Error al subir cover');
     }
-    e.target.value = '';
   };
 
   const handleGuardarLocal = async (e: React.FormEvent) => {

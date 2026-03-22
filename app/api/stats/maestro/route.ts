@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
   try {
     const db = getAdminFirestore();
-    const snap = await db.collection('comisiones').get();
+    const snap = await db.collection('comisiones').orderBy('fecha', 'desc').limit(500).get();
 
     const comisiones: ComisionDoc[] = snap.docs.map((d) => {
       const data = d.data();
