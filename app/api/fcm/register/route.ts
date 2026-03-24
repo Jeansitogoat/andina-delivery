@@ -18,11 +18,24 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json();
+
+    // Log de caja negra: ayuda a diagnosticar qué campo llega vacío en dispositivos nuevos (Vercel logs)
+    console.log('[FCM] DEBUG Register payload:', {
+      tokenTrunc: typeof body?.token === 'string' && body.token.length > 0
+        ? body.token.slice(0, 10) + '...'
+        : '(vacío o ausente)',
+      role: body?.role ?? '(ausente)',
+      localId: body?.localId ?? '(no enviado)',
+      uid: auth.uid,
+    });
+
     const parseResult = fcmRegisterSchema.safeParse(body);
     if (!parseResult.success) {
-      const issues = parseResult.error.flatten().fieldErrors;
-      const firstMsg = Object.values(issues).flat()[0] ?? 'Datos inválidos';
-      return NextResponse.json({ error: firstMsg }, { status: 400 });
+      const fieldErrors = parseResult.error.flatten().fieldErrors;
+      // Log estructurado para identificar exactamente el campo inválido en Vercel
+      console.error('[FCM] Register validación Zod fallida:', JSON.stringify(fieldErrors));
+      const firstMsg = Object.values(fieldErrors).flat()[0] ?? 'Datos inválidos';
+      return NextResponse.json({ error: firstMsg, fieldErrors }, { status: 400 });
     }
     const { token: rawToken, role: roleStr, localId: bodyLocalId } = parseResult.data;
     const trimmedToken = rawToken.trim();
@@ -46,7 +59,7 @@ export async function POST(request: Request) {
     console.log('[FCM] Token registered', docId, roleStr === 'restaurant' && localId ? `localId=${localId}` : '');
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error('POST /api/fcm/register', e);
-    return NextResponse.json({ error: 'Bad request' }, { status: 400 });
+    console.error('POST /api/fcm/register error interno:', e);
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }

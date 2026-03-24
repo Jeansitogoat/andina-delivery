@@ -59,19 +59,36 @@ export async function ensureFCMServiceWorkerReady(): Promise<ServiceWorkerRegist
   return getMessagingSWRegistration();
 }
 
-/** Espera a que el Service Worker esté listo (crítico en móvil). */
-export function waitForServiceWorker(): Promise<void> {
+/**
+ * Espera a que el Service Worker de FCM (firebase-messaging-sw.js) esté activo.
+ * Si el SW activo no es el de FCM, intenta registrarlo proactivamente.
+ * Crítico en arranque en frío: evita que getToken corra sin el SW correcto.
+ */
+export async function waitForServiceWorker(): Promise<void> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-    return Promise.resolve();
+    return;
   }
-  return navigator.serviceWorker.ready.then(() => {});
+  // Esperar a que haya cualquier SW ready (prerequisito del navegador)
+  await navigator.serviceWorker.ready;
+  // Verificar que el SW activo sea el de FCM
+  const existing = await navigator.serviceWorker.getRegistration('/');
+  if (existing?.active?.scriptURL.includes('firebase-messaging-sw')) {
+    return; // FCM SW ya está activo y controlando la página
+  }
+  // SW activo no es el de FCM (o no hay ninguno): intentar registrar/activar
+  console.log('[FCM] waitForServiceWorker: SW FCM no activo, intentando registro proactivo...');
+  await getMessagingSWRegistration();
+  // Margen adicional en iOS para completar la activación
+  if (isIOS()) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
 
 export async function getFCMToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
   if (!vapidKey) {
-    console.error('[FCM] getFCMToken: NEXT_PUBLIC_FIREBASE_VAPID_KEY no definida o vacía. Configurala en .env o en Vercel.');
+    console.error('[FCM] Error: VAPID Key faltante (NEXT_PUBLIC_FIREBASE_VAPID_KEY). Configurala en .env.local o en las variables de entorno de Vercel. Sin esta key no se puede obtener el token FCM.');
     return null;
   }
   try {
@@ -116,6 +133,12 @@ export async function getFCMTokenWithRetry(options?: {
   initialDelayMs?: number;
 }): Promise<string | null> {
   if (typeof window === 'undefined') return null;
+  // Abort temprano si falta VAPID key: evita flujos ambiguos que retornan null sin diagnóstico
+  const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
+  if (!vapidKey) {
+    console.error('[FCM] Error: VAPID Key faltante (NEXT_PUBLIC_FIREBASE_VAPID_KEY). Abortando getFCMTokenWithRetry.');
+    return null;
+  }
   const ios = isIOS();
   const {
     maxAttempts = 3,
