@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const itemsCartItemSchema = z.object({
+export const itemsCartItemSchema = z.object({
   id: z.string().min(1, 'El ítem debe tener un id'),
   qty: z.number().int().positive('La cantidad debe ser un número entero positivo'),
   note: z.string().optional(),

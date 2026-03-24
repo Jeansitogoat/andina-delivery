@@ -40,12 +40,18 @@ export async function POST(request: Request) {
     const { token: rawToken, role: roleStr, localId: bodyLocalId } = parseResult.data;
     const trimmedToken = rawToken.trim();
     const db = getAdminFirestore();
-    let localId: string | null = typeof bodyLocalId === 'string' && bodyLocalId.trim() ? bodyLocalId.trim() : null;
+    // Para restaurant: el localId siempre se toma de la identidad autenticada (Firestore), nunca del body sin validar
+    let localId: string | null = null;
     if (roleStr === 'restaurant') {
-      if (!localId) {
-        const userSnap = await db.collection('users').doc(auth.uid).get();
-        localId = userSnap.data()?.localId ?? null;
+      const userSnap = await db.collection('users').doc(auth.uid).get();
+      const trustedLocalId = userSnap.data()?.localId ?? null;
+      // Si el body trae localId, debe coincidir con el del usuario autenticado
+      const candidateLocalId = typeof bodyLocalId === 'string' && bodyLocalId.trim() ? bodyLocalId.trim() : null;
+      if (candidateLocalId && trustedLocalId && candidateLocalId !== trustedLocalId) {
+        console.warn('[FCM] Intento de registrar token con localId ajeno:', { uid: auth.uid, candidate: candidateLocalId, trusted: trustedLocalId });
+        return NextResponse.json({ error: 'localId no coincide con el usuario autenticado' }, { status: 403 });
       }
+      localId = trustedLocalId;
     }
     const docId = `${auth.uid}_${roleStr}`;
     const docData: Record<string, unknown> = {

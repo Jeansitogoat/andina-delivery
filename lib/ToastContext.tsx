@@ -4,7 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { ToastContainer, type ToastState, type ToastType } from '@/components/ToastContainer';
 
 type ToastContextValue = {
-  showToast: (opts: { type: ToastType; message: string }) => void;
+  showToast: (_opts: { type: ToastType; message: string }) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);

@@ -185,8 +185,7 @@ export default function PanelRiderPage() {
       }
       prevCarreraIdsRef.current = newIds;
       setCarreras(activas);
-    }, (err) => {
-      console.error('onSnapshot pedidos rider (activas)', err);
+    }, () => {
       showGlobalToast({ type: 'error', message: 'Error al cargar carreras. Recargá la página.' });
     });
 
@@ -207,8 +206,7 @@ export default function PanelRiderPage() {
       const mesAtras = now - 30 * 24 * 60 * 60 * 1000;
       const desde = filtroHistorial === 'mes' ? mesAtras : filtroHistorial === 'semana' ? semanaAtras : hoyTs;
       setHistorialHoy(list.filter((c) => (c.timestamp ?? 0) >= desde));
-    }, (err) => {
-      console.error('onSnapshot pedidos rider (historial)', err);
+    }, () => {
       showGlobalToast({ type: 'error', message: 'Error al cargar historial. Recargá la página.' });
     });
 
@@ -216,10 +214,12 @@ export default function PanelRiderPage() {
       unsubActivas();
       unsubHistorial();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.rol, filtroHistorial]);
 
-  /* Cargar carreras desde API como respaldo inicial (token fresco en cada llamada para evitar expiración) */
-  const cargarCarreras = useCallback(async () => {
+  /* Carga inicial desde API (solo una vez al montar o al detectar sesión inválida).
+     El estado en tiempo real lo mantiene onSnapshot; este fetch es solo el seed inicial. */
+  const cargarCarrerasInicial = useCallback(async () => {
     const tok = await getIdToken();
     if (!tok) return;
     try {
@@ -232,8 +232,9 @@ export default function PanelRiderPage() {
       }
       if (!res.ok) return;
       const data = await res.json() as { carreras: CarreraRider[]; historial: CarreraRider[] };
-      if (Array.isArray(data.carreras)) setCarreras(data.carreras);
-      if (Array.isArray(data.historial)) setHistorialHoy(data.historial);
+      // Solo poblar si onSnapshot todavía no llegó datos (evitar sobreescritura con data más vieja)
+      setCarreras((prev) => prev.length === 0 && Array.isArray(data.carreras) ? data.carreras : prev);
+      setHistorialHoy((prev) => prev.length === 0 && Array.isArray(data.historial) ? data.historial : prev);
     } catch {
       // silencioso
     }
@@ -245,33 +246,10 @@ export default function PanelRiderPage() {
       router.replace('/auth');
       return;
     }
-    cargarCarreras();
-    let t: ReturnType<typeof setInterval> | null = null;
-    const startPolling = () => {
-      if (t) return;
-      t = setInterval(cargarCarreras, 20000);
-    };
-    const stopPolling = () => {
-      if (t) {
-        clearInterval(t);
-        t = null;
-      }
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        cargarCarreras();
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-    startPolling();
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [user, filtroHistorial, cargarCarreras, sessionInvalid, router]);
+    // Una sola carga inicial; onSnapshot mantiene el estado actualizado sin polling
+    cargarCarrerasInicial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, filtroHistorial, cargarCarrerasInicial, sessionInvalid, router]);
 
   /* Agrupar carreras activas por batch solo cuando hay 2+ pedidos con el mismo batchId (multi-stop real) */
   const carrerasAgrupadas = useMemo(() => {
@@ -664,8 +642,7 @@ export default function PanelRiderPage() {
                       await setDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: serverTimestamp() }, { merge: true });
                       const auth = getFirebaseAuth();
                       if (auth.currentUser) await updateProfile(auth.currentUser, { photoURL: url });
-                    } catch (err) {
-                      console.error('Error subiendo foto', err);
+                    } catch {
                       showGlobalToast({ type: 'error', message: 'Error al subir la foto. Intentá de nuevo.' });
                     } finally {
                       setSubiendoFoto(false);

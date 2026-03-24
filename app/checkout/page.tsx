@@ -15,7 +15,6 @@ import {
   MessageCircle,
   Copy,
   FileText,
-  Clock,
   Store,
   Package,
   Plus,

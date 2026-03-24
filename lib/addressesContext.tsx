@@ -200,7 +200,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [user?.uid]
+    [user?.uid, refetchAddresses]
   );
 
   const updateDirecciones = useCallback(

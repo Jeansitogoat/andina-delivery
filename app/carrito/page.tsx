@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Trash2, Plus, Minus, Truck, Clock, Package, Loader2 } from 'lucide-react';
@@ -8,6 +8,7 @@ import type { Local, MenuItem } from '@/lib/data';
 import LocalLogo from '@/components/LocalLogo';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { useCart } from '@/lib/useCart';
+import type { CartItem } from '@/lib/cartContext';
 import { useAuth } from '@/lib/useAuth';
 import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
@@ -38,6 +39,14 @@ export default function CarritoPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { cart, hydrated, addItem, removeItem, clearCart, saving } = useCart();
+
+  // Clave estable: solo cambia cuando cambian los localIds del carrito, no en cada qty/nota
+  const localIdsKey = useMemo(
+    () => cart.stops.map((s) => s.localId).sort().join(','),
+    [cart.stops]
+  );
+  // Caché en memoria de datos de locales para no refetchear en cada re-render
+  const menuCacheRef = useRef<Map<string, { local: unknown; menu: unknown[] }>>(new Map());
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
   const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
@@ -81,24 +90,28 @@ export default function CarritoPage() {
     }
   }, [hydrated, cart.stops.length]);
 
+  // Efecto de fetch: se dispara solo cuando cambian los localIds (no en cambios de qty/nota)
   useEffect(() => {
     if (!hydrated || cart.stops.length === 0) return;
     let cancelled = false;
     setLoadingStops(true);
     Promise.all(
       cart.stops.map(async (stop) => {
-        const res = await fetch(`/api/locales/${stop.localId}`).then((r) => (r.ok ? r.json() : null));
-        const data = res as { local: Local; menu?: MenuItem[] } | null;
-        const local = data?.local ?? null;
-        const menu = data?.menu ?? [];
-        const enrichedItems = (stop.items as Array<{
-          id: string;
-          qty: number;
-          note?: string;
-          variationName?: string;
-          variationPrice?: number;
-          complementSelections?: Record<string, string>;
-        }>)
+        // Usar caché en memoria para localIds ya cargados; evita refetch masivo
+        const cached = menuCacheRef.current.get(stop.localId);
+        let local: Local | null = null;
+        let menu: MenuItem[] = [];
+        if (cached) {
+          local = cached.local as Local | null;
+          menu = cached.menu as MenuItem[];
+        } else {
+          const res = await fetch(`/api/locales/${stop.localId}`).then((r) => (r.ok ? r.json() : null));
+          const data = res as { local: Local; menu?: MenuItem[] } | null;
+          local = data?.local ?? null;
+          menu = data?.menu ?? [];
+          menuCacheRef.current.set(stop.localId, { local, menu });
+        }
+        const enrichedItems = (stop.items as CartItem[])
           .map((c) => {
             const item = menu.find((i) => i.id === c.id);
             if (!item) return null;
@@ -127,7 +140,29 @@ export default function CarritoPage() {
       .finally(() => {
         if (!cancelled) setLoadingStops(false);
       });
-  }, [hydrated, cart.stops]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, localIdsKey]); // Solo re-fetch al cambiar qué locales hay, no en cada cambio de ítem
+
+  // Actualizar items enriquecidos sin refetch cuando cambian qty/nota
+  useEffect(() => {
+    if (!hydrated || cart.stops.length === 0 || stopsData.length === 0) return;
+    setStopsData((prev) =>
+      prev.map((stopData) => {
+        const cartStop = cart.stops.find((s) => s.localId === stopData.localId);
+        if (!cartStop) return stopData;
+        const enrichedItems = (cartStop.items as CartItem[])
+          .map((c) => {
+            const item = stopData.menu.find((i) => i.id === c.id);
+            if (!item) return null;
+            const unitPrice = typeof c.variationPrice === 'number' && !Number.isNaN(c.variationPrice) ? c.variationPrice : item.price;
+            return { ...item, qty: c.qty, note: c.note, price: unitPrice, variationName: c.variationName, variationPrice: c.variationPrice, complementSelections: c.complementSelections } as EnrichedCartItem;
+          })
+          .filter(Boolean) as EnrichedCartItem[];
+        return { ...stopData, enrichedItems, subtotal: enrichedItems.reduce((s, i) => s + i.price * i.qty, 0) };
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart.stops, hydrated]);
 
   const numParadas = stopsData.length;
   const firstStop = stopsData[0];

@@ -23,6 +23,10 @@ export async function POST(request: Request) {
     if (auth.rol === 'cliente' && targetStr !== 'user') {
       return NextResponse.json({ error: 'Los clientes solo pueden enviar notificaciones al target user' }, { status: 403 });
     }
+    // Rider y local no pueden enviar FCM a usuarios arbitrarios ni hacer broadcast a roles
+    if (auth.rol === 'rider' || auth.rol === 'local') {
+      return NextResponse.json({ error: 'No autorizado para enviar notificaciones' }, { status: 403 });
+    }
     const data = (parse.data.data ?? {}) as Record<string, string>;
     let effectiveUid = typeof uid === 'string' && uid.trim() ? uid.trim() : null;
     // Un cliente nunca puede enviar notificaciones a otro usuario: forzar siempre su propio uid

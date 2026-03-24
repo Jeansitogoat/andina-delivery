@@ -17,8 +17,6 @@ import {
   ClipboardList,
   Smartphone,
 } from 'lucide-react';
-import { compressImage } from '@/lib/compressImage';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { uploadSolicitudLogo, uploadSolicitudBanner, uploadSolicitudMenuFoto } from '@/lib/storageUpload';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
 

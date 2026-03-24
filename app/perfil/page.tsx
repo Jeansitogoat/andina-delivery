@@ -113,7 +113,8 @@ export default function PerfilPage() {
       })
       .catch(() => { if (!cancelled) setTokenRegistrado(false); });
     return () => { cancelled = true; };
-  }, [user, permission, optedOut, notifLoading, refreshNotifStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, permission, optedOut, notifLoading, refreshNotifStatus]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -121,7 +122,8 @@ export default function PerfilPage() {
       router.replace('/auth');
       return;
     }
-  }, [user, authLoading, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, authLoading, router]);
 
   useEffect(() => {
     if (!user) {
@@ -133,7 +135,8 @@ export default function PerfilPage() {
     }
     setNombre(user.displayName ?? user.email ?? '');
     setTelefono(user.telefono ?? '');
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, user?.displayName, user?.email, (user as { telefono?: string } | null)?.telefono]);
 
   const nombreParaMostrar = primerNombreParaMostrar(user?.displayName, user?.email);
 
@@ -172,7 +175,8 @@ export default function PerfilPage() {
       .catch(() => { if (!cancelled) setHistorial([]); })
       .finally(() => { if (!cancelled) setHistorialLoading(false); });
     return () => { cancelled = true; };
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, user?.rol]);
 
   async function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -526,7 +530,7 @@ export default function PerfilPage() {
                           type="button"
                           onClick={async () => {
                             setReintentandoNotif(true);
-                            const ok = await reintentarRegistro();
+                            await reintentarRegistro();
                             setRefreshNotifStatus((n) => n + 1);
                             setReintentandoNotif(false);
                           }}

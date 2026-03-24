@@ -15,7 +15,7 @@ export type UseTarifasEnvioResult = {
   porParadaAdicional: number;
   tarifaMinima: number;
   loading: boolean;
-  getTarifaEnvioPorDistancia: (km: number) => number;
+  getTarifaEnvioPorDistancia: (_km: number) => number;
 };
 
 export function useTarifasEnvio(): UseTarifasEnvioResult {

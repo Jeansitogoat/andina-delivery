@@ -192,7 +192,8 @@ export default function PanelMaestroPage() {
     if (!user || user.rol !== 'maestro') {
       router.replace('/auth');
     }
-  }, [user, loading, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, user?.rol, loading, router]);
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
@@ -283,7 +284,8 @@ export default function PanelMaestroPage() {
         if (!cancelled) setStatsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [user, loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, user?.rol, loading]);
 
   /* Cargar config transferencia Andina (cuenta donde la app recibe pagos) */
   useEffect(() => {
@@ -411,9 +413,8 @@ export default function PanelMaestroPage() {
       await uploadBytes(storageRef, compressed);
       const url = await getDownloadURL(storageRef);
       setBannerForm((prev) => ({ ...prev, imageUrl: url }));
-    } catch (err) {
-      console.error(err);
-      showToast('Error al subir imagen');
+    } catch {
+      showToast('Error al subir imagen. Verificá el formato e intentá de nuevo.');
     } finally {
       setBannerUploading(false);
     }

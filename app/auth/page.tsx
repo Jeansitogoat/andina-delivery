@@ -97,6 +97,7 @@ export default function AuthPage() {
         setErrorForm('Error al iniciar con Google. Intenta de nuevo.');
       });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function redirigirPorRol(rol: import('@/lib/useAuth').UserRole, localId?: string | null) {
@@ -118,10 +119,6 @@ export default function AuthPage() {
         router.push('/');
         break;
     }
-  }
-
-  function isMobile(): boolean {
-    return typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   }
 
   async function handleGoogle() {
@@ -171,8 +168,7 @@ export default function AuthPage() {
         setLogueando(false);
         redirigirPorRol(andinaUser.rol, andinaUser.localId ?? undefined);
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         setLogueando(false);
         setErrorForm('Correo o contraseña incorrectos');
       });
@@ -253,7 +249,6 @@ export default function AuthPage() {
           await new Promise((r) => setTimeout(r, 1500));
           return doRegistro(attempt + 1);
         }
-        console.error(err);
         registrandoRef.current = false;
         setRegistrando(false);
         setErrorForm(mensajeErrorFirebase(err));
@@ -297,7 +292,6 @@ export default function AuthPage() {
           await new Promise((r) => setTimeout(r, 1500));
           return doRegistroRider(attempt + 1);
         }
-        console.error(err);
         registrandoRef.current = false;
         setRegistrando(false);
         setErrorForm(mensajeErrorFirebase(err));

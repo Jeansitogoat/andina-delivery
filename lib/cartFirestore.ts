@@ -8,7 +8,17 @@ import { getFirestoreDb } from '@/lib/firebase/client';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 
 export interface CartState {
-  stops: Array<{ localId: string; items: Array<{ id: string; qty: number; note?: string }> }>;
+  stops: Array<{
+    localId: string;
+    items: Array<{
+      id: string;
+      qty: number;
+      note?: string;
+      variationName?: string;
+      variationPrice?: number;
+      complementSelections?: Record<string, string>;
+    }>;
+  }>;
 }
 
 export async function getCart(uid: string): Promise<CartState> {

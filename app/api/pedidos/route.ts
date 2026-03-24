@@ -3,7 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import type { PedidoCentral } from '@/lib/types';
-import { sendFCMToRole, sendFCMToRestaurantByLocalId } from '@/lib/fcm-send-server';
+import { sendFCMToRestaurantByLocalId } from '@/lib/fcm-send-server';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { normalizeDataUrl } from '@/lib/validImageUrl';
 import { pedidoPostSchema } from '@/lib/schemas/pedido';
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
     const bodyParsed = parseResult.data;
     const deliveryType = bodyParsed.deliveryType === 'pickup' ? 'pickup' : 'delivery';
 
-    const { id, restaurante, items, total, localId: bodyLocalId } = bodyParsed;
+    const { id, items, total, localId: bodyLocalId } = bodyParsed;
     const localId = typeof bodyLocalId === 'string' ? bodyLocalId.trim() : null;
 
     if (!localId) {
@@ -353,7 +353,7 @@ export async function POST(request: Request) {
     if (bodyParsed.itemsCart && typeof bodyParsed.itemsCart === 'object' && bodyParsed.itemsCart.localId && Array.isArray(bodyParsed.itemsCart.items)) {
       docData.itemsCart = {
         localId: String(bodyParsed.itemsCart.localId),
-        items: bodyParsed.itemsCart.items.map((i: { id: string; qty: number; note?: string; variationName?: string; variationPrice?: number; complementSelections?: Record<string, string>; displayLabel?: string }) => ({
+        items: bodyParsed.itemsCart.items.map((i) => ({
           id: String(i.id),
           qty: Number(i.qty) || 1,
           ...(typeof i.note === 'string' ? { note: i.note } : {}),

@@ -3,6 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { batchCerrarPostSchema } from '@/lib/schemas/batchCerrar';
+import { calcularComision } from '@/lib/commissions';
 
 const CONFIG_DOC_ID = 'transferenciaAndina';
 
@@ -61,36 +62,32 @@ export async function POST(request: Request) {
 
       const riderId = auth.uid;
 
+      const ESTADOS_CANCELADOS = ['cancelado_local', 'cancelado_cliente'];
       for (const { ref, data, id } of docs) {
         const estadoActual = data.estado as string | undefined;
-        const esCancelado = estadoActual === 'cancelado_local';
+        const esCancelado = ESTADOS_CANCELADOS.includes(estadoActual ?? '');
         transaction.update(ref, {
           estado: esCancelado ? estadoActual : 'entregado',
           updatedAt: FieldValue.serverTimestamp(),
         });
-        if (esCancelado) {
-          continue;
-        }
+        if (esCancelado) continue;
+
         const localId = data.localId ?? null;
         if (!localId) continue;
 
-        const pedidoTimestamp = data.createdAt?.toMillis?.() ?? data.timestamp ?? 0;
-        if (programStartTime > 0 && pedidoTimestamp < programStartTime) {
-          continue;
-        }
+        const pedidoTimestamp = (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? (data.timestamp as number | undefined) ?? 0;
+        if (programStartTime > 0 && pedidoTimestamp < programStartTime) continue;
 
         const localSnap = await transaction.get(db.collection('locales').doc(localId));
         const localData = localSnap.data() ?? {};
         const commissionStartDate = (typeof localData.commissionStartDate === 'string' ? localData.commissionStartDate : null) ?? programStartDate;
         const commissionStartTime = commissionStartDate ? new Date(commissionStartDate).getTime() : 0;
-        if (commissionStartTime > 0 && pedidoTimestamp < commissionStartTime) {
-          continue;
-        }
+        if (commissionStartTime > 0 && pedidoTimestamp < commissionStartTime) continue;
 
-        const total = data.total || 0;
-        const subtotal = typeof data.subtotal === 'number' && !Number.isNaN(data.subtotal) ? data.subtotal : total;
-        const montoComision = Math.round(subtotal * 0.08 * 100) / 100;
-        const comisionRef = db.collection('comisiones').doc();
+        const total = (data.total as number) || 0;
+        const montoComision = calcularComision(total, data.subtotal as number | undefined);
+        // Idempotencia: docId = pedidoId evita comisiones duplicadas en reenvíos
+        const comisionRef = db.collection('comisiones').doc(id);
         transaction.set(comisionRef, {
           localId,
           pedidoId: id,
@@ -99,7 +96,7 @@ export async function POST(request: Request) {
           montoComision,
           fecha: FieldValue.serverTimestamp(),
           pagado: false,
-        });
+        }, { merge: false });
       }
 
       return { ok: true };
