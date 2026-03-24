@@ -235,7 +235,8 @@ export default function PanelCentralPage() {
     let t: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
       if (t) return;
-      t = setInterval(cargarDatos, 30000);
+      // 60s: reduce a la mitad las lecturas del panel central vs 30s previos
+      t = setInterval(cargarDatos, 60_000);
     };
     const stopPolling = () => {
       if (t) {

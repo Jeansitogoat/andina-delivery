@@ -4,7 +4,7 @@ import type { Local, MenuItem, Review } from '@/lib/data';
 type LocalResponse = { local: Local; menu: MenuItem[]; reviews?: Review[] };
 
 const fetcher = async (url: string) => {
-  const res = await fetch(url, { cache: 'no-store' });
+  const res = await fetch(url);
   if (!res.ok) {
     if (res.status === 404) return null;
     throw new Error('Error al cargar');
@@ -17,8 +17,11 @@ export function useLocal(localId: string | null | undefined) {
     localId ? `/api/locales/${localId}` : null,
     fetcher,
     {
-      revalidateOnFocus: true,
-      dedupingInterval: 5000,
+      // revalidateOnFocus=false evita una lectura Firestore cada vez que el usuario
+      // vuelve a la pestaña del restaurante; el menú es suficientemente estable.
+      revalidateOnFocus: false,
+      // 2 minutos: cualquier navegación de vuelta dentro de la ventana reutiliza la respuesta cacheada
+      dedupingInterval: 120_000,
       keepPreviousData: true,
     }
   );

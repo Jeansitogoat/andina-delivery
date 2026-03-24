@@ -65,11 +65,12 @@ export async function GET(request: Request) {
       .filter((p) => p.deliveryType !== 'pickup')
       .sort((a, b) => b.timestamp - a.timestamp);
 
-    // Riders aprobados desde Firestore
+    // Riders aprobados desde Firestore (limite 100 para acotar lecturas)
     const ridersSnap = await db
       .collection('users')
       .where('rol', '==', 'rider')
       .where('riderStatus', '==', 'approved')
+      .limit(100)
       .get();
 
     const riders: RiderCentral[] = ridersSnap.docs.map((d, i) => {

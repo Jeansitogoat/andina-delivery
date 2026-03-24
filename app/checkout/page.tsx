@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Copy,
   FileText,
+  Clock,
   Store,
   Package,
   Plus,
@@ -77,6 +78,14 @@ export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
   const { cart, hydrated, clearCart } = useCart();
   const cartStops = cart.stops;
+
+  // Clave estable: solo cambia cuando cambia qué locales hay, nunca por qty/nota/variaciones
+  const localIdsKey = useMemo(
+    () => cartStops.map((s) => s.localId).sort().join(','),
+    [cartStops]
+  );
+  // Caché en memoria: evita refetch a /api/locales/[id] si ya cargamos el local en esta sesión
+  const menuCacheRef = useRef<Map<string, { local: unknown; menu: Array<{ id: string; name: string; price: number; shipping?: number }> }>>(new Map());
   const { direccionEntregar, direcciones, selectedId, addDireccion, direccionEntregarLatLng, userLocationLatLng } = useAddresses();
   const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
@@ -128,26 +137,70 @@ export default function CheckoutPage() {
     requestAnimationFrame(() => setPageVisible(true));
   }, []);
 
+  // Efecto de fetch: solo se dispara cuando cambian los localIds (no en cambios de qty/nota/variación)
   useEffect(() => {
     if (cartStops.length === 0) {
       setStopsData([]);
       return;
     }
     let cancelled = false;
+
+    function buildEnrichedItems(
+      stop: { localId: string; items: Array<{ id: string; qty: number; note?: string; variationName?: string; variationPrice?: number; complementSelections?: Record<string, string> }> },
+      menu: Array<{ id: string; name: string; price: number }>
+    ): EnrichedCheckoutItem[] {
+      return stop.items
+        .map((c) => {
+          const item = menu.find((i) => i.id === c.id);
+          if (!item) return null;
+          const unitPrice = typeof c.variationPrice === 'number' && !Number.isNaN(c.variationPrice) ? c.variationPrice : item.price;
+          const compText = c.complementSelections && Object.keys(c.complementSelections).length > 0 ? Object.values(c.complementSelections).join(', ') : '';
+          const displayName = [item.name, c.variationName ? `(${c.variationName})` : '', compText ? ` · ${compText}` : ''].filter(Boolean).join(' ');
+          return { ...item, price: unitPrice, qty: c.qty, displayName } as EnrichedCheckoutItem;
+        })
+        .filter(Boolean) as EnrichedCheckoutItem[];
+    }
+
     Promise.all(
       cartStops.map(async (stop) => {
-        const res = await fetch(`/api/locales/${stop.localId}`).then((r) => (r.ok ? r.json() : null));
-        const data = res as { local: Local; menu?: Array<{ id: string; name: string; price: number }> } | null;
-        const local = data?.local ?? null;
-        const menu = data?.menu ?? [];
-        const enrichedItems = (stop.items as Array<{
-          id: string;
-          qty: number;
-          note?: string;
-          variationName?: string;
-          variationPrice?: number;
-          complementSelections?: Record<string, string>;
-        }>)
+        // Usar caché para no refetchear locales ya conocidos
+        const cached = menuCacheRef.current.get(stop.localId);
+        let local: Local | null = null;
+        let menu: Array<{ id: string; name: string; price: number }> = [];
+        if (cached) {
+          local = cached.local as Local | null;
+          menu = cached.menu as Array<{ id: string; name: string; price: number }>;
+        } else {
+          const res = await fetch(`/api/locales/${stop.localId}`).then((r) => (r.ok ? r.json() : null));
+          const data = res as { local: Local; menu?: Array<{ id: string; name: string; price: number }> } | null;
+          local = data?.local ?? null;
+          menu = data?.menu ?? [];
+          menuCacheRef.current.set(stop.localId, { local, menu });
+        }
+        const enrichedItems = buildEnrichedItems(stop, menu);
+        const subtotal = enrichedItems.reduce((s, i) => s + i.price * i.qty, 0);
+        const shipping = (local as Local | null)?.shipping ?? 0;
+        const totalPerStop = subtotal + shipping;
+        return { localId: stop.localId, local, menu, enrichedItems, subtotal, shipping, totalPerStop };
+      })
+    ).then((data) => {
+      if (!cancelled) setStopsData(data);
+    }).catch(() => {
+      if (!cancelled) setStopsData([]);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localIdsKey]); // Solo refetch cuando cambian los localIds, no en cada cambio de qty/nota
+
+  // Efecto separado: recalcula items enriquecidos desde caché cuando cambian qty/nota/variaciones
+  useEffect(() => {
+    if (cartStops.length === 0 || stopsData.length === 0) return;
+    setStopsData((prev) =>
+      prev.map((stopData) => {
+        const cartStop = cartStops.find((s) => s.localId === stopData.localId);
+        if (!cartStop) return stopData;
+        const menu = stopData.menu as Array<{ id: string; name: string; price: number }>;
+        const enrichedItems = cartStop.items
           .map((c) => {
             const item = menu.find((i) => i.id === c.id);
             if (!item) return null;
@@ -158,16 +211,10 @@ export default function CheckoutPage() {
           })
           .filter(Boolean) as EnrichedCheckoutItem[];
         const subtotal = enrichedItems.reduce((s, i) => s + i.price * i.qty, 0);
-        const shipping = local?.shipping ?? 0;
-        const totalPerStop = subtotal + shipping;
-        return { localId: stop.localId, local, menu, enrichedItems, subtotal, shipping, totalPerStop };
+        return { ...stopData, enrichedItems, subtotal, totalPerStop: subtotal + stopData.shipping };
       })
-    ).then((data) => {
-      if (!cancelled) setStopsData(data);
-    }).catch(() => {
-      if (!cancelled) setStopsData([]);
-    });
-    return () => { cancelled = true; };
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartStops]);
 
   const firstStopData = stopsData[0];
