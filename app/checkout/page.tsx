@@ -247,7 +247,20 @@ export default function CheckoutPage() {
 
   const necesitaDireccion = !isPickup && !direccionEntregar;
   const necesitaCoords = !isPickup && !direccionEntregarLatLng;
-  const puedePedir = allLoaded && user && !authLoading && !isOrdering && !necesitaDireccion && !necesitaCoords;
+  const localesCoordsParaCobertura = useMemo(
+    () =>
+      stopsData
+        .map((s) => (s.local && typeof s.local.lat === 'number' && typeof s.local.lng === 'number' ? { lat: s.local.lat, lng: s.local.lng } : null))
+        .filter(Boolean) as Array<{ lat: number; lng: number }>,
+    [stopsData]
+  );
+  const fueraZonaEntrega =
+    !isPickup &&
+    !!direccionEntregarLatLng &&
+    localesCoordsParaCobertura.length > 0 &&
+    localesCoordsParaCobertura.some((l) => haversineKm(direccionEntregarLatLng.lat, direccionEntregarLatLng.lng, l.lat, l.lng) > 10);
+
+  const puedePedir = allLoaded && user && !authLoading && !isOrdering && !necesitaDireccion && !necesitaCoords && !fueraZonaEntrega;
 
   /* Detectar "Tarifa ajustada por distancia" al cambiar dirección */
   useEffect(() => {
@@ -289,9 +302,13 @@ export default function CheckoutPage() {
       const dirSeleccionada = selectedId ? direcciones.find((d) => d.id === selectedId) : direcciones.find((d) => d.principal) ?? direcciones[0];
       const clienteNombre = user?.displayName ?? user?.email ?? (dirSeleccionada?.nombre ?? 'Cliente');
       const clienteTelefono = user?.telefono ?? user?.email ?? '';
+      const referenciaTexto =
+        !isPickup && dirSeleccionada?.referencia && dirSeleccionada.referencia.trim()
+          ? ` · Ref: ${dirSeleccionada.referencia.trim()}`
+          : '';
       const direccion = isPickup
         ? (local?.address ? `Retiro en local: ${local.address}` : 'Retiro en local')
-        : direccionEntregar; // ya validado antes: no permite pedir sin dirección
+        : `${direccionEntregar}${referenciaTexto}`; // ya validado antes: no permite pedir sin dirección
       const baseNum = Date.now().toString().slice(-6);
       const batchIdBase = !isPickup && stopsData.length > 1 ? `A-${baseNum}` : null;
       const batchLeaderLocalId = !isPickup && stopsData.length > 1 ? stopsData[0].localId : null;
@@ -1102,7 +1119,7 @@ export default function CheckoutPage() {
                   <MapPin className="w-3.5 h-3.5" />
                   Dirección de entrega
                 </p>
-                <AddressSelector dark />
+                <AddressSelector dark localCoords={localesCoordsParaCobertura} coverageRadiusKm={10} proximityKm={1} />
                 {direcciones.length === 0 && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mt-2">
                     No tienes direcciones guardadas. Agrega una para que te podamos entregar.
@@ -1282,6 +1299,11 @@ export default function CheckoutPage() {
           {necesitaCoords && (
             <p className="text-amber-700 text-sm font-medium mb-3 text-center">
               ¡Ayúdanos a encontrarte! Mueve el pin en el mapa exactamente sobre tu casa para que el repartidor llegue volando.
+            </p>
+          )}
+          {fueraZonaEntrega && (
+            <p className="text-red-700 text-sm font-medium mb-3 text-center">
+              Fuera de zona de entrega.
             </p>
           )}
           <LoadingButton
