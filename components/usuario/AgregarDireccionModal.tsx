@@ -69,10 +69,21 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
   }
 
   async function buscarEnMapa() {
-    const q = detalle.trim() || 'Piñas, El Oro, Ecuador';
-    if (!q) return;
     setBuscando(true);
     try {
+      // Si el campo está vacío pero tenemos GPS, hacemos reverse-geocode de las coords actuales
+      if (!detalle.trim() && lat != null && lng != null) {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+          { headers: { 'Accept-Language': 'es' } }
+        );
+        const data = await res.json();
+        if (data?.display_name) setDetalle(String(data.display_name));
+        setMapKey((k) => k + 1);
+        return;
+      }
+      const q = detalle.trim();
+      if (!q) return;
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,
         { headers: { 'Accept-Language': 'es' } }
@@ -82,6 +93,7 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
         const { lat: newLat, lon: newLon, display_name } = data[0];
         setLat(parseFloat(newLat));
         setLng(parseFloat(newLon));
+        setMapKey((k) => k + 1);
         if (display_name && !detalle.trim()) setDetalle(display_name);
       }
     } catch {

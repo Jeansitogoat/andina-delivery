@@ -1,3 +1,4 @@
+
 /**
  * Script de migración completa — Fase 1 + Fase 2:
  *

@@ -26,7 +26,7 @@ export default function AddressSelector({ className = '', dark = false }: Addres
     addDireccion,
     userLocationLatLng,
   } = useAddresses();
-  useAuth();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -104,6 +104,7 @@ export default function AddressSelector({ className = '', dark = false }: Addres
           onClose={() => setShowModal(false)}
           onGuardar={handleGuardar}
           initialLatLng={userLocationLatLng}
+          telefonoUsuario={user?.telefono ?? null}
         />
       )}
     </div>
