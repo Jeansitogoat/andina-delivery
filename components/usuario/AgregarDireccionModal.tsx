@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useFullScreenModal } from '@/lib/FullScreenModalContext';
-import { MapPin, Home, Briefcase, X, ExternalLink, Phone } from 'lucide-react';
+import { MapPin, Home, Briefcase, X, ExternalLink, Phone, LocateFixed } from 'lucide-react';
 import type { DireccionGuardada } from './SeccionDirecciones';
 
 const MapPicker = dynamic(() => import('./MapPicker'), { ssr: false });
@@ -33,6 +33,33 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
   const [lat, setLat] = useState<number | null>(initialLatLng?.lat ?? null);
   const [lng, setLng] = useState<number | null>(initialLatLng?.lng ?? null);
   const [buscando, setBuscando] = useState(false);
+  // mapKey fuerza re-mount del mapa cuando llegan coordenadas GPS para recentrar automáticamente
+  const [mapKey, setMapKey] = useState(0);
+  const [gpsAvailable, setGpsAvailable] = useState<boolean | null>(null);
+  const gpsRequestedRef = useRef(false);
+
+  // Pedir GPS al abrir el modal: si no teníamos coords, centramos el mapa en la ubicación real del usuario
+  useEffect(() => {
+    if (gpsRequestedRef.current) return;
+    if (!navigator?.geolocation) { setGpsAvailable(false); return; }
+    gpsRequestedRef.current = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const newLat = pos.coords.latitude;
+        const newLng = pos.coords.longitude;
+        setGpsAvailable(true);
+        // Solo recentramos si no había coordenadas previas o son las del fallback Piñas
+        if (lat == null || lng == null) {
+          setLat(newLat);
+          setLng(newLng);
+          setMapKey((k) => k + 1); // fuerza re-mount del mapa con GPS
+        }
+      },
+      () => { setGpsAvailable(false); },
+      { timeout: 8000, maximumAge: 120000, enableHighAccuracy: true }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function abrirEnMapa() {
     const q = lat != null && lng != null
@@ -172,7 +199,14 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
               Usa el ícono de ubicación para buscar y marcar en el mapa. El de enlace abre Google Maps.
             </p>
 
+            {gpsAvailable === false && lat == null && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 flex items-center gap-1.5">
+                <LocateFixed className="w-3.5 h-3.5 flex-shrink-0" />
+                Mueve el mapa para fijar tu entrega
+              </p>
+            )}
             <MapPicker
+              key={mapKey}
               lat={lat}
               lng={lng}
               onSelect={(newLat, newLng, addr) => {

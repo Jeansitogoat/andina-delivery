@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { MapPin, Plus, Trash2, Home, Briefcase, Star } from 'lucide-react';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
-import AddressPicker from '@/components/AddressPicker';
+
+const AgregarDireccionModal = dynamic(() => import('./AgregarDireccionModal'), { ssr: false });
 
 export interface DireccionGuardada {
   id: string;
@@ -26,10 +28,11 @@ const ICONOS_ETIQUETA = {
 interface Props {
   direcciones: DireccionGuardada[];
   onActualizar: (_dirs: DireccionGuardada[]) => void;
+  telefonoUsuario?: string | null;
 }
 
-export default function SeccionDirecciones({ direcciones, onActualizar }: Props) {
-  const [showPicker, setShowPicker] = useState(false);
+export default function SeccionDirecciones({ direcciones, onActualizar, telefonoUsuario }: Props) {
+  const [showModal, setShowModal] = useState(false);
 
   function eliminar(id: string) {
     onActualizar(direcciones.filter((d) => d.id !== id));
@@ -41,13 +44,18 @@ export default function SeccionDirecciones({ direcciones, onActualizar }: Props)
     );
   }
 
+  function handleGuardar(d: Omit<DireccionGuardada, 'id'>) {
+    const nueva: DireccionGuardada = { ...d, id: crypto.randomUUID() };
+    onActualizar([...direcciones, nueva]);
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <p className="font-bold text-sm text-gray-500 uppercase tracking-wide">Mis direcciones</p>
         <button
           type="button"
-          onClick={() => setShowPicker(true)}
+          onClick={() => setShowModal(true)}
           className="flex items-center gap-1 text-xs font-bold text-rojo-andino hover:underline"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -108,9 +116,11 @@ export default function SeccionDirecciones({ direcciones, onActualizar }: Props)
         })}
       </div>
 
-      {showPicker && (
-        <AddressPicker
-          onClose={() => setShowPicker(false)}
+      {showModal && (
+        <AgregarDireccionModal
+          onClose={() => setShowModal(false)}
+          onGuardar={handleGuardar}
+          telefonoUsuario={telefonoUsuario}
         />
       )}
     </div>

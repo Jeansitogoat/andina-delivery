@@ -30,7 +30,8 @@ import { getIdToken } from '@/lib/authToken';
 import { mapErrorToUserMessage } from '@/lib/errorMessages';
 import type { Local } from '@/lib/data';
 import AddressSelector from '@/components/AddressSelector';
-import AddressPicker from '@/components/AddressPicker';
+import dynamic from 'next/dynamic';
+const AgregarDireccionModal = dynamic(() => import('@/components/usuario/AgregarDireccionModal'), { ssr: false });
 import LocalLogo from '@/components/LocalLogo';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
@@ -86,7 +87,7 @@ export default function CheckoutPage() {
   );
   // Caché en memoria: evita refetch a /api/locales/[id] si ya cargamos el local en esta sesión
   const menuCacheRef = useRef<Map<string, { local: unknown; menu: Array<{ id: string; name: string; price: number; shipping?: number }> }>>(new Map());
-  const { direccionEntregar, direcciones, selectedId, direccionEntregarLatLng, userLocationLatLng } = useAddresses();
+  const { direccionEntregar, direcciones, selectedId, direccionEntregarLatLng, userLocationLatLng, addDireccion } = useAddresses();
   const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
   const [showAgregarDireccion, setShowAgregarDireccion] = useState(false);
@@ -1119,7 +1120,7 @@ export default function CheckoutPage() {
                   <MapPin className="w-3.5 h-3.5" />
                   Dirección de entrega
                 </p>
-                <AddressSelector dark localCoords={localesCoordsParaCobertura} coverageRadiusKm={10} proximityKm={1} />
+                <AddressSelector dark />
                 {direcciones.length === 0 && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mt-2">
                     No tienes direcciones guardadas. Agrega una para que te podamos entregar.
@@ -1363,11 +1364,14 @@ export default function CheckoutPage() {
       )}
 
       {showAgregarDireccion && (
-        <AddressPicker
+        <AgregarDireccionModal
           onClose={() => setShowAgregarDireccion(false)}
-          locals={localesCoordsParaCobertura}
-          coverageRadiusKm={10}
-          proximityKm={1}
+          onGuardar={(d) => {
+            addDireccion(d);
+            setShowAgregarDireccion(false);
+          }}
+          initialLatLng={userLocationLatLng}
+          telefonoUsuario={user?.telefono ?? null}
         />
       )}
     </main>

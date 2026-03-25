@@ -1,35 +1,34 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { MapPin, ChevronDown, Plus, AlertCircle } from 'lucide-react';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
-import AddressPicker from '@/components/AddressPicker';
+import type { DireccionGuardada } from '@/components/usuario/SeccionDirecciones';
+
+const AgregarDireccionModal = dynamic(() => import('@/components/usuario/AgregarDireccionModal'), { ssr: false });
 
 interface AddressSelectorProps {
   className?: string;
   /** true = fondo claro (checkout), false = header rojo (home) */
   dark?: boolean;
-  /** Coordenadas de locales para validar cobertura en checkout/multi-stop. */
-  localCoords?: Array<{ lat: number; lng: number }>;
-  /** Radio de cobertura en km (por defecto 10km). */
-  coverageRadiusKm?: number;
-  /** Distancia mínima a GPS en km para disparar popup anti-bromas (por defecto 1km). */
-  proximityKm?: number;
 }
 
-export default function AddressSelector({
-  className = '',
-  dark = false,
-  localCoords,
-  coverageRadiusKm = 10,
-  proximityKm = 1,
-}: AddressSelectorProps) {
-  const { direcciones, selectedId, setSelectedId, direccionEntregar, estaLejos } = useAddresses();
+export default function AddressSelector({ className = '', dark = false }: AddressSelectorProps) {
+  const {
+    direcciones,
+    selectedId,
+    setSelectedId,
+    direccionEntregar,
+    estaLejos,
+    addDireccion,
+    userLocationLatLng,
+  } = useAddresses();
   useAuth();
   const [open, setOpen] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,6 +38,11 @@ export default function AddressSelector({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  function handleGuardar(d: Omit<DireccionGuardada, 'id'>) {
+    addDireccion(d);
+    setShowModal(false);
+  }
 
   return (
     <div ref={ref} className={`relative ${className}`}>
@@ -85,7 +89,7 @@ export default function AddressSelector({
             type="button"
             onClick={() => {
               setOpen(false);
-              setShowPicker(true);
+              setShowModal(true);
             }}
             className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors flex items-center gap-2 text-rojo-andino font-semibold border-t border-gray-100 mt-1 pt-2"
           >
@@ -95,12 +99,11 @@ export default function AddressSelector({
         </div>
       )}
 
-      {showPicker && (
-        <AddressPicker
-          onClose={() => setShowPicker(false)}
-          locals={localCoords}
-          coverageRadiusKm={coverageRadiusKm}
-          proximityKm={proximityKm}
+      {showModal && (
+        <AgregarDireccionModal
+          onClose={() => setShowModal(false)}
+          onGuardar={handleGuardar}
+          initialLatLng={userLocationLatLng}
         />
       )}
     </div>

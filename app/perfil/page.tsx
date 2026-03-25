@@ -113,7 +113,6 @@ export default function PerfilPage() {
       })
       .catch(() => { if (!cancelled) setTokenRegistrado(false); });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, permission, optedOut, notifLoading, refreshNotifStatus]);
 
   useEffect(() => {
@@ -122,7 +121,6 @@ export default function PerfilPage() {
       router.replace('/auth');
       return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, authLoading, router]);
 
   useEffect(() => {
@@ -175,7 +173,6 @@ export default function PerfilPage() {
       .catch(() => { if (!cancelled) setHistorial([]); })
       .finally(() => { if (!cancelled) setHistorialLoading(false); });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.rol]);
 
   async function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -416,6 +413,7 @@ export default function PerfilPage() {
             <SeccionDirecciones
               direcciones={direcciones}
               onActualizar={updateDirecciones}
+              telefonoUsuario={telefono || null}
             />
         )}
 
@@ -530,7 +528,7 @@ export default function PerfilPage() {
                           type="button"
                           onClick={async () => {
                             setReintentandoNotif(true);
-                            await reintentarRegistro();
+                            const ok = await reintentarRegistro();
                             setRefreshNotifStatus((n) => n + 1);
                             setReintentandoNotif(false);
                           }}
