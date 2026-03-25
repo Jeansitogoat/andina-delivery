@@ -214,7 +214,7 @@ export default function Home() {
   return (
     <main className="flex-1 flex flex-col bg-gray-50">
       {/* Header */}
-      <header className="bg-rojo-andino text-white sticky top-0 z-10 shadow-md w-full">
+      <header className="bg-rojo-andino text-white sticky top-0 z-30 shadow-md w-full">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-1">
             <div className="flex flex-col gap-0.5">
@@ -342,7 +342,7 @@ export default function Home() {
         {/* Carrusel de banners */}
         {banners.length > 0 && (
         <div
-          className="relative w-full overflow-hidden rounded-2xl my-4 shadow-md"
+          className="relative isolate w-full overflow-hidden rounded-2xl my-4 shadow-md"
           style={{ aspectRatio: '3/1' }}
         >
           {banners.map((banner, i) => {
@@ -379,7 +379,7 @@ export default function Home() {
               )}
             </button>
           ); })}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-[1]">
             {banners.map((_, i) => (
               <button
                 key={i}
