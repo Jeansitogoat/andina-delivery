@@ -92,12 +92,15 @@ export async function getFCMToken(): Promise<string | null> {
     return null;
   }
   try {
+    // Barrera obligatoria: el SW DEBE estar listo antes de getToken para evitar race condition
+    await navigator.serviceWorker.ready;
     await waitForServiceWorker();
     const swReg = await getMessagingSWRegistration();
     if (!swReg) {
       console.error('[FCM] getFCMToken: Service Worker no disponible o falló el registro. Comprueba que /firebase-messaging-sw.js exista y tenga scope "/".');
       return null;
     }
+    console.log('🚀 Generando Token...');
     const { getMessaging, getToken } = await import('firebase/messaging');
     const app = getFirebaseApp();
     const messaging = getMessaging(app);
@@ -105,6 +108,9 @@ export async function getFCMToken(): Promise<string | null> {
       vapidKey,
       serviceWorkerRegistration: swReg,
     });
+    if (token) {
+      console.log('🔥 Token generado:', token.slice(0, 20) + '...');
+    }
     return token ?? null;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -112,7 +118,7 @@ export async function getFCMToken(): Promise<string | null> {
     const lower = (msg + ' ' + code).toLowerCase();
     if (lower.includes('permission') || lower.includes('denied') || lower.includes('notification')) {
       console.error('[FCM] getFCMToken: Error de permisos -', msg, e);
-    } else if (lower.includes('vapid') || lower.includes('key') || lower.includes('invalid') && (lower.includes('key') || lower.includes('vapid'))) {
+    } else if (lower.includes('vapid') || lower.includes('key') || (lower.includes('invalid') && (lower.includes('key') || lower.includes('vapid')))) {
       console.error('[FCM] getFCMToken: Error por llave VAPID (revisa NEXT_PUBLIC_FIREBASE_VAPID_KEY) -', msg, e);
     } else if (lower.includes('service') || lower.includes('worker') || lower.includes('registration') || lower.includes('sw')) {
       console.error('[FCM] getFCMToken: Error de Service Worker -', msg, e);
@@ -124,8 +130,9 @@ export async function getFCMToken(): Promise<string | null> {
 }
 
 /**
- * Obtiene el token FCM esperando primero al SW y reintentando (recomendado en móvil).
- * En iOS usa más delay inicial y más intentos. Incluye un reintento extra tras 3 s si el bucle no obtuvo token.
+ * Obtiene el token FCM esperando primero al SW y reintentando silenciosamente (recomendado en móvil).
+ * Por defecto: 5 intentos con 2s de espera entre cada uno + delay inicial adaptativo.
+ * Los logs de progreso son visibles "por cable" pero no modifican el estado de la UI.
  */
 export async function getFCMTokenWithRetry(options?: {
   maxAttempts?: number;
@@ -133,7 +140,6 @@ export async function getFCMTokenWithRetry(options?: {
   initialDelayMs?: number;
 }): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  // Abort temprano si falta VAPID key: evita flujos ambiguos que retornan null sin diagnóstico
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
   if (!vapidKey) {
     console.error('[FCM] Error: VAPID Key faltante (NEXT_PUBLIC_FIREBASE_VAPID_KEY). Abortando getFCMTokenWithRetry.');
@@ -141,10 +147,12 @@ export async function getFCMTokenWithRetry(options?: {
   }
   const ios = isIOS();
   const {
-    maxAttempts = 3,
+    maxAttempts = 5,
     delayMs = 2000,
     initialDelayMs = ios ? 2500 : 800,
   } = options ?? {};
+  // Barrera doble: primero el SW global listo, luego el SW de FCM registrado
+  await navigator.serviceWorker.ready;
   await waitForServiceWorker();
   await getMessagingSWRegistration();
   await new Promise((r) => setTimeout(r, initialDelayMs));
@@ -152,12 +160,12 @@ export async function getFCMTokenWithRetry(options?: {
     const token = await getFCMToken();
     if (token) return token;
     if (attempt < maxAttempts) {
+      console.log(`[FCM] Intento ${attempt}/${maxAttempts} fallido. Reintentando en ${delayMs / 1000}s...`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
-  await new Promise((r) => setTimeout(r, 3000));
-  const token = await getFCMToken();
-  return token ?? null;
+  console.warn('[FCM] No se obtuvo token tras', maxAttempts, 'intentos.');
+  return null;
 }
 
 /**

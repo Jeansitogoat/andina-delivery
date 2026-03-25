@@ -90,7 +90,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const { id } = use(params);
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const { permission, requestPermission, loading: notifLoading } = useNotifications('restaurant', { localId: id ?? user?.localId ?? '' });
+  const { permission, requestPermission, loading: notifLoading } = useNotifications('local', { localId: id ?? user?.localId ?? '' });
   const [local, setLocal] = useState<Local | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -198,7 +198,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     let t: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
       if (t) return;
-      t = setInterval(cargarPedidos, 18000); // 18s - optimizado
+      t = setInterval(cargarPedidos, 45_000); // 45s — reducción ~60% de lecturas vs 18s
     };
     const stopPolling = () => {
       if (t) {
@@ -315,7 +315,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     let t: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
       if (t) return;
-      t = setInterval(fetchPendingTransfer, 18000); // 18s - optimizado
+      t = setInterval(fetchPendingTransfer, 45_000); // 45s — sincronizado con pedidos
     };
     const stopPolling = () => {
       if (t) {

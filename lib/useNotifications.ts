@@ -40,7 +40,7 @@ async function waitForAuthCurrentUser(timeoutMs = 5000): Promise<string | null> 
   });
 }
 
-export type NotificationRole = 'central' | 'rider' | 'restaurant' | 'user';
+export type NotificationRole = 'central' | 'rider' | 'local' | 'user';
 
 export type NotificationPermission = 'granted' | 'denied' | 'default';
 
@@ -171,7 +171,8 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
           if (!silent) setError('Sesión expirada. Recargá la página e intentá de nuevo.');
           return false;
         }
-        const body: Record<string, string> = { token: fcmToken, role };
+        // Payload obligatorio: token + uid + rol (+ localId si rol=local)
+        const body: Record<string, string> = { token: fcmToken, role, uid };
         const extra = extraPayloadOverride ?? (options?.localId ? { localId: options.localId } : undefined);
         if (extra) Object.assign(body, extra);
         const res = await fetch('/api/fcm/register', {
@@ -185,8 +186,10 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         if (res.ok) {
           lastRegisteredTokenRef.current = fcmToken;
           writeStoredToken(fcmToken);
+          // Limpieza inmediata de estado: el mensaje "token no registrado" desaparece sin recargar
           setPendingRegister(false);
           setError(null);
+          console.log('🔥 Token guardado en Firestore. Rol:', role, options?.localId ? `localId:${options.localId}` : '');
           return true;
         }
         const data = (await res.json().catch(() => ({}))) as { error?: string };

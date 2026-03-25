@@ -32,17 +32,23 @@ export async function POST(request: Request) {
     const parseResult = fcmRegisterSchema.safeParse(body);
     if (!parseResult.success) {
       const fieldErrors = parseResult.error.flatten().fieldErrors;
-      // Log estructurado para identificar exactamente el campo inválido en Vercel
       console.error('[FCM] Register validación Zod fallida:', JSON.stringify(fieldErrors));
       const firstMsg = Object.values(fieldErrors).flat()[0] ?? 'Datos inválidos';
       return NextResponse.json({ error: firstMsg, fieldErrors }, { status: 400 });
     }
-    const { token: rawToken, role: roleStr, localId: bodyLocalId } = parseResult.data;
+    const { token: rawToken, role: roleStr, uid: bodyUid, localId: bodyLocalId } = parseResult.data;
     const trimmedToken = rawToken.trim();
+
+    // Anti-spoofing: si el cliente envía uid, debe coincidir exactamente con el del JWT
+    if (bodyUid && bodyUid.trim() !== auth.uid) {
+      console.warn('[FCM] Intento de registrar token con uid ajeno:', { claim: auth.uid, bodyUid });
+      return NextResponse.json({ error: 'uid no coincide con el usuario autenticado' }, { status: 403 });
+    }
+
     const db = getAdminFirestore();
-    // Para restaurant: el localId siempre se toma de la identidad autenticada (Firestore), nunca del body sin validar
+    // Para local: el localId siempre se toma de la identidad autenticada (Firestore), nunca del body sin validar
     let localId: string | null = null;
-    if (roleStr === 'restaurant') {
+    if (roleStr === 'local') {
       const userSnap = await db.collection('users').doc(auth.uid).get();
       const trustedLocalId = userSnap.data()?.localId ?? null;
       // Si el body trae localId, debe coincidir con el del usuario autenticado
@@ -53,16 +59,17 @@ export async function POST(request: Request) {
       }
       localId = trustedLocalId;
     }
+
     const docId = `${auth.uid}_${roleStr}`;
     const docData: Record<string, unknown> = {
       token: trimmedToken,
-      role: roleStr,
+      role: roleStr,       // campo 'role' para compatibilidad con queries existentes
       uid: auth.uid,
-      updatedAt: FieldValue.serverTimestamp(),
+      lastUpdated: FieldValue.serverTimestamp(),
     };
-    if (roleStr === 'restaurant' && localId) docData.localId = localId;
+    if (roleStr === 'local' && localId) docData.localId = localId;
     await db.collection(FCM_TOKENS_COLLECTION).doc(docId).set(sanitizeForFirestore(docData), { merge: true });
-    console.log('[FCM] Token registered', docId, roleStr === 'restaurant' && localId ? `localId=${localId}` : '');
+    console.log('[FCM] Token registered', docId, roleStr === 'local' && localId ? `localId=${localId}` : '');
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('POST /api/fcm/register error interno:', e);

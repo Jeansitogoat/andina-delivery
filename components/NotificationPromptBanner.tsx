@@ -12,7 +12,7 @@ const ROLE_MAP: Record<string, NotificationRole> = {
   cliente: 'user',
   central: 'central',
   rider: 'rider',
-  local: 'restaurant',
+  local: 'local',
   maestro: 'central',
 };
 

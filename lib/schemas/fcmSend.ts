@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-const fcmTargetEnum = z.enum(['central', 'rider', 'restaurant', 'user'], {
-  error: 'target debe ser central, rider, restaurant o user',
+const fcmTargetEnum = z.enum(['central', 'rider', 'local', 'user'], {
+  error: 'target debe ser central, rider, local o user',
 });
 
 export const fcmSendPostSchema = z.object({

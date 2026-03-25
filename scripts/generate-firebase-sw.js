@@ -31,8 +31,8 @@ if (!apiKey || !authDomain || !projectId || !messagingSenderId || !appId) {
 }
 
 const content = `/* Service worker para FCM. Generado desde variables de entorno - no editar a mano. */
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
 firebase.initializeApp({
   apiKey: '${apiKey.replace(/'/g, "\\'")}',
@@ -44,23 +44,75 @@ firebase.initializeApp({
   ${measurementId ? `measurementId: '${measurementId.replace(/'/g, "\\'")}',` : ''}
 });
 
-const messaging = firebase.messaging();
-
 self.addEventListener('message', function (event) {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-messaging.onBackgroundMessage(function (payload) {
-  const title = payload.notification?.title || payload.data?.title || 'Andina Delivery';
-  const options = {
-    body: payload.notification?.body || payload.data?.body || '',
-    icon: '/logo-andina.png',
-    data: payload.data || {},
-  };
-  self.registration.showNotification(title, options);
-});
+// Inicialización segura de messaging: nunca se llama firebase.messaging() de forma global.
+// Si firebase o su módulo de messaging no está disponible (navegadores sin soporte,
+// CDN bloqueada, arranque en frío), el SW sigue funcionando sin reventar.
+(function initMessaging() {
+  try {
+    if (typeof firebase === 'undefined') {
+      console.error('❌ SW: firebase no definido. Verifica que los importScripts cargaron correctamente.');
+      return;
+    }
+    if (typeof firebase.messaging !== 'function') {
+      console.error('❌ SW: firebase.messaging no es una función. El módulo compat de messaging no cargó.');
+      return;
+    }
+
+    var supported = false;
+    try {
+      // isSupported puede ser sync (boolean) o async (Promise) según versión
+      var isSupResult = firebase.messaging.isSupported();
+      if (isSupResult && typeof isSupResult.then === 'function') {
+        // Promise: continuar de forma asíncrona
+        isSupResult.then(function (yes) {
+          if (yes) attachMessaging();
+          else console.warn('❌ SW: messaging no soportado en este navegador/contexto.');
+        }).catch(function (e) {
+          console.error('❌ SW: Error al verificar soporte de messaging:', e);
+        });
+        return;
+      }
+      supported = Boolean(isSupResult);
+    } catch (e) {
+      // isSupported no existe en versiones antiguas → asumir soportado y continuar
+      supported = true;
+    }
+
+    if (!supported) {
+      console.warn('❌ SW: messaging no soportado en este navegador/contexto.');
+      return;
+    }
+
+    attachMessaging();
+  } catch (e) {
+    console.error('❌ SW: Error crítico al inicializar messaging:', e);
+  }
+})();
+
+function attachMessaging() {
+  try {
+    var messaging = firebase.messaging();
+    messaging.onBackgroundMessage(function (payload) {
+      var title = (payload.notification && payload.notification.title) || (payload.data && payload.data.title) || 'Andina Delivery';
+      var options = {
+        body: (payload.notification && payload.notification.body) || (payload.data && payload.data.body) || '',
+        icon: '/logo-andina.png',
+        badge: '/logo-andina.png',
+        data: payload.data || {},
+      };
+      self.registration.showNotification(title, options);
+    });
+    console.log('✅ SW: Registrado y Listo');
+  } catch (e) {
+    console.error('❌ SW: Error al adjuntar onBackgroundMessage:', e);
+  }
+}
 
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();

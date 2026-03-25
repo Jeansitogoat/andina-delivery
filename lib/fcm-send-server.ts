@@ -6,9 +6,9 @@ import { getAdminFirestore, getAdminMessaging } from '@/lib/firebase-admin';
 
 const FCM_TOKENS_COLLECTION = 'fcm_tokens';
 
-export type FCMRole = 'central' | 'rider' | 'restaurant' | 'user';
+export type FCMRole = 'central' | 'rider' | 'local' | 'user';
 
-const ROLES: FCMRole[] = ['central', 'rider', 'restaurant', 'user'];
+const ROLES: FCMRole[] = ['central', 'rider', 'local', 'user'];
 
 function isValidRole(r: string): r is FCMRole {
   return ROLES.includes(r as FCMRole);
@@ -63,8 +63,8 @@ export async function sendFCMToRole(
 }
 
 /**
- * Envía una notificación FCM solo a los tokens del restaurante con el localId dado.
- * Filtro quirúrgico: solo role === 'restaurant' y localId coincidente. No broadcast.
+ * Envía una notificación FCM solo a los tokens del local con el localId dado.
+ * Filtro quirúrgico: solo role === 'local' y localId coincidente. No broadcast.
  * Si localId está vacío/null/whitespace: no hace nada y devuelve 0 (evita gastar recursos).
  * No lanza; devuelve el número de envíos exitosos.
  */
@@ -78,7 +78,7 @@ export async function sendFCMToRestaurantByLocalId(
   const db = getAdminFirestore();
   const snap = await db
     .collection(FCM_TOKENS_COLLECTION)
-    .where('role', '==', 'restaurant')
+    .where('role', '==', 'local')
     .where('localId', '==', localId.trim())
     .get();
   const messaging = getAdminMessaging();
