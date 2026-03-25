@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { MapPin, Plus, Trash2, Home, Briefcase, Star } from 'lucide-react';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
+import AddressPicker from '@/components/AddressPicker';
 
 export interface DireccionGuardada {
   id: string;
@@ -28,23 +29,7 @@ interface Props {
 }
 
 export default function SeccionDirecciones({ direcciones, onActualizar }: Props) {
-  const [agregando, setAgregando] = useState(false);
-  const [nueva, setNueva] = useState({ nombre: '', detalle: '', referencia: '', etiqueta: 'otro' as DireccionGuardada['etiqueta'] });
-
-  function agregar() {
-    if (!nueva.nombre.trim()) return;
-    const dir: DireccionGuardada = {
-      id: `dir-${Date.now()}`,
-      etiqueta: nueva.etiqueta,
-      nombre: nueva.nombre.trim(),
-      detalle: nueva.detalle.trim(),
-      referencia: nueva.referencia.trim() || undefined,
-      principal: direcciones.length === 0,
-    };
-    onActualizar([...direcciones, dir]);
-    setNueva({ nombre: '', detalle: '', referencia: '', etiqueta: 'otro' });
-    setAgregando(false);
-  }
+  const [showPicker, setShowPicker] = useState(false);
 
   function eliminar(id: string) {
     onActualizar(direcciones.filter((d) => d.id !== id));
@@ -62,7 +47,7 @@ export default function SeccionDirecciones({ direcciones, onActualizar }: Props)
         <p className="font-bold text-sm text-gray-500 uppercase tracking-wide">Mis direcciones</p>
         <button
           type="button"
-          onClick={() => setAgregando(true)}
+          onClick={() => setShowPicker(true)}
           className="flex items-center gap-1 text-xs font-bold text-rojo-andino hover:underline"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -71,7 +56,7 @@ export default function SeccionDirecciones({ direcciones, onActualizar }: Props)
       </div>
 
       <div className="divide-y divide-gray-50">
-        {direcciones.length === 0 && !agregando && (
+        {direcciones.length === 0 && (
           <div className="px-4 py-6 text-center text-gray-400">
             <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
             <p className="text-sm">No tienes direcciones guardadas</p>
@@ -121,72 +106,13 @@ export default function SeccionDirecciones({ direcciones, onActualizar }: Props)
             </div>
           );
         })}
-
-        {/* Formulario nueva dirección */}
-        {agregando && (
-          <div className="px-4 py-4 space-y-3 bg-gray-50/50">
-            <div className="flex gap-2">
-              {(['casa', 'trabajo', 'otro'] as const).map((e) => {
-                const Icono = ICONOS_ETIQUETA[e];
-                return (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setNueva((n) => ({ ...n, etiqueta: e }))}
-                    className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-xl border-2 text-xs font-semibold capitalize transition-colors ${
-                      nueva.etiqueta === e
-                        ? 'border-rojo-andino bg-rojo-andino/5 text-rojo-andino'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                    }`}
-                  >
-                    <Icono className="w-4 h-4" />
-                    {e === 'casa' ? 'Casa' : e === 'trabajo' ? 'Trabajo' : 'Otro'}
-                  </button>
-                );
-              })}
-            </div>
-            <input
-              type="text"
-              placeholder="Nombre (Ej. Mi casa)"
-              value={nueva.nombre}
-              onChange={(e) => setNueva((n) => ({ ...n, nombre: e.target.value }))}
-              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-rojo-andino transition-colors"
-              autoFocus
-            />
-            <input
-              type="text"
-              placeholder="Dirección (calle, sector, Piñas)"
-              value={nueva.detalle}
-              onChange={(e) => setNueva((n) => ({ ...n, detalle: e.target.value }))}
-              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-rojo-andino transition-colors"
-            />
-            <input
-              type="text"
-              placeholder="Referencia para el rider (ej. casa azul, al lado del parque)"
-              value={nueva.referencia}
-              onChange={(e) => setNueva((n) => ({ ...n, referencia: e.target.value }))}
-              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-rojo-andino transition-colors"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAgregando(false)}
-                className="flex-1 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold text-sm"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={agregar}
-                disabled={!nueva.nombre.trim()}
-                className="flex-1 py-2.5 rounded-xl bg-rojo-andino hover:bg-rojo-andino/90 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold text-sm transition-colors"
-              >
-                Guardar
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {showPicker && (
+        <AddressPicker
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   );
 }

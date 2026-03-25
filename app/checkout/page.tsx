@@ -30,7 +30,7 @@ import { getIdToken } from '@/lib/authToken';
 import { mapErrorToUserMessage } from '@/lib/errorMessages';
 import type { Local } from '@/lib/data';
 import AddressSelector from '@/components/AddressSelector';
-import AgregarDireccionModal from '@/components/usuario/AgregarDireccionModal';
+import AddressPicker from '@/components/AddressPicker';
 import LocalLogo from '@/components/LocalLogo';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
@@ -86,7 +86,7 @@ export default function CheckoutPage() {
   );
   // Caché en memoria: evita refetch a /api/locales/[id] si ya cargamos el local en esta sesión
   const menuCacheRef = useRef<Map<string, { local: unknown; menu: Array<{ id: string; name: string; price: number; shipping?: number }> }>>(new Map());
-  const { direccionEntregar, direcciones, selectedId, addDireccion, direccionEntregarLatLng, userLocationLatLng } = useAddresses();
+  const { direccionEntregar, direcciones, selectedId, direccionEntregarLatLng, userLocationLatLng } = useAddresses();
   const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
   const [showAgregarDireccion, setShowAgregarDireccion] = useState(false);
@@ -1363,14 +1363,11 @@ export default function CheckoutPage() {
       )}
 
       {showAgregarDireccion && (
-        <AgregarDireccionModal
+        <AddressPicker
           onClose={() => setShowAgregarDireccion(false)}
-          onGuardar={(d) => {
-            addDireccion(d);
-            setShowAgregarDireccion(false);
-          }}
-          telefonoUsuario={user?.telefono ?? null}
-          initialLatLng={userLocationLatLng}
+          locals={localesCoordsParaCobertura}
+          coverageRadiusKm={10}
+          proximityKm={1}
         />
       )}
     </main>
