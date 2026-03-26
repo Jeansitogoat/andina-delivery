@@ -727,7 +727,7 @@ export default function CheckoutPage() {
 
     if (!tieneDatosTransferencia) {
       return (
-        <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+        <main className="min-h-screen bg-surface flex flex-col items-center justify-center safe-x">
           <div className="w-full max-w-md text-center bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
             <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h1 className="font-bold text-xl text-gray-900 mb-2">Pago por transferencia no disponible</h1>
@@ -751,7 +751,7 @@ export default function CheckoutPage() {
     }
 
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center px-4 py-8 pb-12">
+      <main className="min-h-screen bg-surface flex flex-col items-center safe-x py-8 pb-12">
         <div
           className="w-full max-w-md space-y-5"
           style={{ animation: 'scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards' }}
@@ -917,7 +917,7 @@ export default function CheckoutPage() {
                 onClick={handleEnviarComprobante}
                 loading={isUploadingComprobante}
                 disabled={!comprobanteFile}
-                className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 disabled:bg-gray-200 disabled:text-gray-400 text-white font-black text-base shadow-lg transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed"
+                className="w-full min-h-[48px] py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 disabled:bg-gray-200 disabled:text-gray-400 text-white font-black text-base shadow-soft transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed"
               >
                 <Upload className="w-5 h-5" />
                 {isUploadingComprobante ? 'Enviando…' : 'Enviar comprobante'}
@@ -928,7 +928,7 @@ export default function CheckoutPage() {
                 href={`${formatWhatsAppLink('593992250333')}?text=${whatsappMsg}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl border-2 border-green-500 text-green-600 hover:bg-green-50 font-bold text-sm transition-colors"
+                className="flex items-center justify-center gap-2 w-full min-h-[44px] py-3 rounded-2xl border-2 border-green-500 text-green-600 hover:bg-green-50 font-bold text-sm transition-colors"
               >
                 <MessageCircle className="w-5 h-5" />
                 WhatsApp
@@ -957,7 +957,7 @@ export default function CheckoutPage() {
   // === Carrito vacío: no redirigir, dar tiempo a Firestore y mostrar mensaje
   if (hydrated && cart.stops.length === 0 && !confirmed) {
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+      <main className="min-h-screen bg-surface flex flex-col items-center justify-center safe-x">
         <Package className="w-16 h-16 text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-800 mb-2">Tu carrito está vacío</h2>
         <p className="text-gray-500 text-center mb-6">Agregá productos desde un restaurante para hacer tu pedido.</p>
@@ -974,9 +974,9 @@ export default function CheckoutPage() {
 
   if (!allLoaded || stopsData.length === 0) {
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col">
+      <main className="min-h-screen bg-surface flex flex-col">
         <header className="bg-white sticky top-0 z-10 shadow-sm border-b border-gray-100">
-          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+          <div className="max-w-2xl mx-auto safe-x py-4 flex items-center gap-3">
             <button
               type="button"
               onClick={() => router.back()}
@@ -1000,23 +1000,23 @@ export default function CheckoutPage() {
 
   return (
     <main
-      className={`min-h-screen bg-gray-50 flex flex-col transition-all duration-300 ${
+      className={`min-h-screen bg-surface flex flex-col transition-all duration-300 ${
         pageVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
       }`}
     >
       {/* Header */}
-      <header className="bg-white sticky top-0 z-10 shadow-sm border-b border-gray-100">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+      <header className="bg-white/95 sticky top-0 z-10 shadow-soft border-b border-gray-100 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
+        <div className="max-w-2xl mx-auto safe-x py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => router.back()}
-              className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors flex-shrink-0"
+              className="h-9 w-9 md:h-10 md:w-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors flex-shrink-0"
               aria-label="Volver"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-700" />
+              <ArrowLeft className="w-4 h-4 md:w-5 md:h-5 text-gray-700" />
             </button>
-            <h1 className="font-bold text-lg text-gray-900">Detalle de entrega</h1>
+            <h1 className="font-black text-lg text-gray-900 tracking-tight">Detalle de entrega</h1>
           </div>
           {user && user.rol !== 'cliente' && (
             <button
@@ -1027,7 +1027,7 @@ export default function CheckoutPage() {
                 else if (user.rol === 'local') router.push((user as { localId?: string }).localId ? `/panel/restaurante/${(user as { localId?: string }).localId}` : '/panel/restaurante');
                 else if (user.rol === 'maestro') router.push('/panel/maestro');
               }}
-              className="text-sm text-rojo-andino hover:underline font-medium flex-shrink-0"
+              className="hidden md:inline text-sm text-rojo-andino hover:underline font-medium flex-shrink-0"
             >
               Volver al panel
             </button>
@@ -1035,10 +1035,10 @@ export default function CheckoutPage() {
         </div>
       </header>
 
-      <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-4 space-y-4 pb-36">
+      <div className="flex-1 max-w-2xl mx-auto w-full safe-x py-4 space-y-4 pb-36">
 
         {/* Dirección + tiempo */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-soft border border-gray-100 overflow-hidden">
           <div className="px-4 py-4">
             <div className="flex items-start gap-3 mb-3">
               {local?.logo && (
@@ -1141,7 +1141,7 @@ export default function CheckoutPage() {
         </div>
 
         {/* Medios de pago */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-soft border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50">
             <p className="font-bold text-sm text-gray-500 uppercase tracking-wide">Medios de pago</p>
           </div>
@@ -1192,7 +1192,7 @@ export default function CheckoutPage() {
 
         {/* Propina: solo para entrega a domicilio */}
         {deliveryType === 'delivery' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-soft border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50">
             <p className="font-bold text-sm text-gray-500 uppercase tracking-wide">
               Propina para quien reparte
@@ -1219,7 +1219,7 @@ export default function CheckoutPage() {
         )}
 
         {/* Resumen */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-soft border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50">
             <p className="font-bold text-sm text-gray-500 uppercase tracking-wide">Resumen</p>
           </div>
@@ -1282,7 +1282,7 @@ export default function CheckoutPage() {
       </div>
 
       {/* Botón pedir */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-50 via-gray-50/95 to-transparent px-4 pb-6 pt-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-surface via-surface/95 to-transparent px-4 pb-6 pt-4 border-t border-gray-100/80">
         <div className="max-w-2xl mx-auto">
           {authError && (
             <p className="text-red-600 text-sm font-medium mb-3 text-center">{authError}</p>
@@ -1312,7 +1312,8 @@ export default function CheckoutPage() {
             onClick={handleOrder}
             loading={isOrdering}
             disabled={!puedePedir}
-            className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-black text-lg shadow-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+            tone="client"
+            className="w-full py-4 rounded-2xl disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-black text-lg shadow-softlg transition-all active:scale-[0.98] flex items-center justify-center gap-3"
           >
             <Truck className="w-5 h-5" />
             {isOrdering ? 'Enviando…' : 'Pedir'}

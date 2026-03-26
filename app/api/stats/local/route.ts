@@ -23,147 +23,138 @@ export async function GET(request: Request) {
     }
 
     const db = getAdminFirestore();
-    // Filtrar por los últimos 90 días para evitar full-scans históricos ilimitados.
-    // El período de 90 días cubre hoy + semana + mes (30d) con margen amplio.
-    const noventaDiasAtras = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    let snap;
-    try {
-      snap = await db
-        .collection('pedidos')
-        .where('localId', '==', localId)
-        .where('timestamp', '>=', noventaDiasAtras)
-        .orderBy('timestamp', 'desc')
-        .limit(2000)
-        .get();
-    } catch (err) {
-      const msg = (err as Error)?.message ?? '';
-      if (msg.includes('index') || msg.includes('Index')) {
-        // Fallback sin índice compuesto: filtro solo por localId, límite de 2000
-        snap = await db
-          .collection('pedidos')
-          .where('localId', '==', localId)
-          .orderBy('timestamp', 'desc')
-          .limit(2000)
-          .get();
-      } else {
-        throw err;
-      }
-    }
-
-    interface PedidoRow {
-      total: number;
-      timestamp: number;
-      clienteId?: string | null;
-      estado?: string;
-      items: string[];
-    }
-
-    const pedidos: PedidoRow[] = snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        total: data.total ?? 0,
-        timestamp: data.timestamp ?? 0,
-        clienteId: data.clienteId ?? null,
-        estado: data.estado ?? '',
-        items: Array.isArray(data.items) ? (data.items as string[]) : [],
-      };
-    });
-
-    const pedidosEntregados = pedidos.filter((p) => p.estado === 'entregado');
-
     const now = Date.now();
     const hoyInicio = new Date();
     hoyInicio.setHours(0, 0, 0, 0);
     const hoyTs = hoyInicio.getTime();
     const semanaAtras = now - 7 * 24 * 60 * 60 * 1000;
     const mesAtras = now - 30 * 24 * 60 * 60 * 1000;
-
-    const filtroHoy = (p: PedidoRow) => p.timestamp >= hoyTs;
-    const filtroSemana = (p: PedidoRow) => p.timestamp >= semanaAtras;
-    const filtroMes = (p: PedidoRow) => p.timestamp >= mesAtras;
-
-    const sumarTotal = (arr: PedidoRow[]) =>
-      Math.round(arr.reduce((s, p) => s + p.total, 0) * 100) / 100;
-    const unicos = (arr: PedidoRow[]) =>
-      new Set(arr.map((p) => p.clienteId).filter(Boolean)).size;
-
-    const hoy = pedidos.filter(filtroHoy);
-    const semana = pedidos.filter(filtroSemana);
-    const mes = pedidos.filter(filtroMes);
-
     const dayMs = 24 * 60 * 60 * 1000;
+
+    const dayKeys: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now - i * dayMs);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      dayKeys.push(key);
+    }
+    const dayRefs = dayKeys.map((key) => db.collection('locales').doc(localId).collection('stats_daily').doc(key));
+    const daySnaps = await db.getAll(...dayRefs);
+    const dailyMap = new Map<string, { pedidos: number; ingresos: number }>();
+    daySnaps.forEach((snap) => {
+      if (!snap.exists) return;
+      const d = snap.data() || {};
+      dailyMap.set(snap.id, {
+        pedidos: Number(d.pedidosEntregados ?? 0),
+        ingresos: Number(d.ingresosEntregados ?? 0),
+      });
+    });
+
     const startOfWeek = new Date(hoyInicio);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1); // Lunes
     const startOfWeekTs = startOfWeek.getTime();
 
-    // Hoy: poner count en el índice del día actual (0=Lun, 6=Dom)
-    const dayOfWeek = (hoyInicio.getDay() + 6) % 7; // Lun=0, Dom=6
     const datosHoyPedidos = [0, 0, 0, 0, 0, 0, 0];
     const datosHoyIngresos = [0, 0, 0, 0, 0, 0, 0];
-    datosHoyPedidos[dayOfWeek] = hoy.length;
-    datosHoyIngresos[dayOfWeek] = Math.round(sumarTotal(hoy) * 100) / 100;
-
-    // Semana: datos por día
     const diasSemana: number[] = [0, 0, 0, 0, 0, 0, 0];
     const ingresosSemana: number[] = [0, 0, 0, 0, 0, 0, 0];
-    semana.forEach((p) => {
-      const dayIndex = Math.floor((p.timestamp - startOfWeekTs) / dayMs);
-      if (dayIndex >= 0 && dayIndex < 7) {
-        diasSemana[dayIndex]++;
-        ingresosSemana[dayIndex] += p.total;
-      }
-    });
-
     const semanasMes: number[] = [0, 0, 0, 0];
     const ingresosMes: number[] = [0, 0, 0, 0];
-    const startOfMonth = new Date(hoyInicio.getFullYear(), hoyInicio.getMonth(), 1);
-    const startOfMonthTs = startOfMonth.getTime();
-    mes.forEach((p) => {
-      const weekIndex = Math.min(
-        3,
-        Math.floor((p.timestamp - startOfMonthTs) / (7 * dayMs))
-      );
-      if (weekIndex >= 0) {
-        semanasMes[weekIndex]++;
-        ingresosMes[weekIndex] += p.total;
+
+    let hoyPedidos = 0;
+    let hoyIngresos = 0;
+    let semanaPedidos = 0;
+    let semanaIngresos = 0;
+    let mesPedidos = 0;
+    let mesIngresos = 0;
+
+    for (let i = 0; i < 30; i++) {
+      const ts = now - i * dayMs;
+      const d = new Date(ts);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      const row = dailyMap.get(key) ?? { pedidos: 0, ingresos: 0 };
+      if (ts >= hoyTs) {
+        hoyPedidos += row.pedidos;
+        hoyIngresos += row.ingresos;
       }
+      if (ts >= semanaAtras) {
+        semanaPedidos += row.pedidos;
+        semanaIngresos += row.ingresos;
+      }
+      if (ts >= mesAtras) {
+        mesPedidos += row.pedidos;
+        mesIngresos += row.ingresos;
+      }
+      const dayIndexWeek = Math.floor((ts - startOfWeekTs) / dayMs);
+      if (dayIndexWeek >= 0 && dayIndexWeek < 7) {
+        diasSemana[dayIndexWeek] += row.pedidos;
+        ingresosSemana[dayIndexWeek] += row.ingresos;
+      }
+      const startOfMonth = new Date(hoyInicio.getFullYear(), hoyInicio.getMonth(), 1).getTime();
+      const weekIndex = Math.min(3, Math.floor((ts - startOfMonth) / (7 * dayMs)));
+      if (weekIndex >= 0 && weekIndex < 4) {
+        semanasMes[weekIndex] += row.pedidos;
+        ingresosMes[weekIndex] += row.ingresos;
+      }
+    }
+
+    const dayOfWeek = (hoyInicio.getDay() + 6) % 7; // Lun=0, Dom=6
+    datosHoyPedidos[dayOfWeek] = hoyPedidos;
+    datosHoyIngresos[dayOfWeek] = Math.round(hoyIngresos * 100) / 100;
+
+    const clientesSnap = await db
+      .collection('pedidos')
+      .where('localId', '==', localId)
+      .where('estado', '==', 'entregado')
+      .orderBy('timestamp', 'desc')
+      .limit(200)
+      .get();
+    const clientesHoy = new Set<string>();
+    const clientesSemana = new Set<string>();
+    const clientesMes = new Set<string>();
+    clientesSnap.docs.forEach((d) => {
+      const data = d.data();
+      const cid = typeof data.clienteId === 'string' ? data.clienteId : null;
+      const ts = Number(data.timestamp ?? 0);
+      if (!cid) return;
+      if (ts >= hoyTs) clientesHoy.add(cid);
+      if (ts >= semanaAtras) clientesSemana.add(cid);
+      if (ts >= mesAtras) clientesMes.add(cid);
     });
 
-    // Top productos vendidos (pedidos entregados)
-    const itemCount = new Map<string, number>();
-    pedidosEntregados.forEach((p) => {
-      (p.items || []).forEach((line) => {
-        const match = line.match(/^(\d+)\s*×\s*(.+)$/) || line.match(/^(.+)$/);
-        const qty = match && match[1] ? parseInt(match[1], 10) : 1;
-        const name = (match && match[2] ? match[2] : line).trim();
-        if (!name) return;
-        itemCount.set(name, (itemCount.get(name) || 0) + qty);
-      });
+    const topItemsSnap = await db
+      .collection('locales')
+      .doc(localId)
+      .collection('stats_items')
+      .orderBy('cantidad', 'desc')
+      .limit(10)
+      .get();
+    const topItems = topItemsSnap.docs.map((d) => {
+      const data = d.data();
+      return {
+        nombre: typeof data.nombre === 'string' ? data.nombre : d.id,
+        cantidad: Number(data.cantidad ?? 0),
+      };
     });
-    const topItems = Array.from(itemCount.entries())
-      .map(([nombre, cantidad]) => ({ nombre, cantidad }))
-      .sort((a, b) => b.cantidad - a.cantidad)
-      .slice(0, 10);
 
     return NextResponse.json({
       hoy: {
-        totalPedidos: hoy.length,
-        totalIngresos: sumarTotal(hoy),
-        clientesUnicos: unicos(hoy),
+        totalPedidos: hoyPedidos,
+        totalIngresos: Math.round(hoyIngresos * 100) / 100,
+        clientesUnicos: clientesHoy.size,
         datosPedidos: datosHoyPedidos,
         datosIngresos: datosHoyIngresos,
       },
       semana: {
-        totalPedidos: semana.length,
-        totalIngresos: sumarTotal(semana),
-        clientesUnicos: unicos(semana),
+        totalPedidos: semanaPedidos,
+        totalIngresos: Math.round(semanaIngresos * 100) / 100,
+        clientesUnicos: clientesSemana.size,
         datosPedidos: diasSemana,
         datosIngresos: ingresosSemana.map((v) => Math.round(v * 100) / 100),
       },
       mes: {
-        totalPedidos: mes.length,
-        totalIngresos: sumarTotal(mes),
-        clientesUnicos: unicos(mes),
+        totalPedidos: mesPedidos,
+        totalIngresos: Math.round(mesIngresos * 100) / 100,
+        clientesUnicos: clientesMes.size,
         datosPedidos: semanasMes,
         datosIngresos: ingresosMes.map((v) => Math.round(v * 100) / 100),
       },

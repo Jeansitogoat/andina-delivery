@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { batchCerrarPostSchema } from '@/lib/schemas/batchCerrar';
 import { calcularComision } from '@/lib/commissions';
+import { applyDeliveredOrderAggregates } from '@/lib/local-stats-aggregates';
 
 const CONFIG_DOC_ID = 'transferenciaAndina';
 
@@ -77,10 +78,20 @@ export async function POST(request: Request) {
         if (!localId) continue;
 
         if (pasarAEntregado) {
-          transaction.set(
-            db.collection('locales').doc(localId),
-            { statsPedidosEntregados: FieldValue.increment(1) },
-            { merge: true }
+          await applyDeliveredOrderAggregates(
+            db,
+            {
+              localId,
+              pedidoId: id,
+              total: Number(data.total ?? 0),
+              timestamp: Number(
+                (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.()
+                  ?? (data.timestamp as number | undefined)
+                  ?? Date.now()
+              ),
+              items: Array.isArray(data.items) ? (data.items as string[]) : [],
+            },
+            transaction
           );
         }
 

@@ -38,6 +38,8 @@ export async function GET(request: Request) {
         .collection('pedidos')
         .where('riderId', '==', uid)
         .where('timestamp', '>=', desde)
+        .orderBy('timestamp', 'desc')
+        .limit(200)
         .get();
       docs = snap.docs;
     } catch (err) {
@@ -57,6 +59,7 @@ export async function GET(request: Request) {
       return {
         id: d.id,
         pedidoId: d.id,
+        clienteId: typeof data.clienteId === 'string' ? data.clienteId : null,
         restaurante: (data.restaurante as string) || '—',
         restauranteDireccion: (data.restauranteDireccion as string) || '—',
         restauranteLat: typeof data.restauranteLat === 'number' ? data.restauranteLat : null,

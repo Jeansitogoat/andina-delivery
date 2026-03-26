@@ -39,6 +39,14 @@
       "collectionGroup": "pedidos",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "riderId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pedidos",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "localId", "order": "ASCENDING" },
         { "fieldPath": "estado", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }

@@ -9,8 +9,9 @@ import { normalizeDataUrl } from '@/lib/validImageUrl';
 import { pedidoPostSchema } from '@/lib/schemas/pedido';
 
 const ESTADOS_ACTIVOS: string[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
-/** Pedidos activos en cocina: límite alto para no ocultar órdenes bajo carga. */
-const LIMIT_POLL = 50;
+/** Pedidos activos en cocina: por defecto 20 con cursor; máximo 50 por página. */
+const DEFAULT_ACTIVE_LIMIT = 20;
+const MAX_ACTIVE_LIMIT = 50;
 /** Historial entregados: página pequeña + cursor (ahorro de lecturas). */
 const LIMIT_ENTREGADOS = 15;
 /** Máx. docs en fallback sin índice compuesto (acotar vs 100). */
@@ -67,6 +68,10 @@ export async function GET(request: Request) {
     const soloActivos = searchParams.get('soloActivos') === 'true';
     const estadoEntregado = searchParams.get('estado') === 'entregado';
     const limitParam = Math.min(Math.max(parseInt(searchParams.get('limit') || String(LIMIT_ENTREGADOS), 10) || LIMIT_ENTREGADOS, 1), 20);
+    const activeLimit = Math.min(
+      Math.max(parseInt(searchParams.get('limit') || String(DEFAULT_ACTIVE_LIMIT), 10) || DEFAULT_ACTIVE_LIMIT, 1),
+      MAX_ACTIVE_LIMIT
+    );
     const cursor = searchParams.get('cursor') || null;
 
     if (auth.rol === 'local') {
@@ -116,26 +121,44 @@ export async function GET(request: Request) {
       }
 
       try {
-        const limit = LIMIT_POLL;
+        if (soloActivos) {
+          let query = db
+            .collection('pedidos')
+            .where('localId', '==', userLocalId)
+            .where('estado', 'in', ESTADOS_ACTIVOS)
+            .orderBy('timestamp', 'desc')
+            .limit(activeLimit);
+          if (cursor) {
+            const cursorSnap = await db.collection('pedidos').doc(cursor).get();
+            if (cursorSnap.exists) query = query.startAfter(cursorSnap);
+          }
+          const snap = await query.get();
+          const pedidos: PedidoCentral[] = snap.docs.filter(filterTransferenciaNoConfirmada).map(docToPedidoCentral);
+          const nextCursor = snap.docs.length === activeLimit ? snap.docs[snap.docs.length - 1].id : null;
+          return NextResponse.json({ pedidos, nextCursor });
+        }
         const snap = await db
           .collection('pedidos')
           .where('localId', '==', userLocalId)
           .orderBy('timestamp', 'desc')
-          .limit(limit)
+          .limit(MAX_ACTIVE_LIMIT)
           .get();
-        let pedidos: PedidoCentral[] = snap.docs.filter(filterTransferenciaNoConfirmada).map(docToPedidoCentral);
-        if (soloActivos) pedidos = pedidos.filter((p) => ESTADOS_ACTIVOS.includes(p.estado));
+        const pedidos: PedidoCentral[] = snap.docs.filter(filterTransferenciaNoConfirmada).map(docToPedidoCentral);
         return NextResponse.json({ pedidos, nextCursor: null });
       } catch (err) {
         const msg = (err as Error)?.message ?? '';
         if (msg.includes('index') || msg.includes('Index')) {
-          const snap = await db.collection('pedidos').where('localId', '==', userLocalId).limit(LIMIT_POLL).get();
-          let pedidos: PedidoCentral[] = snap.docs
+          const fallbackLimit = soloActivos ? Math.max(activeLimit * 3, 45) : MAX_ACTIVE_LIMIT;
+          const snap = await db.collection('pedidos').where('localId', '==', userLocalId).limit(fallbackLimit).get();
+          let filtered = snap.docs
             .filter(filterTransferenciaNoConfirmada)
             .map(docToPedidoCentral)
             .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          if (soloActivos) pedidos = pedidos.filter((p) => ESTADOS_ACTIVOS.includes(p.estado));
-          return NextResponse.json({ pedidos, nextCursor: null });
+          if (soloActivos) filtered = filtered.filter((p) => ESTADOS_ACTIVOS.includes(p.estado));
+          const start = cursor ? Math.max(0, filtered.findIndex((p) => p.id === cursor) + 1) : 0;
+          const page = soloActivos ? filtered.slice(start, start + activeLimit) : filtered;
+          const nextCursor = soloActivos && start + activeLimit < filtered.length ? page[page.length - 1]?.id ?? null : null;
+          return NextResponse.json({ pedidos: page, nextCursor });
         }
         throw err;
       }
@@ -188,25 +211,44 @@ export async function GET(request: Request) {
       }
 
       try {
+        if (soloActivos) {
+          let query = db
+            .collection('pedidos')
+            .where('localId', '==', localIdTrim)
+            .where('estado', 'in', ESTADOS_ACTIVOS)
+            .orderBy('timestamp', 'desc')
+            .limit(activeLimit);
+          if (cursor) {
+            const cursorSnap = await db.collection('pedidos').doc(cursor).get();
+            if (cursorSnap.exists) query = query.startAfter(cursorSnap);
+          }
+          const snap = await query.get();
+          const pedidos: PedidoCentral[] = snap.docs.filter(filterTransferenciaNoConfirmada).map(docToPedidoCentral);
+          const nextCursor = snap.docs.length === activeLimit ? snap.docs[snap.docs.length - 1].id : null;
+          return NextResponse.json({ pedidos, nextCursor });
+        }
         const snap = await db
           .collection('pedidos')
           .where('localId', '==', localIdTrim)
           .orderBy('timestamp', 'desc')
-          .limit(LIMIT_POLL)
+          .limit(MAX_ACTIVE_LIMIT)
           .get();
-        let pedidos: PedidoCentral[] = snap.docs.filter(filterTransferenciaNoConfirmada).map(docToPedidoCentral);
-        if (soloActivos) pedidos = pedidos.filter((p) => ESTADOS_ACTIVOS.includes(p.estado));
+        const pedidos: PedidoCentral[] = snap.docs.filter(filterTransferenciaNoConfirmada).map(docToPedidoCentral);
         return NextResponse.json({ pedidos, nextCursor: null });
       } catch (err) {
         const msg = (err as Error)?.message ?? '';
         if (msg.includes('index') || msg.includes('Index')) {
-          const snap = await db.collection('pedidos').where('localId', '==', localIdTrim).limit(LIMIT_POLL).get();
-          let pedidos: PedidoCentral[] = snap.docs
+          const fallbackLimit = soloActivos ? Math.max(activeLimit * 3, 45) : MAX_ACTIVE_LIMIT;
+          const snap = await db.collection('pedidos').where('localId', '==', localIdTrim).limit(fallbackLimit).get();
+          let filtered = snap.docs
             .filter(filterTransferenciaNoConfirmada)
             .map(docToPedidoCentral)
             .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          if (soloActivos) pedidos = pedidos.filter((p) => ESTADOS_ACTIVOS.includes(p.estado));
-          return NextResponse.json({ pedidos, nextCursor: null });
+          if (soloActivos) filtered = filtered.filter((p) => ESTADOS_ACTIVOS.includes(p.estado));
+          const start = cursor ? Math.max(0, filtered.findIndex((p) => p.id === cursor) + 1) : 0;
+          const page = soloActivos ? filtered.slice(start, start + activeLimit) : filtered;
+          const nextCursor = soloActivos && start + activeLimit < filtered.length ? page[page.length - 1]?.id ?? null : null;
+          return NextResponse.json({ pedidos: page, nextCursor });
         }
         throw err;
       }

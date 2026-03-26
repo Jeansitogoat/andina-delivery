@@ -22,11 +22,17 @@ export async function sendFCMToRole(
   role: FCMRole,
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  options?: { localId?: string; maxTokens?: number }
 ): Promise<number> {
   if (!isValidRole(role)) return 0;
   const db = getAdminFirestore();
-  const snap = await db.collection(FCM_TOKENS_COLLECTION).where('role', '==', role).get();
+  const maxTokens = Math.min(Math.max(options?.maxTokens ?? 200, 1), 500);
+  let query = db.collection(FCM_TOKENS_COLLECTION).where('role', '==', role);
+  if (options?.localId?.trim()) {
+    query = query.where('localId', '==', options.localId.trim());
+  }
+  const snap = await query.limit(maxTokens).get();
   const tokens = snap.docs.map((d) => d.data().token as string).filter(Boolean);
   if (tokens.length === 0) return 0;
   const messaging = getAdminMessaging();

@@ -5,14 +5,60 @@
 :root {
   --rojo-andino: #E00000;
   --dorado-oro: #FFC107;
+  --rider-900: #0B1F4A;
+  --rider-700: #1D4ED8;
+  --rider-100: #DBEAFE;
+  --safe-x: 16px;
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-surface text-ink antialiased;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* Utilidades mobile-first compartidas */
+.safe-x {
+  padding-left: var(--safe-x);
+  padding-right: var(--safe-x);
+}
+
+.card-elevated {
+  @apply bg-surface-card rounded-3xl shadow-soft border border-gray-100;
+}
+
+.touch-target {
+  min-height: 44px;
+}
+
+.touch-target-lg {
+  min-height: 48px;
+}
+
+.btn-primary-ui {
+  @apply touch-target-lg rounded-2xl bg-rojo-andino text-white font-bold px-4 hover:bg-rojo-andino/90 transition-colors;
+}
+
+.btn-primary-rider {
+  @apply touch-target-lg rounded-2xl bg-rider-700 text-white font-bold px-4 hover:bg-rider-600 transition-colors;
+}
+
+.btn-secondary-ui {
+  @apply touch-target-lg rounded-2xl bg-white text-gray-800 border border-gray-200 font-semibold px-4 hover:bg-gray-50 transition-colors;
+}
+
+.input-mobile {
+  @apply touch-target-lg rounded-2xl border border-gray-200 bg-white px-4 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-rojo-andino/20;
+}
+
+.input-rider {
+  @apply touch-target-lg rounded-2xl border border-rider-100 bg-white px-4 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-rider-100;
+}
+
+.surface-rider {
+  background: linear-gradient(180deg, #EFF6FF 0%, #F8FAFC 35%, #F8FAFC 100%);
 }
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -58,6 +104,3 @@ body {
   border-radius: 0.5rem;
 }
 
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}

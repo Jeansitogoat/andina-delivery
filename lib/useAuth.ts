@@ -238,10 +238,17 @@ export function useAuth() {
     lastEnsureUidRef.current = null;
     lastAndinaUserRef.current = null;
     if (user) {
-      const fcmRole = user.rol === 'local' ? 'restaurant' : user.rol;
+      const fcmRole =
+        user.rol === 'cliente'
+          ? 'user'
+          : user.rol === 'local'
+            ? 'local'
+            : user.rol === 'central' || user.rol === 'rider'
+              ? user.rol
+              : null;
       try {
         const idToken = await getIdToken();
-        if (idToken) {
+        if (idToken && fcmRole) {
           fetch('/api/fcm/unregister', {
             method: 'POST',
             headers: {

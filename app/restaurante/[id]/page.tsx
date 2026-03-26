@@ -170,7 +170,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <main className="min-h-screen bg-gray-50 pb-28">
+      <main className="min-h-screen bg-surface pb-28">
         {/* === COVER + HEADER === */}
         <div className="relative">
           {/* Cover image */}
@@ -190,14 +190,14 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
           </div>
 
           {/* Back button + Volver al panel */}
-          <div className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
+          <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between md:top-4 md:left-4 md:right-4">
             <button
               type="button"
               onClick={() => router.back()}
-              className="w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center backdrop-blur-sm transition-colors"
+              className="h-9 w-9 md:h-10 md:w-10 rounded-full bg-black/35 hover:bg-black/55 flex items-center justify-center backdrop-blur-md transition-colors"
               aria-label="Volver"
             >
-              <ArrowLeft className="w-5 h-5 text-white" />
+              <ArrowLeft className="w-4 h-4 md:w-5 md:h-5 text-white" />
             </button>
             {user && user.rol !== 'cliente' && (
               <button
@@ -208,7 +208,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                   else if (user.rol === 'local') router.push((user as { localId?: string }).localId ? `/panel/restaurante/${(user as { localId?: string }).localId}` : '/panel/restaurante');
                   else if (user.rol === 'maestro') router.push('/panel/maestro');
                 }}
-                className="py-2 px-3 rounded-xl bg-black/40 hover:bg-black/60 text-white text-sm font-semibold backdrop-blur-sm transition-colors"
+                className="hidden md:inline-flex py-2 px-3 rounded-xl bg-black/40 hover:bg-black/60 text-white text-sm font-semibold backdrop-blur-md transition-colors"
               >
                 Volver al panel
               </button>
@@ -218,7 +218,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
 
         {/* === INFO DEL LOCAL === */}
         <section className="bg-white shadow-sm">
-          <div className="max-w-3xl mx-auto px-4 pt-0 pb-4">
+          <div className="max-w-3xl mx-auto safe-x pt-0 pb-4">
             <div className="flex items-end gap-4 -mt-10 mb-3">
               {/* Logo */}
               <div className="relative w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-4 border-white shadow-xl flex-shrink-0 bg-white">
@@ -329,7 +329,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
             )}
 
           {allItems.length === 0 && (
-            <div className="max-w-3xl mx-auto px-4 py-8">
+            <div className="max-w-3xl mx-auto safe-x py-8">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 flex flex-col items-center justify-center text-center">
                 <UtensilsCrossed className="w-14 h-14 text-gray-300 mb-4" />
                 <p className="text-gray-600 font-medium">Este negocio cargará su menú pronto</p>
@@ -338,15 +338,15 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
           )}
           {allItems.length > 0 && (
             <>
-              <div className="max-w-3xl mx-auto px-4 pb-3">
+              <div className="max-w-3xl mx-auto safe-x pb-3">
                 <div className="relative">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
-                    type="search"
+                    type="text"
                     placeholder="Buscar productos..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30 focus:border-rojo-andino focus:bg-white transition-colors"
+                    className="input-mobile w-full pl-10 pr-4 text-sm bg-gray-50"
                   />
                 </div>
               </div>
@@ -376,7 +376,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                   );
                 })}
               </div>
-              <div className="max-w-3xl mx-auto px-4 py-4 space-y-6">
+              <div className="max-w-3xl mx-auto safe-x py-4 space-y-6">
                 {activeCategory === VER_TODO ? (
                   categories.map((cat) => {
                     const items = filteredItems(cat);

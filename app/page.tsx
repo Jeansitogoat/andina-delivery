@@ -61,14 +61,6 @@ export default function Home() {
   const { getTarifaEnvioPorDistancia, tarifaMinima } = useTarifasEnvio();
   const { isOpen: fullScreenModalOpen } = useFullScreenModal();
   const originLatLng = direccionEntregarLatLng ?? userLocationLatLng;
-
-  function primerNombreParaMostrar(displayName?: string | null, email?: string | null): string {
-    const dn = (displayName ?? '').trim();
-    if (dn) return dn.split(/\s+/)[0] || dn;
-    if (email) return email.split('@')[0] || 'Usuario';
-    return 'Usuario';
-  }
-  const nombreUsuario = user ? primerNombreParaMostrar(user.displayName, user.email) : null;
   const usuarioLogueado = !!user;
 
   // Primera visita: redirigir a login si nunca ha visitado (opcional; checkout exige sesión igualmente)
@@ -212,10 +204,10 @@ export default function Home() {
   const activeLocal = cartLocalId ? localesList.find((l) => l.id === cartLocalId) : null;
 
   return (
-    <main className="flex-1 flex flex-col bg-gray-50">
+    <main className="flex-1 flex flex-col bg-surface">
       {/* Header */}
-      <header className="bg-rojo-andino text-white sticky top-0 z-30 shadow-md w-full">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <header className="bg-gradient-to-br from-rojo-andino via-red-700 to-rojo-andino text-white sticky top-0 z-30 shadow-softlg w-full">
+        <div className="max-w-7xl mx-auto safe-x py-4">
           <div className="flex items-center justify-between mb-1">
             <div className="flex flex-col gap-0.5">
               <span className="bg-dorado-oro text-gray-900 font-black text-xl tracking-tight px-3 py-1.5 rounded-xl inline-block w-fit">
@@ -225,12 +217,20 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-white/90 text-sm font-medium hidden sm:inline">Piñas, El Oro</span>
-              {usuarioLogueado && user && user.rol !== 'cliente' && (
+              {usuarioLogueado && user && user.rol === 'rider' && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/panel/rider')}
+                  className="flex items-center gap-2 py-2 px-3 rounded-xl bg-amber-300 hover:bg-amber-200 text-gray-900 text-sm font-black transition-colors shadow-md border border-amber-100"
+                >
+                  🛵 Modo Trabajo
+                </button>
+              )}
+              {usuarioLogueado && user && user.rol !== 'cliente' && user.rol !== 'rider' && (
                 <button
                   type="button"
                   onClick={() => {
                     if (user.rol === 'central') router.push('/panel/central');
-                    else if (user.rol === 'rider') router.push('/panel/rider');
                     else if (user.rol === 'local') router.push(user.localId ? `/panel/restaurante/${user.localId}` : '/panel/restaurante');
                     else if (user.rol === 'maestro') router.push('/panel/maestro');
                   }}
@@ -239,59 +239,38 @@ export default function Home() {
                   Volver al panel
                 </button>
               )}
-              {usuarioLogueado ? (
-                <button
-                  type="button"
-                  onClick={() => router.push('/perfil')}
-                  className="flex items-center gap-2 py-2 pl-3 pr-4 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-full bg-dorado-oro/80 flex items-center justify-center text-gray-900 font-bold text-sm">
-                    {nombreUsuario?.charAt(0) ?? 'J'}
-                  </div>
-                  <span className="text-white font-semibold text-sm max-w-[100px] truncate">
-                    {nombreUsuario}
-                  </span>
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => router.push('/perfil')}
-                    className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-                    aria-label="Mi perfil"
-                  >
-                    <User className="w-5 h-5 text-white" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push('/auth')}
-                    className="text-white/90 hover:text-white text-xs font-semibold py-2 px-3 rounded-xl hover:bg-white/10 transition-colors"
-                  >
-                    Iniciar sesión
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => router.push('/perfil')}
+                className="flex items-center gap-2 py-2 pl-3 pr-4 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"
+                aria-label="Perfil"
+              >
+                <div className="w-8 h-8 rounded-full bg-dorado-oro/80 flex items-center justify-center text-gray-900">
+                  <User className="w-4 h-4" />
+                </div>
+                <span className="text-white font-semibold text-sm">Perfil</span>
+              </button>
             </div>
           </div>
           <div className="relative mt-3">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
-              type="search"
+              type="text"
               placeholder="¿Qué se te antoja en Piñas?"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 rounded-3xl bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-dorado-oro shadow-sm"
+              className="input-mobile w-full pl-12 pr-4 rounded-3xl shadow-softlg border-white/40"
             />
           </div>
           <div className="mt-2">
-            <AddressSelector />
+            <AddressSelector compact="icon_only" />
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col px-4 pb-10">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col safe-x pb-10">
         {/* Categorías */}
-        <section className="py-4 -mt-1 bg-white rounded-t-[2rem] shadow-sm border-t border-gray-100">
+        <section className="py-4 -mt-1 bg-white rounded-t-[2rem] shadow-soft border-t border-gray-100">
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
             <button
               onClick={() => setCategory('all')}

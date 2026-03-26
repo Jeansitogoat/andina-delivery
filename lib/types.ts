@@ -82,6 +82,8 @@ export type EstadoCarrera = 'asignada' | 'en_camino' | 'entregada';
 export interface CarreraRider {
   id: string;
   pedidoId: string;
+  /** Cliente del pedido (para filtros UX del panel rider) */
+  clienteId?: string | null;
   restaurante: string;
   restauranteDireccion: string;
   restauranteLat?: number | null;

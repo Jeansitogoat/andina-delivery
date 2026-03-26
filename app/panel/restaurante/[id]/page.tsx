@@ -94,6 +94,8 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [local, setLocal] = useState<Local | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [activeNextCursor, setActiveNextCursor] = useState<string | null>(null);
+  const [activeLoadingMore, setActiveLoadingMore] = useState(false);
   const [newOrderToast, _setNewOrderToast] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(false);
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferOrder[]>([]);
@@ -114,6 +116,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [advancingOrderId, setAdvancingOrderId] = useState<string | null>(null);
   const [retirandoOrderId, setRetirandoOrderId] = useState<string | null>(null);
   const [confirmingPaymentOrderId, setConfirmingPaymentOrderId] = useState<string | null>(null);
+  const useUnifiedEndpoint = process.env.NEXT_PUBLIC_FEATURE_RESTAURANTE_UNIFIED !== '0';
 
   const [eliminarOrderId, setEliminarOrderId] = useState<string | null>(null);
 
@@ -130,7 +133,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     }
   }
 
-  const cargarPedidos = useCallback(async () => {
+  const cargarPanelData = useCallback(async (cursor?: string | null, appendActivos = false) => {
     const token = await getIdToken();
     if (!token) {
       setOrdersLoading(false);
@@ -138,20 +141,41 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     }
     if (user?.rol === 'maestro' && !id) {
       setOrders([]);
+      setPendingTransfer([]);
       setOrdersLoading(false);
       return;
     }
-    const base = user?.rol === 'maestro' ? `/api/pedidos?localId=${encodeURIComponent(id)}` : '/api/pedidos';
-    const sep = base.includes('?') ? '&' : '?';
-    const url = `${base}${sep}soloActivos=true`;
+    let url = user?.rol === 'maestro' ? `/api/pedidos?localId=${encodeURIComponent(id)}` : '/api/pedidos';
+    const sep = url.includes('?') ? '&' : '?';
+    let unifiedUrl = user?.rol === 'maestro'
+      ? `/api/pedidos/panel-restaurante?localId=${encodeURIComponent(id)}&activeLimit=20`
+      : '/api/pedidos/panel-restaurante?activeLimit=20';
+    if (cursor) {
+      url += `${sep}soloActivos=true&limit=20&cursor=${encodeURIComponent(cursor)}`;
+      unifiedUrl += `&cursor=${encodeURIComponent(cursor)}`;
+    } else {
+      url += `${sep}soloActivos=true&limit=20`;
+    }
+    if (appendActivos) setActiveLoadingMore(true);
+    else setOrdersLoading(true);
     try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(useUnifiedEndpoint ? unifiedUrl : url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
-        setOrders([]);
+        if (!appendActivos) {
+          setOrders([]);
+          setPendingTransfer([]);
+        }
         return;
       }
-      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>; nextCursor?: string | null };
-      const list: Order[] = (data.pedidos || []).map((p) => ({
+      const data = await res.json() as {
+        activos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
+        pedidos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
+        pendientesTransferencia?: PendingTransferOrder[];
+        nextCursorActivos?: string | null;
+        nextCursor?: string | null;
+      };
+      const activos = Array.isArray(data.activos) ? data.activos : (data.pedidos || []);
+      const list: Order[] = activos.map((p) => ({
         id: p.id,
         cliente: p.clienteNombre || 'Cliente',
         items: p.items || [],
@@ -170,14 +194,32 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
       if (list.some((o) => !prevOrderIdsRef.current.has(o.id))) {
         playNewOrderSound();
       }
-      prevOrderIdsRef.current = newIds;
-      setOrders(list);
+      if (!appendActivos) prevOrderIdsRef.current = newIds;
+      setOrders((prev) => (appendActivos ? [...prev, ...list] : list));
+      if (!appendActivos) {
+        if (useUnifiedEndpoint) {
+          setPendingTransfer(Array.isArray(data.pendientesTransferencia) ? data.pendientesTransferencia : []);
+        } else {
+          const pRes = await fetch(`/api/pedidos/pendientes-transferencia?localId=${encodeURIComponent(id)}&limit=20`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            setPendingTransfer(Array.isArray(pData) ? pData : []);
+          }
+        }
+      }
+      setActiveNextCursor((useUnifiedEndpoint ? data.nextCursorActivos : data.nextCursor) ?? null);
     } catch {
-      setOrders([]);
+      if (!appendActivos) {
+        setOrders([]);
+        setPendingTransfer([]);
+      }
     } finally {
-      setOrdersLoading(false);
+      if (appendActivos) setActiveLoadingMore(false);
+      else setOrdersLoading(false);
     }
-  }, [id, user?.rol]);
+  }, [id, user?.rol, useUnifiedEndpoint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,11 +236,11 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
 
   useEffect(() => {
     if (!user || (user.rol !== 'local' && user.rol !== 'maestro')) return;
-    cargarPedidos();
+    cargarPanelData();
     let t: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
       if (t) return;
-      t = setInterval(cargarPedidos, 45_000); // 45s — reducción ~60% de lecturas vs 18s
+      t = setInterval(cargarPanelData, 45_000); // una sola llamada para activos + transferencias
     };
     const stopPolling = () => {
       if (t) {
@@ -208,7 +250,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        cargarPedidos();
+        cargarPanelData();
         startPolling();
       } else {
         stopPolling();
@@ -220,7 +262,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
       stopPolling();
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [user, id, cargarPedidos]);
+  }, [user, id, cargarPanelData]);
 
   const loadEntregados = useCallback(async (cursor?: string | null) => {
     const token = await getIdToken();
@@ -293,53 +335,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     batchIdsToFetch.forEach((batchId) => cargarEstadoBatch(batchId));
   }, [id, orders, cargarEstadoBatch]);
 
-  const fetchPendingTransfer = useCallback(async () => {
-    if (!id) return;
-    const token = await getIdToken();
-    if (!token) return;
-    try {
-      const res = await fetch(`/api/pedidos/pendientes-transferencia?localId=${encodeURIComponent(id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPendingTransfer(Array.isArray(data) ? data : []);
-      }
-    } catch {
-      // silencioso
-    }
-  }, [id]);
-
-  useEffect(() => {
-    fetchPendingTransfer();
-    let t: ReturnType<typeof setInterval> | null = null;
-    const startPolling = () => {
-      if (t) return;
-      t = setInterval(fetchPendingTransfer, 45_000); // 45s — sincronizado con pedidos
-    };
-    const stopPolling = () => {
-      if (t) {
-        clearInterval(t);
-        t = null;
-      }
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchPendingTransfer();
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-    startPolling();
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [fetchPendingTransfer]);
-
-  const refreshPendingTransfer = fetchPendingTransfer;
+  const refreshPendingTransfer = () => {
+    cargarPanelData();
+  };
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
@@ -1022,6 +1020,19 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               );
             });
           })()}
+          {activeNextCursor && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!activeNextCursor || activeLoadingMore) return;
+                cargarPanelData(activeNextCursor, true);
+              }}
+              disabled={activeLoadingMore}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 disabled:opacity-60"
+            >
+              {activeLoadingMore ? 'Cargando...' : 'Ver más pedidos activos'}
+            </button>
+          )}
 
           {(delivered.length > 0 || deliveredLoading) && (
             <div className="pt-6 border-t border-gray-200">

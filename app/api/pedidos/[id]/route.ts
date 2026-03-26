@@ -6,6 +6,7 @@ import type { PedidoCentral } from '@/lib/types';
 import { sendFCMToUser, sendFCMToRole } from '@/lib/fcm-send-server';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { pedidoPatchSchema } from '@/lib/schemas/pedidoPatch';
+import { applyDeliveredOrderAggregates } from '@/lib/local-stats-aggregates';
 
 type PedidoConRider = PedidoCentral & { riderNombre?: string; riderRating?: number | null };
 
@@ -208,7 +209,7 @@ export async function PATCH(
       }
     }
 
-    /* Rider: solo puede rechazar_carrera. Cualquier otra acción queda bloqueada. */
+    /* Rider: puede rechazar carrera o avanzar su pedido asignado (en_camino/entregado). */
     if (auth.rol === 'rider') {
       const accion = typeof body.accion === 'string' ? body.accion.trim() : '';
       if (accion === 'rechazar_carrera') {
@@ -224,8 +225,35 @@ export async function PATCH(
         );
         return NextResponse.json({ ok: true });
       }
-      // Cualquier otro payload de un rider queda bloqueado explícitamente
-      return NextResponse.json({ error: 'Acción no permitida para el rol rider' }, { status: 403 });
+      if (body.estado === undefined) {
+        return NextResponse.json({ error: 'Acción no permitida para el rol rider' }, { status: 403 });
+      }
+      if (data.riderId !== auth.uid) {
+        return NextResponse.json({ error: 'No estás asignado a esta carrera' }, { status: 403 });
+      }
+      if (body.riderId !== undefined || body.propina !== undefined) {
+        return NextResponse.json({ error: 'No autorizado para modificar estos campos' }, { status: 403 });
+      }
+      const estadoActual = (data.estado as string) || 'asignado';
+      if (body.estado === 'en_camino') {
+        const permitidos = ['asignado', 'listo'];
+        if (!permitidos.includes(estadoActual)) {
+          return NextResponse.json(
+            { error: 'Solo puedes marcar en camino pedidos asignados/listos' },
+            { status: 400 }
+          );
+        }
+      } else if (body.estado === 'entregado') {
+        const permitidos = ['en_camino', 'asignado'];
+        if (!permitidos.includes(estadoActual)) {
+          return NextResponse.json(
+            { error: 'Solo puedes entregar pedidos en camino o asignados' },
+            { status: 400 }
+          );
+        }
+      } else {
+        return NextResponse.json({ error: 'Estado no permitido para el rol rider' }, { status: 403 });
+      }
     }
 
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
@@ -241,17 +269,15 @@ export async function PATCH(
 
     await ref.update(sanitizeForFirestore(updates));
 
-    if (
-      body.estado === 'entregado' &&
-      prevEstado !== 'entregado' &&
-      pedidoLocalId &&
-      typeof pedidoLocalId === 'string'
-    ) {
+    if (body.estado === 'entregado' && prevEstado !== 'entregado' && pedidoLocalId && typeof pedidoLocalId === 'string') {
       try {
-        await db.collection('locales').doc(pedidoLocalId).set(
-          { statsPedidosEntregados: FieldValue.increment(1) },
-          { merge: true }
-        );
+        await applyDeliveredOrderAggregates(db, {
+          localId: pedidoLocalId,
+          pedidoId: id,
+          total: Number(data.total ?? 0),
+          timestamp: Number(data.timestamp ?? Date.now()),
+          items: Array.isArray(data.items) ? (data.items as string[]) : [],
+        });
       } catch {
         // no bloquear actualización del pedido
       }

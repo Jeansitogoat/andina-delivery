@@ -20,7 +20,6 @@ import {
   Package,
   KeyRound,
   ChevronRight,
-  ArrowLeft,
   Wallet,
   Star,
   History,
@@ -33,6 +32,7 @@ import {
   LogOut,
   Camera,
   MessageCircle,
+  CreditCard,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { useAuth } from '@/lib/useAuth';
@@ -41,6 +41,8 @@ import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
 import { normalizePhoneForWhatsApp, formatWhatsAppLink } from '@/lib/utils/phone';
+import MobileHeader from '@/components/ui/MobileHeader';
+import KpiCard from '@/components/ui/KpiCard';
 
 function mapEstado(estadoPedido: string): EstadoCarrera {
   if (estadoPedido === 'en_camino') return 'en_camino';
@@ -53,6 +55,7 @@ function docToCarrera(d: { id: string; data: () => Record<string, unknown> }): C
   return {
     id: d.id,
     pedidoId: d.id,
+    clienteId: typeof data.clienteId === 'string' ? data.clienteId : null,
     restaurante: (data.restaurante as string) || '—',
     restauranteDireccion: (data.restauranteDireccion as string) || '—',
     restauranteLat: typeof data.restauranteLat === 'number' ? data.restauranteLat : null,
@@ -143,6 +146,11 @@ export default function PanelRiderPage() {
     }
   }
 
+  const filtrarPedidosPropios = useCallback(
+    (list: CarreraRider[]) => list.filter((c) => !c.clienteId || c.clienteId !== user?.uid),
+    [user?.uid]
+  );
+
   /* Sincronizar miEstado con user.estadoRider y con carreras activas (ocupado) */
   useEffect(() => {
     if (!user) return;
@@ -178,7 +186,9 @@ export default function PanelRiderPage() {
       limit(50)
     );
     const unsubActivas = onSnapshot(qActivas, (snap) => {
-      const activas: CarreraRider[] = snap.docs.map((d) => docToCarrera({ id: d.id, data: () => d.data() }));
+      const activas = filtrarPedidosPropios(
+        snap.docs.map((d) => docToCarrera({ id: d.id, data: () => d.data() }))
+      );
       const newIds = new Set(activas.map((c) => c.id));
       if (activas.some((c) => !prevCarreraIdsRef.current.has(c.id))) {
         playNewCarreraSound();
@@ -197,7 +207,9 @@ export default function PanelRiderPage() {
       limit(20)
     );
     const unsubHistorial = onSnapshot(qHistorial, (snap) => {
-      const list: CarreraRider[] = snap.docs.map((d) => docToCarrera({ id: d.id, data: () => d.data() }));
+      const list = filtrarPedidosPropios(
+        snap.docs.map((d) => docToCarrera({ id: d.id, data: () => d.data() }))
+      );
       const now = Date.now();
       const hoyInicio = new Date();
       hoyInicio.setHours(0, 0, 0, 0);
@@ -215,7 +227,7 @@ export default function PanelRiderPage() {
       unsubHistorial();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, user?.rol, filtroHistorial]);
+  }, [user?.uid, user?.rol, filtroHistorial, filtrarPedidosPropios]);
 
   /* Carga inicial desde API (solo una vez al montar o al detectar sesión inválida).
      El estado en tiempo real lo mantiene onSnapshot; este fetch es solo el seed inicial. */
@@ -232,13 +244,15 @@ export default function PanelRiderPage() {
       }
       if (!res.ok) return;
       const data = await res.json() as { carreras: CarreraRider[]; historial: CarreraRider[] };
+      const carrerasFiltradas = filtrarPedidosPropios(Array.isArray(data.carreras) ? data.carreras : []);
+      const historialFiltrado = filtrarPedidosPropios(Array.isArray(data.historial) ? data.historial : []);
       // Solo poblar si onSnapshot todavía no llegó datos (evitar sobreescritura con data más vieja)
-      setCarreras((prev) => prev.length === 0 && Array.isArray(data.carreras) ? data.carreras : prev);
-      setHistorialHoy((prev) => prev.length === 0 && Array.isArray(data.historial) ? data.historial : prev);
+      setCarreras((prev) => prev.length === 0 ? carrerasFiltradas : prev);
+      setHistorialHoy((prev) => prev.length === 0 ? historialFiltrado : prev);
     } catch {
       // silencioso
     }
-  }, [filtroHistorial]);
+  }, [filtroHistorial, filtrarPedidosPropios]);
 
   useEffect(() => {
     if (!user) return;
@@ -479,67 +493,71 @@ export default function PanelRiderPage() {
   return (
     <>
       <main
-        className={`min-h-screen bg-gray-50 pb-6 transition-all duration-300 ${
+        className={`surface-rider min-h-screen pb-6 transition-all duration-300 ${
           pageVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
         }`}
       >
         {/* ── encabezado ── */}
-        <header
-          className="text-white px-4 pt-10 pb-6"
-          style={{ background: 'linear-gradient(135deg, #1e40af 0%, #1d4ed8 60%, #2563eb 100%)' }}
-        >
+        <header className="text-white safe-x pt-8 pb-7 bg-gradient-to-br from-rider-900 via-rider-700 to-rider-600 shadow-softlg">
           <div className="max-w-lg mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <button
-                type="button"
-                onClick={() => router.push('/')}
-                className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 text-white" />
-              </button>
-              <div className="flex items-center gap-2">
+            <MobileHeader
+              tone="rider"
+              left={(
+                <span className="inline-flex items-center rounded-xl border border-white/20 bg-white/10 px-2.5 py-1 text-xs font-semibold text-blue-100">
+                  Panel Rider
+                </span>
+              )}
+              right={(
+                <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => router.push('/')}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
-                  title="Ir como cliente"
+                  className="touch-target-lg flex items-center gap-2 px-3 py-2 rounded-2xl bg-cyan-300/20 border border-cyan-200/40 hover:bg-cyan-300/30 text-sm font-semibold transition-colors"
+                  title="Pedir comida"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span className="hidden sm:inline">Ir a pedir</span>
+                  <span>Modo Cliente</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowLogoutModal(true)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
+                  className="touch-target-lg inline-flex items-center justify-center px-3 py-2 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/25 text-sm font-medium transition-colors md:hidden"
+                  title="Cerrar sesión"
+                  aria-label="Cerrar sesión"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutModal(true)}
+                  className="hidden md:inline-flex touch-target-lg items-center gap-2 px-3 py-2 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/25 text-sm font-medium transition-colors"
                   title="Cerrar sesión"
                 >
                   <LogOut className="w-4 h-4" />
                   <span className="hidden sm:inline">Cerrar sesión</span>
                 </button>
-                {permission === 'default' && (
-                  <button
-                    type="button"
-                    onClick={requestPermission}
-                    disabled={notifLoading}
-                    className="text-xs font-semibold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-70"
-                  >
-                    {notifLoading ? '...' : 'Activar notificaciones'}
-                  </button>
-                )}
-                {permission === 'granted' && (
-                  <span className="text-xs text-white/70 flex items-center gap-1">
-                    <Bell className="w-3.5 h-3.5" />
-                    Notificaciones activadas
-                  </span>
-                )}
-                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${ESTADO_RIDER_CONFIG[miEstado].dot} ${miEstado === 'disponible' ? 'animate-pulse' : ''}`} />
-                <span className="text-xs font-semibold text-white/90">{ESTADO_RIDER_CONFIG[miEstado].label}</span>
+                </div>
+              )}
+            />
+            <div className="mt-2 flex items-center justify-between rounded-2xl border border-white/20 bg-white/10 px-3 py-2 text-xs">
+              <button
+                type="button"
+                onClick={requestPermission}
+                disabled={notifLoading || permission !== 'default'}
+                className="flex items-center gap-1.5 text-white/85 disabled:opacity-80"
+              >
+                <Bell className="h-3.5 w-3.5" />
+                {permission === 'granted' ? 'Notificaciones activadas' : permission === 'default' ? 'Activar notificaciones' : 'Notificaciones bloqueadas'}
+              </button>
+              <div className="flex items-center gap-1.5">
+                <div className={`h-2.5 w-2.5 rounded-full ${ESTADO_RIDER_CONFIG[miEstado].dot} ${miEstado === 'disponible' ? 'animate-pulse' : ''}`} />
+                <span className="font-semibold text-white/95">{ESTADO_RIDER_CONFIG[miEstado].label}</span>
               </div>
             </div>
 
             {/* Selector de estado del rider: se persiste en Firestore y la central lo refleja. */}
-            <div className="mb-5">
-              <p className="text-xs text-white/70 font-semibold mb-2">Mi estado</p>
+            <div className="mb-5 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-sm p-4">
+              <p className="text-xs text-blue-100 font-semibold mb-2">Mi estado operativo</p>
               <div className="flex flex-wrap gap-2">
                 {(['disponible', 'ocupado', 'ausente', 'fuera_servicio'] as EstadoRider[]).map((estado) => {
                   const cfg = ESTADO_RIDER_CONFIG[estado];
@@ -570,7 +588,7 @@ export default function PanelRiderPage() {
                       className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
                         deshabilitado ? 'opacity-60 cursor-not-allowed' : ''
                       } ${
-                        activo ? 'bg-white text-gray-900 shadow-md' : 'bg-white/15 text-white/90 hover:bg-white/25'
+                        activo ? 'bg-white text-rider-900 shadow-md' : 'bg-white/15 text-white/90 hover:bg-white/25'
                       }`}
                     >
                       <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
@@ -580,7 +598,7 @@ export default function PanelRiderPage() {
                 })}
               </div>
               {carreras.filter((c) => c.estado !== 'entregada').length > 0 && (
-                <p className="text-xs text-white/60 mt-1.5">Tienes una carrera activa; al entregar podrás cambiar tu estado.</p>
+                <p className="text-xs text-blue-100/80 mt-1.5">Tienes una carrera activa; al entregar podrás cambiar tu estado.</p>
               )}
             </div>
 
@@ -661,7 +679,7 @@ export default function PanelRiderPage() {
                       })()
                     : 'Rider'}
                 </h1>
-                <p className="text-white/70 text-sm">Rider · Cía. Virgen de la Merced</p>
+                <p className="text-blue-100 text-sm">Rider · Cía. Virgen de la Merced</p>
                 <div className="flex items-center gap-1 mt-0.5">
                   <Star className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
                   <span className="text-sm font-bold text-yellow-300">
@@ -672,25 +690,32 @@ export default function PanelRiderPage() {
             </div>
 
             {/* stats rápidas */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: 'Carreras hoy', value: carrerasHoy.toString(), icon: Bike },
-                { label: 'Activas', value: activasCount.toString(), icon: Package },
-                { label: 'Ganancias', value: `$${gananciasHoy.toFixed(2)}`, icon: Wallet },
-              ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="bg-white/15 rounded-2xl p-3 text-center">
-                  <Icon className="w-4 h-4 text-white/70 mx-auto mb-1" />
-                  <p className="font-black text-base text-white">{value}</p>
-                  <p className="text-[10px] text-white/60 leading-tight">{label}</p>
-                </div>
-              ))}
+            <div className="grid grid-cols-3 gap-3">
+              <KpiCard
+                icon={<Bike className="w-4 h-4 text-white/80" />}
+                label="Carreras hoy"
+                value={carrerasHoy.toString()}
+                tone="rider"
+              />
+              <KpiCard
+                icon={<Package className="w-4 h-4 text-white/80" />}
+                label="Activas"
+                value={activasCount.toString()}
+                tone="rider"
+              />
+              <KpiCard
+                icon={<Wallet className="w-4 h-4 text-white/80" />}
+                label="Ganancias"
+                value={`$${gananciasHoy.toFixed(2)}`}
+                tone="rider"
+              />
             </div>
           </div>
         </header>
 
         {/* ── tabs ── */}
         <div className="max-w-lg mx-auto px-4 -mt-1">
-          <div className="bg-white rounded-2xl p-1 flex shadow-sm mb-4 mt-4">
+          <div className="bg-white/95 border border-rider-100 rounded-2xl p-1 flex shadow-soft mb-4 mt-4">
             {([
               { id: 'activas', label: `Carreras activas (${activasCount})`, icon: Bike },
               { id: 'historial', label: 'Historial de hoy', icon: History },
@@ -701,7 +726,7 @@ export default function PanelRiderPage() {
                 onClick={() => setTab(id)}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
                   tab === id
-                    ? 'bg-blue-600 text-white shadow-sm'
+                    ? 'bg-rider-700 text-white shadow-sm'
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
@@ -715,7 +740,7 @@ export default function PanelRiderPage() {
           {tab === 'activas' && (
             <div className="space-y-4">
               {carrerasAgrupadas.length === 0 ? (
-                <div className="bg-white rounded-3xl p-10 text-center shadow-sm">
+                <div className="bg-white rounded-3xl p-10 text-center shadow-soft border border-rider-100">
                   <Bike className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                   <p className="font-bold text-gray-400">No tienes carreras activas</p>
                   <p className="text-xs text-gray-300 mt-1">Espera la asignación de la central</p>
@@ -765,7 +790,7 @@ export default function PanelRiderPage() {
                     onClick={() => setFiltroHistorial(f)}
                     className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                       filtroHistorial === f
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-rider-700 text-white'
                         : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
                     }`}
                   >
@@ -773,12 +798,12 @@ export default function PanelRiderPage() {
                   </button>
                 ))}
               </div>
-              <div className="bg-white rounded-3xl p-4 shadow-sm flex items-center justify-between">
+              <div className="bg-white rounded-3xl p-4 shadow-soft border border-rider-100 flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-400">
                     Total ganado{filtroHistorial === 'hoy' ? ' hoy' : filtroHistorial === 'semana' ? ' esta semana' : ' este mes'}
                   </p>
-                  <p className="font-black text-2xl text-blue-600">${gananciasHoy.toFixed(2)}</p>
+                  <p className="font-black text-2xl text-rider-700">${gananciasHoy.toFixed(2)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-400">Carreras completadas</p>
@@ -801,13 +826,13 @@ export default function PanelRiderPage() {
                       href={getClienteMapsUrl(c)}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-blue-600"
+                      className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-rider-700"
                     >
                       <Navigation className="w-3 h-3" />
                       Ver en mapa
                     </a>
                     <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-xs font-semibold text-blue-600">
+                      <span className="text-xs font-semibold text-rider-700">
                         +${(c.propina + GANANCIA_BASE_POR_CARRERA).toFixed(2)} ganados
                       </span>
                       <span className="text-xs text-gray-300">·</span>
@@ -850,8 +875,8 @@ export default function PanelRiderPage() {
             </div>
             <div className="overflow-y-auto flex-1 min-h-0 p-5 space-y-4">
               {/* restaurante */}
-              <div className="bg-blue-50 rounded-2xl p-4">
-                <p className="text-xs font-semibold text-blue-500 mb-1">RECOGER EN</p>
+              <div className="bg-rider-100/60 rounded-2xl p-4">
+                <p className="text-xs font-semibold text-rider-700 mb-1">RECOGER EN</p>
                 <p className="font-bold text-gray-900">{carreraActiva.restaurante}</p>
                 <p className="text-sm text-gray-500 mt-0.5">{carreraActiva.restauranteDireccion}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -859,7 +884,7 @@ export default function PanelRiderPage() {
                     href={getRestauranteMapsUrl(carreraActiva)}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 bg-blue-100 hover:bg-blue-200 transition-colors"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-rider-700 bg-white hover:bg-rider-100 transition-colors"
                   >
                     <Navigation className="w-3.5 h-3.5" />
                     Ir al Local
@@ -927,17 +952,19 @@ export default function PanelRiderPage() {
 
               {/* qué cobrar */}
               {carreraActiva.paymentMethod === 'transferencia' ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-blue-800">
-                    💳 TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
+                <div className="bg-rider-100/60 border border-rider-100 rounded-2xl p-4">
+                  <p className="text-sm font-bold text-rider-900 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" />
+                    TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
                     {(carreraActiva.costoEnvio ?? carreraActiva.total ?? 0).toFixed(2)}
                   </p>
-                  <p className="text-xs text-blue-700 mt-0.5">Pago por transferencia — cobrar solo el envío al cliente.</p>
+                  <p className="text-xs text-rider-700 mt-0.5">Pago por transferencia — cobrar solo el envío al cliente.</p>
                 </div>
               ) : (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-emerald-800">
-                    💵 COBRAR TOTAL AL CLIENTE: $
+                  <p className="text-sm font-bold text-emerald-800 flex items-center gap-2">
+                    <Wallet className="w-4 h-4" />
+                    COBRAR TOTAL AL CLIENTE: $
                     {(carreraActiva.total ?? 0).toFixed(2)}
                   </p>
                   <p className="text-xs text-emerald-700 mt-0.5">Cobrar el total en efectivo al cliente.</p>
@@ -962,11 +989,12 @@ export default function PanelRiderPage() {
                   <LoadingButton
                     type="button"
                     loading={avanzandoKey === (carreraActiva.batchId ?? carreraActiva.id)}
+                    tone="rider"
                     onClick={() => {
                       avanzarEstado(carreraActiva.id, 'en_camino', carreraActiva.batchId ?? undefined);
                       setCarreraActiva({ ...carreraActiva, estado: 'en_camino' });
                     }}
-                    className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
+                    className="w-full py-4 text-base flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Bike className="w-5 h-5" />
                     Estoy en camino
@@ -985,7 +1013,7 @@ export default function PanelRiderPage() {
                 <button
                   type="button"
                   onClick={() => setMostrarVerificacion(true)}
-                  className="w-full py-4 rounded-2xl bg-green-500 hover:bg-green-600 text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
+                    className="w-full py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
                 >
                   <KeyRound className="w-5 h-5" />
                   Ingresar código de entrega
@@ -1048,7 +1076,7 @@ export default function PanelRiderPage() {
                   className={`w-full text-center font-black text-3xl tracking-[0.4em] py-4 rounded-2xl border-2 mb-2 outline-none transition-colors font-mono ${
                     errorCodigo
                       ? 'border-red-400 bg-red-50 text-red-600'
-                      : 'border-gray-200 bg-gray-50 text-gray-900 focus:border-blue-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-900 focus:border-rider-600'
                   }`}
                 />
                 {errorCodigo && (
@@ -1126,7 +1154,7 @@ function TarjetaCarreraBatch({
       <div
         className={`px-5 py-2 flex items-center gap-2 text-xs font-bold ${
           esEnCamino
-            ? 'bg-blue-600 text-white'
+            ? 'bg-rider-700 text-white'
             : 'bg-dorado-oro/10 text-dorado-oro border-b border-dorado-oro/15'
         }`}
       >
@@ -1164,7 +1192,7 @@ function TarjetaCarreraBatch({
                 href={getClienteMapsUrl(leader)}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-blue-600"
+                className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-rider-700"
               >
                 <Navigation className="w-3 h-3" />
                 Ver en mapa
@@ -1178,25 +1206,27 @@ function TarjetaCarreraBatch({
         </div>
         {/* qué cobrar (según líder del batch) */}
         {leader.paymentMethod === 'transferencia' ? (
-          <div className="mb-4 py-2 px-3 rounded-xl bg-blue-50 border border-blue-200">
-            <p className="text-xs font-bold text-blue-800">
-              💳 TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
+          <div className="mb-4 py-2 px-3 rounded-xl bg-rider-100/60 border border-rider-100">
+            <p className="text-xs font-bold text-rider-900 flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5" />
+              TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
               {(leader.costoEnvio ?? leader.total ?? 0).toFixed(2)}
             </p>
           </div>
         ) : (
           <div className="mb-4 py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200">
-            <p className="text-xs font-bold text-emerald-800">
-              💵 COBRAR TOTAL AL CLIENTE: $
+            <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+              <Wallet className="w-3.5 h-3.5" />
+              COBRAR TOTAL AL CLIENTE: $
               {(leader.total ?? 0).toFixed(2)}
             </p>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <button
             type="button"
             onClick={onVerDetalle}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            className="w-full min-h-[48px] py-2.5 rounded-2xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
           >
             Ver detalle
             <ChevronRight className="w-4 h-4" />
@@ -1205,8 +1235,9 @@ function TarjetaCarreraBatch({
             <LoadingButton
               type="button"
               loading={!!avanzandoKey && avanzandoKey === leader.batchId}
+              tone="rider"
               onClick={onEnCamino}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
+              className="w-full min-h-[48px] py-2.5 text-sm transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Bike className="w-4 h-4" />
               En camino
@@ -1216,7 +1247,7 @@ function TarjetaCarreraBatch({
             <button
               type="button"
               onClick={onVerificar}
-              className="flex-1 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
+              className="w-full min-h-[48px] py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
             >
               <KeyRound className="w-4 h-4" />
               Entregar
@@ -1253,7 +1284,7 @@ function TarjetaCarrera({
       <div
         className={`px-5 py-2 flex items-center gap-2 text-xs font-bold ${
           esEnCamino
-            ? 'bg-blue-600 text-white'
+            ? 'bg-rider-700 text-white'
             : 'bg-dorado-oro/10 text-dorado-oro border-b border-dorado-oro/15'
         }`}
       >
@@ -1278,7 +1309,7 @@ function TarjetaCarrera({
         {/* ruta */}
         <div className="flex items-start gap-3 mb-4">
           <div className="flex flex-col items-center gap-1 mt-1">
-            <div className="w-3 h-3 rounded-full bg-blue-500" />
+            <div className="w-3 h-3 rounded-full bg-rider-600" />
             <div className="w-0.5 h-6 bg-gray-200" />
             <div className="w-3 h-3 rounded-full bg-rojo-andino" />
           </div>
@@ -1295,7 +1326,7 @@ function TarjetaCarrera({
                 href={getClienteMapsUrl(carrera)}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-rider-700 hover:text-rider-900"
               >
                 <Navigation className="w-3 h-3" />
                 Ver en mapa
@@ -1310,27 +1341,29 @@ function TarjetaCarrera({
 
         {/* qué cobrar */}
         {carrera.paymentMethod === 'transferencia' ? (
-          <div className="mb-4 py-2 px-3 rounded-xl bg-blue-50 border border-blue-200">
-            <p className="text-xs font-bold text-blue-800">
-              💳 TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
+          <div className="mb-4 py-2 px-3 rounded-xl bg-rider-100/60 border border-rider-100">
+            <p className="text-xs font-bold text-rider-900 flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5" />
+              TRANSFERENCIA LISTA - COBRAR SOLO ENVÍO: $
               {(carrera.costoEnvio ?? carrera.total ?? 0).toFixed(2)}
             </p>
           </div>
         ) : (
           <div className="mb-4 py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200">
-            <p className="text-xs font-bold text-emerald-800">
-              💵 COBRAR TOTAL AL CLIENTE: $
+            <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+              <Wallet className="w-3.5 h-3.5" />
+              COBRAR TOTAL AL CLIENTE: $
               {(carrera.total ?? 0).toFixed(2)}
             </p>
           </div>
         )}
 
         {/* botones */}
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <button
             type="button"
             onClick={onVerDetalle}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            className="w-full min-h-[48px] py-2.5 rounded-2xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
           >
             Ver detalle
             <ChevronRight className="w-4 h-4" />
@@ -1339,8 +1372,9 @@ function TarjetaCarrera({
             <LoadingButton
               type="button"
               loading={!!avanzandoKey && (avanzandoKey === carrera.id || avanzandoKey === carrera.batchId)}
+              tone="rider"
               onClick={onEnCamino}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
+              className="w-full min-h-[48px] py-2.5 text-sm transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Bike className="w-4 h-4" />
               En camino
@@ -1350,7 +1384,7 @@ function TarjetaCarrera({
             <button
               type="button"
               onClick={onVerificar}
-              className="flex-1 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
+              className="w-full min-h-[48px] py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm transition-colors flex items-center justify-center gap-1.5"
             >
               <KeyRound className="w-4 h-4" />
               Entregar

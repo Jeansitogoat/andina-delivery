@@ -14,9 +14,10 @@ interface AddressSelectorProps {
   className?: string;
   /** true = fondo claro (checkout), false = header rojo (home) */
   dark?: boolean;
+  compact?: 'default' | 'icon_only';
 }
 
-export default function AddressSelector({ className = '', dark = false }: AddressSelectorProps) {
+export default function AddressSelector({ className = '', dark = false, compact = 'default' }: AddressSelectorProps) {
   const {
     direcciones,
     selectedId,
@@ -52,7 +53,13 @@ export default function AddressSelector({ className = '', dark = false }: Addres
         className={`flex items-center gap-2 text-sm font-medium transition-colors ${dark ? 'text-gray-700 hover:text-gray-900' : 'text-white/95 hover:text-white'}`}
       >
         <MapPin className="w-4 h-4 text-dorado-oro flex-shrink-0" />
-        <span>Entregar en: {formatDireccionCorta(direccionEntregar) || 'Agrega una dirección'}</span>
+        {compact === 'icon_only' ? (
+          <span className="max-w-[210px] truncate">
+            Entregar en: {formatDireccionCorta(direccionEntregar) || 'Agrega una dirección'}
+          </span>
+        ) : (
+          <span>Entregar en: {formatDireccionCorta(direccionEntregar) || 'Agrega una dirección'}</span>
+        )}
         <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 

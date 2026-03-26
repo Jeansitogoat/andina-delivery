@@ -43,7 +43,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Andina Delivery - Piñas" />
       </head>
-      <body className="min-h-screen flex flex-col bg-gray-50">
+      <body className="min-h-screen flex flex-col bg-surface">
         <SWRConfig value={{ revalidateOnFocus: false, dedupingInterval: 30000 }}>
           <ErrorBoundary>
           <NetworkStatusProvider>

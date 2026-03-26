@@ -180,7 +180,7 @@ export default function CarritoPage() {
 
   if (!hydrated) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <main className="min-h-screen bg-surface flex items-center justify-center">
         <div className="w-8 h-8 rounded-full border-4 border-rojo-andino border-t-transparent animate-spin" />
       </main>
     );
@@ -188,7 +188,7 @@ export default function CarritoPage() {
 
   if (cart.stops.length === 0) {
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+      <main className="min-h-screen bg-surface flex flex-col items-center justify-center safe-x">
         <Package className="w-16 h-16 text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-800 mb-2">Tu carrito está vacío</h2>
         <p className="text-gray-500 text-center mb-6">Agregá productos desde un restaurante para hacer tu pedido.</p>
@@ -205,7 +205,7 @@ export default function CarritoPage() {
 
   if (loadingStops || !allLoaded) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <main className="min-h-screen bg-surface flex items-center justify-center">
         <div className="w-8 h-8 rounded-full border-4 border-rojo-andino border-t-transparent animate-spin" />
       </main>
     );
@@ -213,22 +213,22 @@ export default function CarritoPage() {
 
   return (
     <main
-      className={`min-h-screen bg-gray-50 flex flex-col transition-all duration-300 ${
+      className={`min-h-screen bg-surface flex flex-col transition-all duration-300 ${
         pageVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
       }`}
     >
-      <header className="bg-white sticky top-0 z-10 shadow-sm border-b border-gray-100">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="bg-white/95 sticky top-0 z-10 shadow-soft border-b border-gray-100 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
+        <div className="max-w-2xl mx-auto safe-x py-4 flex items-center justify-between">
           <button
             type="button"
             onClick={() => router.back()}
-            className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+            className="h-9 w-9 md:h-10 md:w-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
             aria-label="Volver"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+            <ArrowLeft className="w-4 h-4 md:w-5 md:h-5 text-gray-700" />
           </button>
           <div className="flex flex-col items-center gap-0.5">
-            <h1 className="font-bold text-lg text-gray-900">Mi pedido</h1>
+            <h1 className="font-black text-lg text-gray-900 tracking-tight">Mi pedido</h1>
             {saving && (
               <span className="flex items-center gap-1 text-[11px] text-gray-400">
                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -246,7 +246,7 @@ export default function CarritoPage() {
                   else if (user.rol === 'local') router.push((user as { localId?: string }).localId ? `/panel/restaurante/${(user as { localId?: string }).localId}` : '/panel/restaurante');
                   else if (user.rol === 'maestro') router.push('/panel/maestro');
                 }}
-                className="text-sm text-rojo-andino hover:underline font-medium"
+                className="hidden md:inline text-sm text-rojo-andino hover:underline font-medium"
               >
                 Volver al panel
               </button>
@@ -265,10 +265,10 @@ export default function CarritoPage() {
         </div>
       </header>
 
-      <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-4 space-y-4">
+      <div className="flex-1 max-w-2xl mx-auto w-full safe-x py-4 space-y-4">
         {stopsData.map((stop) => (
           <div key={stop.localId} className="space-y-3">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
+            <div className="card-elevated p-4 flex items-center gap-3 shadow-softlg">
               {stop.local?.logo && (
                 <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                   <LocalLogo src={stop.local.logo} alt={stop.local.name} fill className="object-contain" sizes="56px" iconClassName="w-6 h-6 text-rojo-andino/60" />
@@ -295,7 +295,7 @@ export default function CarritoPage() {
               </button>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="card-elevated overflow-hidden shadow-softlg">
               <div className="divide-y divide-gray-50">
                 {stop.enrichedItems.map((item) => {
                   const compText = item.complementSelections && Object.keys(item.complementSelections).length > 0
@@ -353,7 +353,7 @@ export default function CarritoPage() {
           </div>
         ))}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="card-elevated overflow-hidden shadow-softlg">
           <div className="px-4 py-3 border-b border-gray-50">
             <p className="font-bold text-sm text-gray-500 uppercase tracking-wide">Resumen</p>
           </div>
@@ -384,13 +384,13 @@ export default function CarritoPage() {
         </div>
       </div>
 
-      <div className="sticky bottom-0 bg-gradient-to-t from-gray-50 via-gray-50/95 to-transparent px-4 pb-6 pt-3">
+      <div className="sticky bottom-0 bg-gradient-to-t from-surface via-surface/95 to-transparent safe-x pb-6 pt-3 border-t border-gray-100/80">
         <div className="max-w-2xl mx-auto space-y-2">
           {seguimientoOrderId && (
             <button
               type="button"
               onClick={() => router.push(`/pedido/${seguimientoOrderId}`)}
-              className="w-full py-3 rounded-xl border-2 border-dorado-oro/50 bg-dorado-oro/10 text-dorado-oro font-semibold text-sm hover:bg-dorado-oro/20 transition-colors flex items-center justify-center gap-2"
+              className="w-full min-h-[44px] py-3 rounded-2xl border-2 border-dorado-oro/50 bg-dorado-oro/10 text-dorado-oro font-semibold text-sm hover:bg-dorado-oro/20 transition-colors flex items-center justify-center gap-2"
             >
               <Package className="w-4 h-4" />
               Ver seguimiento del pedido activo
@@ -399,7 +399,7 @@ export default function CarritoPage() {
           <button
             type="button"
             onClick={() => router.push('/checkout')}
-            className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold text-base shadow-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            className="w-full min-h-[48px] py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-black text-base shadow-softlg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
           >
             Continuar
             <span className="bg-white/20 rounded-xl px-2 py-0.5 text-sm font-black">

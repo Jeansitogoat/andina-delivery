@@ -14,6 +14,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const localId = searchParams.get('localId')?.trim();
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '15', 10) || 15, 1), 20);
+    const cursor = searchParams.get('cursor')?.trim() || null;
     if (!localId) {
       return NextResponse.json({ error: 'localId requerido' }, { status: 400 });
     }
@@ -29,20 +31,24 @@ export async function GET(request: Request) {
     const db = getAdminFirestore();
     let snap;
     try {
-      snap = await db
+      let query = db
         .collection('pedidos')
         .where('localId', '==', localId)
         .where('paymentMethod', '==', 'transferencia')
         .where('paymentConfirmed', '==', false)
         .orderBy('timestamp', 'desc')
-        .limit(50)
-        .get();
+        .limit(limit);
+      if (cursor) {
+        const cursorSnap = await db.collection('pedidos').doc(cursor).get();
+        if (cursorSnap.exists) query = query.startAfter(cursorSnap);
+      }
+      snap = await query.get();
     } catch {
       snap = await db
         .collection('pedidos')
         .where('localId', '==', localId)
         .orderBy('timestamp', 'desc')
-        .limit(100)
+        .limit(50)
         .get();
     }
 
