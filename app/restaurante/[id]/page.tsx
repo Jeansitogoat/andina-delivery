@@ -32,6 +32,7 @@ import SkeletonRestaurante from '@/components/SkeletonRestaurante';
 import LocalLogo from '@/components/LocalLogo';
 import { getEstadoAbierto } from '@/lib/abiertoAhora';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { resolveIvaConfig } from '@/lib/order-money';
 
 export default function RestaurantePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -135,6 +136,9 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
 
   const estado = getEstadoAbierto(local);
   const cerrado = !estado.abierto;
+  const ivaConfig = resolveIvaConfig(local);
+  const cartIva = ivaConfig.ivaEnabled ? cartSubtotal * ivaConfig.ivaRate : 0;
+  const cartSubtotalCliente = cartSubtotal + cartIva;
 
   const reviewsSection = reviews.length > 0 ? (
     <section>
@@ -327,6 +331,11 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
             {estado.abierto && estado.cierraA && (
               <p className="mt-2 text-xs text-gray-500">{estado.cierraA}</p>
             )}
+            {ivaConfig.ivaEnabled && (
+              <p className="mt-2 text-xs font-medium text-gray-500">
+                Precios base del local. Al pagar se suma IVA ({(ivaConfig.ivaRate * 100).toFixed(0)}%).
+              </p>
+            )}
 
           {allItems.length === 0 && (
             <div className="max-w-3xl mx-auto safe-x py-8">
@@ -346,7 +355,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                     placeholder="Buscar productos..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="input-mobile w-full pl-10 pr-4 text-sm bg-gray-50"
+                    className="input-mobile w-full !pl-10 pr-4 text-sm bg-gray-50"
                   />
                 </div>
               </div>
@@ -397,6 +406,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                               <ProductRow
                                 key={item.id}
                                 item={item}
+                                displayPrice={ivaConfig.ivaEnabled ? item.price * (1 + ivaConfig.ivaRate) : item.price}
                                 inCart={inCart}
                                 isLast={idx === items.length - 1}
                                 cerrado={cerrado}
@@ -430,6 +440,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                               <ProductRow
                                 key={item.id}
                                 item={item}
+                                displayPrice={ivaConfig.ivaEnabled ? item.price * (1 + ivaConfig.ivaRate) : item.price}
                                 inCart={inCart}
                                 isLast={idx === items.length - 1}
                                 cerrado={cerrado}
@@ -469,7 +480,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                 {localCartCount}
               </span>
               <span className="flex-1 text-left">Ver mi pedido</span>
-              <span className="font-bold">${cartSubtotal.toFixed(2)}</span>
+              <span className="font-bold">${cartSubtotalCliente.toFixed(2)}</span>
             </button>
           </div>
         </div>
@@ -498,6 +509,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
 // ---- Fila de producto en el menú ----
 function ProductRow({
   item,
+  displayPrice,
   inCart,
   isLast,
   cerrado,
@@ -506,6 +518,7 @@ function ProductRow({
   onRemove,
 }: {
   item: MenuItem;
+  displayPrice: number;
   inCart: number;
   isLast: boolean;
   cerrado?: boolean;
@@ -534,7 +547,7 @@ function ProductRow({
         {item.description && (
           <p className="text-xs text-gray-500 mt-0.5 line-clamp-2 leading-relaxed">{item.description}</p>
         )}
-        <p className="font-bold text-gray-900 text-sm mt-1.5">${item.price.toFixed(2)}</p>
+        <p className="font-bold text-gray-900 text-sm mt-1.5">${displayPrice.toFixed(2)}</p>
       </div>
 
       {/* Imagen + controles */}

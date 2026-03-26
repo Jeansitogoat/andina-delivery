@@ -7,6 +7,8 @@ import { sendFCMToUser, sendFCMToRole } from '@/lib/fcm-send-server';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { pedidoPatchSchema } from '@/lib/schemas/pedidoPatch';
 import { applyDeliveredOrderAggregates } from '@/lib/local-stats-aggregates';
+import { calcularComision, calcularNetoLocal } from '@/lib/commissions';
+import { getOrderMoney } from '@/lib/order-money';
 
 type PedidoConRider = PedidoCentral & { riderNombre?: string; riderRating?: number | null };
 
@@ -50,11 +52,14 @@ export async function GET(
     type PedidoPublico = PedidoCentral & {
       paymentMethod?: 'efectivo' | 'transferencia';
       serviceCost?: number;
+      costoEnvio?: number;
+      serviceFee?: number;
       paymentConfirmed?: boolean;
       comprobanteBase64?: string | null;
       comprobanteFileName?: string | null;
       comprobanteMimeType?: string | null;
     };
+    const money = getOrderMoney(data);
     const pedidoBase: PedidoPublico = {
       id: snap.id,
       clienteId: data.clienteId ?? null,
@@ -64,7 +69,14 @@ export async function GET(
       clienteDireccion: data.clienteDireccion || '—',
       clienteTelefono: data.clienteTelefono || '',
       items: data.items || [],
-      total: data.total || 0,
+      total: money.total,
+      totalCliente: money.totalCliente,
+      subtotal: money.subtotal,
+      subtotalBase: money.subtotalBase,
+      ivaEnabled: money.ivaEnabled,
+      ivaRate: money.ivaRate,
+      ivaAmount: money.ivaAmount,
+      subtotalConIva: money.subtotalConIva,
       estado: data.estado || 'confirmado',
       riderId: data.riderId ?? null,
       hora: data.hora || '',
@@ -79,7 +91,9 @@ export async function GET(
       propina: data.propina ?? 0,
       deliveryType: (data.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
       paymentMethod: data.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
-      serviceCost: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost) ? data.serviceCost : undefined,
+      serviceCost: money.serviceCost || undefined,
+      costoEnvio: money.costoEnvio || undefined,
+      serviceFee: money.serviceFee || undefined,
       paymentConfirmed: data.paymentConfirmed !== false,
       comprobanteBase64: data.comprobanteBase64 ?? null,
       comprobanteFileName: data.comprobanteFileName ?? null,
@@ -274,7 +288,7 @@ export async function PATCH(
         await applyDeliveredOrderAggregates(db, {
           localId: pedidoLocalId,
           pedidoId: id,
-          total: Number(data.total ?? 0),
+          subtotalBase: getOrderMoney(data).subtotalBase,
           timestamp: Number(data.timestamp ?? Date.now()),
           items: Array.isArray(data.items) ? (data.items as string[]) : [],
         });
@@ -283,20 +297,49 @@ export async function PATCH(
       }
     }
 
-    // Al marcar como entregado: crear comision del 10%
-    if (body.estado === 'entregado') {
+    // Al marcar como entregado: comisión idempotente del 8% sobre subtotalBase.
+    if (body.estado === 'entregado' && prevEstado !== 'entregado') {
       if (pedidoLocalId) {
         const riderId = body.riderId ?? data.riderId ?? null;
-        const montoComision = Math.round((data.total || 0) * 0.10 * 100) / 100;
-        await db.collection('comisiones').add({
-          localId: pedidoLocalId,
-          pedidoId: id,
-          riderId,
-          totalPedido: data.total,
-          montoComision,
-          fecha: FieldValue.serverTimestamp(),
-          pagado: false,
-        });
+        const money = getOrderMoney(data);
+        const subtotalBase = money.subtotalBase;
+        let programStartDate = '';
+        try {
+          const configSnap = await db.collection('config').doc('transferenciaAndina').get();
+          const configData = configSnap.data();
+          if (typeof configData?.programStartDate === 'string') {
+            programStartDate = configData.programStartDate;
+          }
+        } catch {
+          // si no hay config, se cobra comisión
+        }
+        const pedidoTimestamp = Number(data.timestamp ?? Date.now());
+        const programStartTime = programStartDate ? new Date(programStartDate).getTime() : 0;
+        const localSnap = await db.collection('locales').doc(pedidoLocalId).get();
+        const localData = localSnap.data() ?? {};
+        const commissionStartDate = (typeof localData.commissionStartDate === 'string' ? localData.commissionStartDate : null) ?? programStartDate;
+        const commissionStartTime = commissionStartDate ? new Date(commissionStartDate).getTime() : 0;
+        if ((programStartTime <= 0 || pedidoTimestamp >= programStartTime) && (commissionStartTime <= 0 || pedidoTimestamp >= commissionStartTime)) {
+          const montoComision = calcularComision(money.totalCliente, subtotalBase);
+          const netoLocal = calcularNetoLocal(subtotalBase, montoComision);
+          await db.collection('comisiones').doc(id).set({
+            localId: pedidoLocalId,
+            pedidoId: id,
+            riderId,
+            totalPedido: money.totalCliente,
+            totalCliente: money.totalCliente,
+            subtotalBase,
+            ivaAmount: money.ivaAmount,
+            subtotalConIva: money.subtotalConIva,
+            costoEnvio: money.costoEnvio,
+            serviceFee: money.serviceFee,
+            montoComision,
+            commissionRate: 0.08,
+            netoLocal,
+            fecha: FieldValue.serverTimestamp(),
+            pagado: false,
+          }, { merge: false });
+        }
       }
     }
 

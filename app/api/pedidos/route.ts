@@ -7,6 +7,7 @@ import { sendFCMToRestaurantByLocalId } from '@/lib/fcm-send-server';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { normalizeDataUrl } from '@/lib/validImageUrl';
 import { pedidoPostSchema } from '@/lib/schemas/pedido';
+import { buildOrderMoney, getOrderMoney, resolveIvaConfig } from '@/lib/order-money';
 
 const ESTADOS_ACTIVOS: string[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
 /** Pedidos activos en cocina: por defecto 20 con cursor; máximo 50 por página. */
@@ -19,6 +20,7 @@ const LIMIT_ENTREGADOS_FALLBACK = 50;
 
 function docToPedidoCentral(d: DocumentSnapshot): PedidoCentral {
   const data = d.data() || {};
+  const money = getOrderMoney(data);
   return {
     id: d.id,
     restaurante: data.restaurante || '—',
@@ -29,7 +31,14 @@ function docToPedidoCentral(d: DocumentSnapshot): PedidoCentral {
     clienteDireccion: data.clienteDireccion || '—',
     clienteTelefono: data.clienteTelefono || '',
     items: data.items || [],
-    total: data.total || 0,
+    total: money.total,
+    totalCliente: money.totalCliente,
+    subtotal: money.subtotal,
+    subtotalBase: money.subtotalBase,
+    ivaEnabled: money.ivaEnabled,
+    ivaRate: money.ivaRate,
+    ivaAmount: money.ivaAmount,
+    subtotalConIva: money.subtotalConIva,
     estado: data.estado || 'confirmado',
     riderId: data.riderId ?? null,
     hora: data.hora || '',
@@ -43,7 +52,9 @@ function docToPedidoCentral(d: DocumentSnapshot): PedidoCentral {
     batchLeaderLocalId: data.batchLeaderLocalId ?? null,
     deliveryType: (data.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
     paymentMethod: data.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
-    serviceCost: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost) ? data.serviceCost : undefined,
+    serviceCost: money.serviceCost || undefined,
+    costoEnvio: money.costoEnvio || undefined,
+    serviceFee: money.serviceFee || undefined,
   };
 }
 
@@ -73,6 +84,8 @@ export async function GET(request: Request) {
       MAX_ACTIVE_LIMIT
     );
     const cursor = searchParams.get('cursor') || null;
+    const desdeTsParam = Number(searchParams.get('desdeTs') || 0);
+    const desdeTs = Number.isFinite(desdeTsParam) && desdeTsParam > 0 ? desdeTsParam : null;
 
     if (auth.rol === 'local') {
       const userSnap = await db.collection('users').doc(auth.uid).get();
@@ -87,6 +100,7 @@ export async function GET(request: Request) {
             .collection('pedidos')
             .where('localId', '==', userLocalId)
             .where('estado', '==', 'entregado')
+            .where('timestamp', '>=', desdeTs ?? 0)
             .orderBy('timestamp', 'desc')
             .limit(limitParam);
           if (cursor) {
@@ -109,7 +123,8 @@ export async function GET(request: Request) {
               .get();
             const filtered = snap.docs
               .filter(filterTransferenciaNoConfirmada)
-              .filter((d) => (d.data().estado || '') === 'entregado');
+              .filter((d) => (d.data().estado || '') === 'entregado')
+              .filter((d) => Number(d.data().timestamp ?? 0) >= (desdeTs ?? 0));
             const start = cursor ? Math.min(filtered.findIndex((d) => d.id === cursor) + 1, filtered.length) : 0;
             const page = filtered.slice(start, start + limitParam);
             const pedidos: PedidoCentral[] = page.map(docToPedidoCentral);
@@ -177,6 +192,7 @@ export async function GET(request: Request) {
             .collection('pedidos')
             .where('localId', '==', localIdTrim)
             .where('estado', '==', 'entregado')
+            .where('timestamp', '>=', desdeTs ?? 0)
             .orderBy('timestamp', 'desc')
             .limit(limitParam);
           if (cursor) {
@@ -199,7 +215,8 @@ export async function GET(request: Request) {
               .get();
             const filtered = snap.docs
               .filter(filterTransferenciaNoConfirmada)
-              .filter((d) => (d.data().estado || '') === 'entregado');
+              .filter((d) => (d.data().estado || '') === 'entregado')
+              .filter((d) => Number(d.data().timestamp ?? 0) >= (desdeTs ?? 0));
             const start = cursor ? Math.min(filtered.findIndex((d) => d.id === cursor) + 1, filtered.length) : 0;
             const page = filtered.slice(start, start + limitParam);
             const pedidos: PedidoCentral[] = page.map(docToPedidoCentral);
@@ -314,40 +331,41 @@ export async function POST(request: Request) {
       const sameTotal = Number(data?.total ?? 0) === totalNum;
       const sameItems = JSON.stringify(data?.items ?? []) === itemsKey;
       if (sameCliente && sameLocal && sameTotal && sameItems) {
-        const pedidoExistente: PedidoCentral = {
-          id: existing.id,
-          clienteId: data?.clienteId ?? uid,
-          restaurante: data?.restaurante ?? '—',
-          restauranteDireccion: data?.restauranteDireccion ?? '—',
-          clienteNombre: data?.clienteNombre ?? 'Cliente',
-          clienteDireccion: data?.clienteDireccion ?? '—',
-          clienteTelefono: data?.clienteTelefono ?? '',
-          items: (data?.items as string[]) ?? items,
-          total: Number(data?.total ?? 0),
-          estado: data?.estado ?? 'confirmado',
-          riderId: data?.riderId ?? null,
-          hora: data?.hora ?? '',
-          timestamp: data?.timestamp ?? 0,
-          distancia: data?.distancia ?? '—',
-          localId: data?.localId ?? localId,
-          nombreLocal: typeof data?.nombreLocal === 'string' ? data.nombreLocal : undefined,
-          logoLocal: typeof data?.logoLocal === 'string' ? data.logoLocal : undefined,
-          fotoLocal: typeof data?.fotoLocal === 'string' ? data.fotoLocal : undefined,
-          telefonoLocal: typeof data?.telefonoLocal === 'string' ? data.telefonoLocal : undefined,
-          codigoVerificacion: data?.codigoVerificacion ?? '',
-          propina: data?.propina ?? 0,
-          batchId: data?.batchId ?? null,
-          batchIndex: data?.batchIndex ?? null,
-          batchLeaderLocalId: data?.batchLeaderLocalId ?? null,
-          deliveryType: (data?.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
-        };
-        return NextResponse.json({ ok: true, pedido: pedidoExistente });
+        return NextResponse.json({ ok: true, pedido: docToPedidoCentral(existing) });
       }
     }
 
     const ahora = new Date();
     const paymentMethod = bodyParsed.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo';
     const paymentConfirmed = bodyParsed.paymentConfirmed === true;
+    let localData: DocumentData | undefined;
+    const localSnap = await db.collection('locales').doc(localId).get();
+    localData = localSnap.data();
+    const ivaConfig = resolveIvaConfig(localData);
+    const costoEnvio =
+      typeof bodyParsed.costoEnvio === 'number' && !Number.isNaN(bodyParsed.costoEnvio)
+        ? bodyParsed.costoEnvio
+        : 0;
+    const serviceFee =
+      typeof bodyParsed.serviceFee === 'number' && !Number.isNaN(bodyParsed.serviceFee)
+        ? bodyParsed.serviceFee
+        : 0;
+    const propina = 0;
+    const subtotalBase =
+      typeof bodyParsed.subtotalBase === 'number' && !Number.isNaN(bodyParsed.subtotalBase)
+        ? bodyParsed.subtotalBase
+        : typeof bodyParsed.subtotal === 'number' && !Number.isNaN(bodyParsed.subtotal)
+          ? bodyParsed.subtotal
+          : Math.max(0, totalNum - costoEnvio - serviceFee);
+    const orderMoney = buildOrderMoney({
+      subtotalBase,
+      costoEnvio,
+      serviceFee,
+      propina,
+      ivaEnabled: ivaConfig.ivaEnabled,
+      ivaRate: ivaConfig.ivaRate,
+      totalCliente: totalNum,
+    });
     const pedido: PedidoCentral = {
       id,
       clienteId: uid,
@@ -357,7 +375,14 @@ export async function POST(request: Request) {
       clienteDireccion: bodyParsed.clienteDireccion || '—',
       clienteTelefono: bodyParsed.clienteTelefono || '',
       items,
-      total: totalNum,
+      total: orderMoney.total,
+      totalCliente: orderMoney.totalCliente,
+      subtotal: orderMoney.subtotal,
+      subtotalBase: orderMoney.subtotalBase,
+      ivaEnabled: orderMoney.ivaEnabled,
+      ivaRate: orderMoney.ivaRate,
+      ivaAmount: orderMoney.ivaAmount,
+      subtotalConIva: orderMoney.subtotalConIva,
       estado: 'confirmado',
       riderId: null,
       hora: ahora.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }),
@@ -365,11 +390,14 @@ export async function POST(request: Request) {
       distancia: '—',
       localId,
       codigoVerificacion: bodyParsed.codigoVerificacion ?? '',
-      propina: 0,
       batchId: deliveryType === 'delivery' ? bodyParsed.batchId ?? null : null,
       batchIndex: deliveryType === 'delivery' && typeof bodyParsed.batchIndex === 'number' ? bodyParsed.batchIndex : null,
       batchLeaderLocalId: deliveryType === 'delivery' ? bodyParsed.batchLeaderLocalId ?? null : null,
       deliveryType,
+      propina: orderMoney.propina,
+      serviceCost: orderMoney.serviceCost,
+      costoEnvio: orderMoney.costoEnvio,
+      serviceFee: orderMoney.serviceFee,
     };
 
     const docData: Record<string, unknown> = {
@@ -378,32 +406,21 @@ export async function POST(request: Request) {
       paymentConfirmed,
       createdAt: FieldValue.serverTimestamp(),
     };
-    if (typeof bodyParsed.subtotal === 'number' && !Number.isNaN(bodyParsed.subtotal)) {
-      docData.subtotal = bodyParsed.subtotal;
-    }
-    if (typeof bodyParsed.serviceCost === 'number' && !Number.isNaN(bodyParsed.serviceCost)) {
-      docData.serviceCost = bodyParsed.serviceCost;
-    }
     if (typeof bodyParsed.clienteLat === 'number' && typeof bodyParsed.clienteLng === 'number' &&
         !Number.isNaN(bodyParsed.clienteLat) && !Number.isNaN(bodyParsed.clienteLng)) {
       docData.clienteLat = bodyParsed.clienteLat;
       docData.clienteLng = bodyParsed.clienteLng;
     }
     // Una sola lectura de locales: coords (fallback) + snapshot denormalizado para historial
-    let localData: DocumentData | undefined;
-    if (localId) {
-      const localSnap = await db.collection('locales').doc(localId).get();
-      localData = localSnap.data();
-      if (localData) {
-        docData.nombreLocal =
-          typeof localData.name === 'string' && localData.name.trim()
-            ? localData.name.trim()
-            : bodyParsed.restaurante || '—';
-        if (typeof localData.logo === 'string' && localData.logo.trim()) docData.logoLocal = localData.logo.trim();
-        if (typeof localData.cover === 'string' && localData.cover.trim()) docData.fotoLocal = localData.cover.trim();
-        if (typeof localData.telefono === 'string' && localData.telefono.trim()) {
-          docData.telefonoLocal = localData.telefono.trim();
-        }
+    if (localData) {
+      docData.nombreLocal =
+        typeof localData.name === 'string' && localData.name.trim()
+          ? localData.name.trim()
+          : bodyParsed.restaurante || '—';
+      if (typeof localData.logo === 'string' && localData.logo.trim()) docData.logoLocal = localData.logo.trim();
+      if (typeof localData.cover === 'string' && localData.cover.trim()) docData.fotoLocal = localData.cover.trim();
+      if (typeof localData.telefono === 'string' && localData.telefono.trim()) {
+        docData.telefonoLocal = localData.telefono.trim();
       }
     }
     let restauranteLat: number | null = null;

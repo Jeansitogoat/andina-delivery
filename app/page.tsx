@@ -180,10 +180,20 @@ export default function Home() {
         list = list.filter((l) => l.type.includes(category));
       }
     }
-    list = list.sort((a, b) => {
+
+    // Garantía UX: primero solo "abiertos" (orden por distancia), luego "cerrados".
+    const abiertos: typeof list = [];
+    const cerrados: typeof list = [];
+    for (const l of list) {
+      const ea = getEstadoAbierto(l);
+      (ea.abierto ? abiertos : cerrados).push(l);
+    }
+
+    const sortByFeaturedDistanceName = (a: (typeof list)[number], b: (typeof list)[number]) => {
       const aFeat = Boolean((a as { isFeatured?: boolean }).isFeatured);
       const bFeat = Boolean((b as { isFeatured?: boolean }).isFeatured);
       if (aFeat !== bFeat) return aFeat ? -1 : 1;
+
       if (originLatLng) {
         const hasA = typeof a.lat === 'number' && typeof a.lng === 'number';
         const hasB = typeof b.lat === 'number' && typeof b.lng === 'number';
@@ -191,14 +201,17 @@ export default function Home() {
           const distA = haversineKm(originLatLng.lat, originLatLng.lng, a.lat!, a.lng!);
           const distB = haversineKm(originLatLng.lat, originLatLng.lng, b.lat!, b.lng!);
           if (distA !== distB) return distA - distB;
-        } else if (hasA !== hasB) return hasA ? -1 : 1;
+        } else if (hasA !== hasB) {
+          return hasA ? -1 : 1;
+        }
       }
-      const ea = getEstadoAbierto(a);
-      const eb = getEstadoAbierto(b);
-      if (ea.abierto !== eb.abierto) return ea.abierto ? -1 : 1;
+
       return a.name.localeCompare(b.name, 'es');
-    });
-    return list;
+    };
+
+    const abiertosSorted = [...abiertos].sort(sortByFeaturedDistanceName);
+    const cerradosSorted = [...cerrados].sort(sortByFeaturedDistanceName);
+    return [...abiertosSorted, ...cerradosSorted];
   }, [search, category, localesList, originLatLng]);
 
   const activeLocal = cartLocalId ? localesList.find((l) => l.id === cartLocalId) : null;
@@ -259,7 +272,7 @@ export default function Home() {
               placeholder="¿Qué se te antoja en Piñas?"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="input-mobile w-full pl-12 pr-4 rounded-3xl shadow-softlg border-white/40"
+              className="input-mobile w-full !pl-12 pr-4 rounded-3xl shadow-softlg border-white/40"
             />
           </div>
           <div className="mt-2">

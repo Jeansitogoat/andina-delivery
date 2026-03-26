@@ -7,7 +7,9 @@ export interface ComisionDoc {
   localId: string;
   pedidoId: string;
   totalPedido: number;
+  subtotalBase?: number;
   montoComision: number;
+  netoLocal?: number;
   fecha: number;
   pagado: boolean;
 }
@@ -41,7 +43,9 @@ export async function GET(request: Request) {
         localId: data.localId,
         pedidoId: data.pedidoId,
         totalPedido: data.totalPedido || 0,
+        subtotalBase: data.subtotalBase || 0,
         montoComision: data.montoComision || 0,
+        netoLocal: data.netoLocal || 0,
         fecha: data.fecha?.toMillis?.() ?? 0,
         pagado: data.pagado ?? false,
       };

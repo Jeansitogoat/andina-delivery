@@ -44,6 +44,7 @@ import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
 import { uploadComprobante } from '@/lib/storageUpload';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
+import { buildOrderMoney, resolveIvaConfig } from '@/lib/order-money';
 
 const TIP_OPTIONS = [
   { label: 'Ahora no', value: 0 },
@@ -232,9 +233,14 @@ export default function CheckoutPage() {
   const baseEnvio = km != null ? getTarifaEnvioPorDistancia(km) : tarifaMinima;
   const envioTarifa = isPickup ? 0 : (numParadas <= 1 ? baseEnvio : baseEnvio + (numParadas - 1) * porParadaAdicional);
   const subtotal = stopsData.reduce((s, d) => s + d.subtotal, 0);
+  const totalIva = stopsData.reduce((sum, stop) => {
+    const iva = resolveIvaConfig(stop.local);
+    return sum + (iva.ivaEnabled ? Math.round(stop.subtotal * iva.ivaRate * 100) / 100 : 0);
+  }, 0);
+  const subtotalConIva = subtotal + totalIva;
   const propinaEfectiva = isPickup ? 0 : tip;
   const serviceCost = getServiceCost(subtotal);
-  const grandTotal = subtotal + envioTarifa + serviceCost + propinaEfectiva;
+  const grandTotal = subtotalConIva + envioTarifa + serviceCost + propinaEfectiva;
   const allLoaded = cartStops.length > 0 && stopsData.length === cartStops.length && stopsData.every((d) => d.local != null && d.enrichedItems.length > 0);
   const totalCount = stopsData.reduce((s, d) => s + d.enrichedItems.reduce((a, i) => a + i.qty, 0), 0);
   const enrichedItems = firstStopData?.enrichedItems ?? [];
@@ -333,7 +339,16 @@ export default function CheckoutPage() {
           return;
         }
         const stop0 = stopsData[0];
-        const stopTotal0 = stop0.subtotal + envioTarifa + serviceCost + propinaEfectiva;
+        const stop0Iva = resolveIvaConfig(stop0.local);
+        const stop0Money = buildOrderMoney({
+          subtotalBase: stop0.subtotal,
+          costoEnvio: envioTarifa,
+          serviceFee: serviceCost,
+          propina: propinaEfectiva,
+          ivaEnabled: stop0Iva.ivaEnabled,
+          ivaRate: stop0Iva.ivaRate,
+        });
+        const stopTotal0 = stop0Money.totalCliente;
         const orderId0 = `A-${baseNum}-0`;
         const num0 = `#${orderId0}`;
         setOrderNum(num0);
@@ -353,9 +368,16 @@ export default function CheckoutPage() {
         const orderId = `A-${baseNum}-${index}`;
         const num = `#${orderId}`;
         const codigo = generateVerificationCode();
-        const stopTotal = index === 0
-          ? stop.subtotal + envioTarifa + serviceCost + propinaEfectiva
-          : stop.subtotal;
+        const ivaConfig = resolveIvaConfig(stop.local);
+        const stopMoney = buildOrderMoney({
+          subtotalBase: stop.subtotal,
+          costoEnvio: index === 0 ? envioTarifa : 0,
+          serviceFee: index === 0 ? serviceCost : 0,
+          propina: index === 0 ? propinaEfectiva : 0,
+          ivaEnabled: ivaConfig.ivaEnabled,
+          ivaRate: ivaConfig.ivaRate,
+        });
+        const stopTotal = stopMoney.totalCliente;
         if (index === 0) {
           firstOrderId = orderId;
           firstOrderNum = num;
@@ -391,8 +413,16 @@ export default function CheckoutPage() {
             clienteTelefono: clienteTelefono || '',
             items: stop.enrichedItems.map((i) => `${i.qty}× ${i.displayName ?? i.name}`),
             total: stopTotal,
-            subtotal: stop.subtotal,
-            ...(index === 0 ? { serviceCost } : {}),
+            totalCliente: stopMoney.totalCliente,
+            subtotal: stopMoney.subtotal,
+            subtotalBase: stopMoney.subtotalBase,
+            ivaEnabled: stopMoney.ivaEnabled,
+            ivaRate: stopMoney.ivaRate,
+            ivaAmount: stopMoney.ivaAmount,
+            subtotalConIva: stopMoney.subtotalConIva,
+            costoEnvio: stopMoney.costoEnvio,
+            serviceCost: stopMoney.serviceCost,
+            serviceFee: stopMoney.serviceFee,
             localId: stop.localId,
             codigoVerificacion: codigo,
             deliveryType: isPickup ? 'pickup' : 'delivery',
@@ -584,9 +614,16 @@ export default function CheckoutPage() {
           const orderId = `A-${baseNum}-${index}`;
           const num = `#${orderId}`;
           const codigo = generateVerificationCode();
-          const stopTotal = index === 0
-            ? stop.subtotal + envioTarifa + serviceCost + propinaEfectiva
-            : stop.subtotal;
+          const ivaConfig = resolveIvaConfig(stop.local);
+          const stopMoney = buildOrderMoney({
+            subtotalBase: stop.subtotal,
+            costoEnvio: index === 0 ? envioTarifa : 0,
+            serviceFee: index === 0 ? serviceCost : 0,
+            propina: index === 0 ? propinaEfectiva : 0,
+            ivaEnabled: ivaConfig.ivaEnabled,
+            ivaRate: ivaConfig.ivaRate,
+          });
+          const stopTotal = stopMoney.totalCliente;
           if (index === 0) {
             firstOrderIdLocal = orderId;
             firstOrderNumLocal = num;
@@ -620,8 +657,16 @@ export default function CheckoutPage() {
             clienteTelefono: clienteTelefono || '',
             items: stop.enrichedItems.map((i) => `${i.qty}× ${i.displayName ?? i.name}`),
             total: stopTotal,
-            subtotal: stop.subtotal,
-            ...(index === 0 ? { serviceCost } : {}),
+            totalCliente: stopMoney.totalCliente,
+            subtotal: stopMoney.subtotal,
+            subtotalBase: stopMoney.subtotalBase,
+            ivaEnabled: stopMoney.ivaEnabled,
+            ivaRate: stopMoney.ivaRate,
+            ivaAmount: stopMoney.ivaAmount,
+            subtotalConIva: stopMoney.subtotalConIva,
+            costoEnvio: stopMoney.costoEnvio,
+            serviceCost: stopMoney.serviceCost,
+            serviceFee: stopMoney.serviceFee,
             localId: stop.localId,
             codigoVerificacion: codigo,
             deliveryType: isPickupHere ? 'pickup' : 'delivery',
@@ -1249,6 +1294,12 @@ export default function CheckoutPage() {
                 <span>Productos ({totalCount})</span>
                 <span className="font-semibold text-gray-900">${subtotal.toFixed(2)}</span>
               </div>
+              {totalIva > 0 && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>IVA</span>
+                  <span className="font-semibold text-gray-900">${totalIva.toFixed(2)}</span>
+                </div>
+              )}
               {!isPickup && (
                 <>
                   {tarifaAjustada && (

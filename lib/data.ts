@@ -37,6 +37,7 @@ export interface TransferenciaLocal {
   cooperativa: string;
   titular?: string;
   tipoCuenta?: string;
+  qrEnabled?: boolean;
   /** URL de Firebase Storage del QR/código de pago (Fase 1). Reemplaza codigoBase64. */
   codigoUrl?: string;
   /** @deprecated Usar codigoUrl. Mantenido para compatibilidad con documentos legacy. */
@@ -69,6 +70,9 @@ export interface Local {
   minOrder?: number;
   categories: string[];
   transferencia?: TransferenciaLocal;
+  ivaEnabled?: boolean;
+  /** Tasa decimal, ej. 0.15 */
+  ivaRate?: number;
   status?: 'active' | 'suspended';
   telefono?: string;
   horarios?: HorarioItem[];

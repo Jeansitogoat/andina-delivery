@@ -27,6 +27,7 @@ type PendingTransferOrder = {
   orderId: string;
   orderNum: string;
   total: number;
+  subtotalBase: number;
   direccion: string;
   items: string[];
   createdAt: number;
@@ -43,6 +44,7 @@ import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 import { isNightMode } from '@/lib/time';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
+import { startOfDayGuayaquil } from '@/lib/guayaquil-time';
 
 type OrderStatus = 'nuevo' | 'preparando' | 'listo' | 'entregado' | 'cancelado';
 
@@ -51,6 +53,7 @@ interface Order {
   cliente: string;
   items: string[];
   total: number;
+  subtotalBase: number;
   tiempo: string;
   status: OrderStatus;
   direccion: string;
@@ -112,6 +115,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [deliveredList, setDeliveredList] = useState<Order[]>([]);
   const [deliveredNextCursor, setDeliveredNextCursor] = useState<string | null>(null);
   const [deliveredLoading, setDeliveredLoading] = useState(false);
+  const [historicalList, setHistoricalList] = useState<Order[]>([]);
+  const [historicalNextCursor, setHistoricalNextCursor] = useState<string | null>(null);
+  const [historicalLoading, setHistoricalLoading] = useState(false);
 
   const [advancingOrderId, setAdvancingOrderId] = useState<string | null>(null);
   const [retirandoOrderId, setRetirandoOrderId] = useState<string | null>(null);
@@ -125,7 +131,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {
     try {
-      if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/new-order.mp3');
+      if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/local-new-order.mp3');
       newOrderSoundRef.current.volume = 1.0;
       newOrderSoundRef.current.play().catch(() => {});
     } catch {
@@ -168,8 +174,8 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         return;
       }
       const data = await res.json() as {
-        activos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
-        pedidos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
+        activos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; subtotalBase?: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
+        pedidos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; subtotalBase?: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
         pendientesTransferencia?: PendingTransferOrder[];
         nextCursorActivos?: string | null;
         nextCursor?: string | null;
@@ -180,6 +186,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         cliente: p.clienteNombre || 'Cliente',
         items: p.items || [],
         total: p.total || 0,
+        subtotalBase: typeof p.subtotalBase === 'number' && !Number.isNaN(p.subtotalBase) ? p.subtotalBase : p.total || 0,
         tiempo: tiempoTranscurrido(p.timestamp || 0),
         status: estadoToStatus(p.estado || 'confirmado'),
         direccion: p.clienteDireccion || '—',
@@ -267,20 +274,22 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const loadEntregados = useCallback(async (cursor?: string | null) => {
     const token = await getIdToken();
     if (!token) return;
+    const desdeTs = startOfDayGuayaquil();
     const base = user?.rol === 'maestro' ? `/api/pedidos?localId=${encodeURIComponent(id)}` : '/api/pedidos';
     const sep = base.includes('?') ? '&' : '?';
-    let url = `${base}${sep}estado=entregado&limit=15`;
+    let url = `${base}${sep}estado=entregado&limit=15&desdeTs=${desdeTs}`;
     if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
     setDeliveredLoading(true);
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) return;
-      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; total: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string }>; nextCursor: string | null };
+      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; total: number; subtotalBase?: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string }>; nextCursor: string | null };
       const list: Order[] = (data.pedidos || []).map((p) => ({
         id: p.id,
         cliente: p.clienteNombre || 'Cliente',
         items: p.items || [],
         total: p.total || 0,
+        subtotalBase: typeof p.subtotalBase === 'number' && !Number.isNaN(p.subtotalBase) ? p.subtotalBase : p.total || 0,
         tiempo: tiempoTranscurrido(p.timestamp || 0),
         status: 'entregado' as OrderStatus,
         direccion: p.clienteDireccion || '—',
@@ -302,8 +311,49 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     }
   }, [id, user?.rol]);
 
+  const loadHistoricoAnterior = useCallback(async (cursor?: string | null) => {
+    const token = await getIdToken();
+    if (!token) return;
+    const desdeTs = startOfDayGuayaquil();
+    let url = user?.rol === 'maestro'
+      ? `/api/pedidos/historico-lite?localId=${encodeURIComponent(id)}&limit=15&antesDeTs=${desdeTs}`
+      : `/api/pedidos/historico-lite?limit=15&antesDeTs=${desdeTs}`;
+    if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+    setHistoricalLoading(true);
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; totalCliente?: number; subtotalBase?: number; timestamp: number; clienteDireccion: string }>; nextCursor: string | null };
+      const list: Order[] = (data.pedidos || []).map((p) => ({
+        id: p.id,
+        cliente: p.clienteNombre || 'Cliente',
+        items: p.items || [],
+        total: p.totalCliente || 0,
+        subtotalBase: typeof p.subtotalBase === 'number' && !Number.isNaN(p.subtotalBase) ? p.subtotalBase : 0,
+        tiempo: tiempoTranscurrido(p.timestamp || 0),
+        status: 'entregado' as OrderStatus,
+        direccion: p.clienteDireccion || '—',
+        estadoFirestore: 'entregado' as EstadoPedido,
+        batchId: null,
+        batchLeaderLocalId: null,
+        deliveryType: 'delivery',
+      }));
+      if (cursor) setHistoricalList((prev) => [...prev, ...list]);
+      else setHistoricalList(list);
+      setHistoricalNextCursor(data.nextCursor ?? null);
+    } catch {
+      setHistoricalNextCursor(null);
+    } finally {
+      setHistoricalLoading(false);
+    }
+  }, [id, user?.rol]);
+
   useEffect(() => {
     if (!user || (user.rol !== 'local' && user.rol !== 'maestro') || !id) return;
+    setDeliveredList([]);
+    setDeliveredNextCursor(null);
+    setHistoricalList([]);
+    setHistoricalNextCursor(null);
     loadEntregados();
   }, [user, id, loadEntregados]);
 
@@ -366,7 +416,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
 
   const activeOrders = orders.filter((o) => o.status !== 'entregado' && o.status !== 'cancelado');
   const delivered = deliveredList;
-  const todayEarnings = deliveredList.reduce((s, o) => s + o.total, 0);
+  const todayEarnings = deliveredList.reduce((s, o) => s + o.subtotalBase, 0);
 
   const tienePendientesNocturnos = isNightMode() && activeOrders.length > 0;
   const idsPendientesNocturnos = tienePendientesNocturnos
@@ -739,7 +789,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
                       <span className="font-bold text-gray-900 text-sm">{order.orderNum}</span>
-                      <p className="text-xs text-gray-500 mt-0.5">${order.total.toFixed(2)} · {formatDireccionCorta(order.direccion)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Venta ${order.subtotalBase.toFixed(2)} · {formatDireccionCorta(order.direccion)}</p>
                     </div>
                     <LoadingButton
                       type="button"
@@ -930,7 +980,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                 </div>
                                 <p className="text-sm text-gray-500 mt-1.5">{order.cliente} · {order.tiempo}</p>
                               </div>
-                              <span className="font-black text-rojo-andino text-lg flex-shrink-0">${order.total.toFixed(2)}</span>
+                              <span className="font-black text-rojo-andino text-lg flex-shrink-0">${order.subtotalBase.toFixed(2)}</span>
                             </div>
                             <ul className="text-sm text-gray-600 mb-4 space-y-1.5">
                               {order.items.map((item) => (
@@ -1038,7 +1088,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             <div className="pt-6 border-t border-gray-200">
               <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                Entregados
+                Entregados de hoy
                 <span className="text-gray-400 font-normal text-xs">
                   {deliveredLoading && delivered.length === 0 ? '(cargando...)' : `(${deliveredNextCursor ? `${delivered.length}+` : delivered.length})`}
                 </span>
@@ -1052,7 +1102,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                       <div key={order.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between shadow-sm hover:border-gray-200 transition-colors">
                         <div>
                           <span className="font-semibold text-gray-900">{order.id}</span>
-                          <p className="text-sm text-gray-500 mt-0.5">{order.cliente} · ${order.total.toFixed(2)}</p>
+                                  <p className="text-sm text-gray-500 mt-0.5">{order.cliente} · ${order.subtotalBase.toFixed(2)}</p>
                         </div>
                         <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0">
                           <CheckCircle className="w-4 h-4 text-green-600" />
@@ -1074,6 +1124,49 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               )}
             </div>
           )}
+
+          <div className="pt-6 border-t border-gray-200">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3 className="text-sm font-bold text-gray-700">Historial anterior</h3>
+              {historicalList.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => loadHistoricoAnterior()}
+                  disabled={historicalLoading}
+                  className="text-sm font-semibold text-rojo-andino hover:underline disabled:opacity-60"
+                >
+                  {historicalLoading ? 'Cargando...' : 'Ver historial anterior'}
+                </button>
+              )}
+            </div>
+            {historicalList.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  {historicalList.map((order) => (
+                    <div key={order.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between shadow-sm hover:border-gray-200 transition-colors">
+                      <div>
+                        <span className="font-semibold text-gray-900">{order.id}</span>
+                        <p className="text-sm text-gray-500 mt-0.5">{order.cliente} · ${order.subtotalBase.toFixed(2)}</p>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle className="w-4 h-4 text-gray-500" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {historicalNextCursor && (
+                  <button
+                    type="button"
+                    onClick={() => loadHistoricoAnterior(historicalNextCursor)}
+                    disabled={historicalLoading}
+                    className="mt-3 w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 disabled:opacity-60"
+                  >
+                    {historicalLoading ? 'Cargando...' : 'Ver más historial'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
 
         </div>
       </main>

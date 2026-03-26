@@ -54,6 +54,8 @@ function docToLocal(data: Record<string, unknown>, id: string): Local {
     minOrder: data.minOrder != null ? Number(data.minOrder) : undefined,
     categories: Array.isArray(data.categories) ? (data.categories as string[]) : ['Más pedidos'],
     transferencia: data.transferencia as Local['transferencia'],
+    ivaEnabled: Boolean(data.ivaEnabled),
+    ivaRate: typeof data.ivaRate === 'number' && !Number.isNaN(data.ivaRate) ? data.ivaRate : undefined,
     status: data.status as Local['status'],
     telefono: data.telefono != null ? String(data.telefono) : undefined,
     horarios,
@@ -183,7 +185,7 @@ export type { HorarioItem };
 
 export async function updateLocalInFirestore(
   localId: string,
-  updates: Partial<Pick<Local, 'name' | 'address' | 'telefono' | 'status' | 'transferencia' | 'time' | 'shipping' | 'logo' | 'cover' | 'categories' | 'ownerName' | 'ownerPhone' | 'ownerEmail' | 'lat' | 'lng'>> & { cerradoHasta?: string | null; horarios?: HorarioItem[] }
+  updates: Partial<Pick<Local, 'name' | 'address' | 'telefono' | 'status' | 'transferencia' | 'time' | 'shipping' | 'logo' | 'cover' | 'categories' | 'ownerName' | 'ownerPhone' | 'ownerEmail' | 'lat' | 'lng' | 'ivaEnabled' | 'ivaRate'>> & { cerradoHasta?: string | null; horarios?: HorarioItem[] }
 ): Promise<void> {
   // El menú vive en la subcolección productos; no actualizar el documento raíz con menu.
   const u = updates as Record<string, unknown>;
@@ -200,13 +202,20 @@ export async function updateLocalInFirestore(
   if (updates.lng !== undefined) obj.lng = updates.lng;
   if (updates.telefono !== undefined) obj.telefono = updates.telefono;
   if (updates.status !== undefined) obj.status = updates.status;
-  if (updates.transferencia !== undefined) obj.transferencia = updates.transferencia;
+  if (updates.transferencia !== undefined) {
+    // Firestore no acepta undefined dentro de objetos anidados (ej. transferencia.codigoUrl: undefined).
+    // Si viene null lo dejamos como null; si viene un objeto, quitamos claves con undefined.
+    obj.transferencia =
+      updates.transferencia === null ? null : stripUndefined(updates.transferencia as unknown as Record<string, unknown>);
+  }
   if (updates.time !== undefined) obj.time = updates.time;
   if (updates.shipping !== undefined) obj.shipping = updates.shipping;
   if (updates.logo !== undefined) obj.logo = updates.logo;
   if (updates.cover !== undefined) obj.cover = updates.cover;
   if (updates.cerradoHasta !== undefined) obj.cerradoHasta = updates.cerradoHasta || null;
   if (updates.categories !== undefined && Array.isArray(updates.categories)) obj.categories = updates.categories;
+  if (updates.ivaEnabled !== undefined) obj.ivaEnabled = updates.ivaEnabled;
+  if (updates.ivaRate !== undefined) obj.ivaRate = updates.ivaRate;
   if ((updates as { horarios?: HorarioItem[] }).horarios !== undefined) obj.horarios = (updates as { horarios?: HorarioItem[] }).horarios;
   if (updates.ownerName !== undefined) obj.ownerName = updates.ownerName;
   if (updates.ownerPhone !== undefined) obj.ownerPhone = updates.ownerPhone;

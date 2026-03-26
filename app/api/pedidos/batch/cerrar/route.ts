@@ -3,8 +3,9 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { batchCerrarPostSchema } from '@/lib/schemas/batchCerrar';
-import { calcularComision } from '@/lib/commissions';
+import { calcularComision, calcularNetoLocal } from '@/lib/commissions';
 import { applyDeliveredOrderAggregates } from '@/lib/local-stats-aggregates';
+import { getOrderMoney } from '@/lib/order-money';
 
 const CONFIG_DOC_ID = 'transferenciaAndina';
 
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
             {
               localId,
               pedidoId: id,
-              total: Number(data.total ?? 0),
+              subtotalBase: getOrderMoney(data).subtotalBase,
               timestamp: Number(
                 (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.()
                   ?? (data.timestamp as number | undefined)
@@ -104,16 +105,26 @@ export async function POST(request: Request) {
         const commissionStartTime = commissionStartDate ? new Date(commissionStartDate).getTime() : 0;
         if (commissionStartTime > 0 && pedidoTimestamp < commissionStartTime) continue;
 
-        const total = (data.total as number) || 0;
-        const montoComision = calcularComision(total, data.subtotal as number | undefined);
+        const money = getOrderMoney(data);
+        const subtotalBase = money.subtotalBase;
+        const montoComision = calcularComision(money.totalCliente, subtotalBase);
+        const netoLocal = calcularNetoLocal(subtotalBase, montoComision);
         // Idempotencia: docId = pedidoId evita comisiones duplicadas en reenvíos
         const comisionRef = db.collection('comisiones').doc(id);
         transaction.set(comisionRef, {
           localId,
           pedidoId: id,
           riderId,
-          totalPedido: total,
+          totalPedido: money.totalCliente,
+          totalCliente: money.totalCliente,
+          subtotalBase,
+          ivaAmount: money.ivaAmount,
+          subtotalConIva: money.subtotalConIva,
+          costoEnvio: money.costoEnvio,
+          serviceFee: money.serviceFee,
           montoComision,
+          commissionRate: 0.08,
+          netoLocal,
           fecha: FieldValue.serverTimestamp(),
           pagado: false,
         }, { merge: false });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import type { CarreraRider, EstadoCarrera } from '@/lib/types';
+import { getOrderMoney } from '@/lib/order-money';
 
 function mapEstado(estadoPedido: string): EstadoCarrera {
   if (estadoPedido === 'en_camino') return 'en_camino';
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
 
     const allCarreras: CarreraRider[] = docs.map((d) => {
       const data = d.data();
+      const money = getOrderMoney(data);
       return {
         id: d.id,
         pedidoId: d.id,
@@ -69,7 +71,8 @@ export async function GET(request: Request) {
         clienteLat: typeof data.clienteLat === 'number' ? data.clienteLat : null,
         clienteLng: typeof data.clienteLng === 'number' ? data.clienteLng : null,
         clienteTelefono: (data.clienteTelefono as string) || '',
-        total: (data.total as number) || 0,
+        total: money.totalCliente,
+        totalCliente: money.totalCliente,
         propina: (data.propina as number) || 0,
         codigoVerificacion: (data.codigoVerificacion as string) || '',
         estado: mapEstado((data.estado as string) || 'asignado'),
@@ -80,7 +83,7 @@ export async function GET(request: Request) {
         batchIndex: (data.batchIndex as number) ?? null,
         timestamp: (data.timestamp as number) ?? 0,
         paymentMethod: (data.paymentMethod as 'efectivo' | 'transferencia') || undefined,
-        costoEnvio: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost as number) ? (data.serviceCost as number) : undefined,
+        costoEnvio: money.costoEnvio || undefined,
       };
     });
 

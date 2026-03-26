@@ -69,12 +69,15 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   const [cooperativa, setCooperativa] = useState('');
   const [titular, setTitular] = useState('');
   const [tipoCuenta, setTipoCuenta] = useState('');
+  const [qrEnabled, setQrEnabled] = useState(false);
   const [codigoUrl, setCodigoUrl] = useState('');
   // Legacy: mantenemos codigoBase64 solo para mostrar datos existentes cargados de Firestore
   const [codigoBase64Legacy, setCodigoBase64Legacy] = useState('');
   const [codigoMimeType, setCodigoMimeType] = useState('');
   const [codigoFileName, setCodigoFileName] = useState('');
   const [codigoUploading, setCodigoUploading] = useState(false);
+  const [ivaEnabled, setIvaEnabled] = useState(false);
+  const [ivaRate, setIvaRate] = useState('15');
 
   const [passwordActual, setPasswordActual] = useState('');
   const [passwordNueva, setPasswordNueva] = useState('');
@@ -104,6 +107,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
             setCooperativa(loc.transferencia.cooperativa ?? '');
             setTitular(loc.transferencia.titular ?? '');
             setTipoCuenta(loc.transferencia.tipoCuenta ?? '');
+            setQrEnabled(loc.transferencia.qrEnabled === true);
             // Fase 1: preferir codigoUrl; fallback a codigoBase64 legacy
             if (loc.transferencia.codigoUrl) {
               setCodigoUrl(loc.transferencia.codigoUrl);
@@ -113,6 +117,10 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               setCodigoMimeType(loc.transferencia.codigoMimeType ?? '');
               setCodigoFileName('Código subido (legacy)');
             }
+          }
+          setIvaEnabled(loc.ivaEnabled === true);
+          if (typeof loc.ivaRate === 'number' && !Number.isNaN(loc.ivaRate) && loc.ivaRate > 0) {
+            setIvaRate(String(loc.ivaRate > 1 ? loc.ivaRate : loc.ivaRate * 100));
           }
         }
       })
@@ -204,16 +212,17 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     if (!id) return;
 
     const transferenciaPayload =
-      numeroCuenta.trim() || cooperativa.trim()
+      numeroCuenta.trim() || cooperativa.trim() || qrEnabled
         ? {
             numeroCuenta: numeroCuenta.trim(),
             cooperativa: cooperativa.trim(),
             titular: titular.trim() || undefined,
             tipoCuenta: tipoCuenta.trim() || undefined,
+            qrEnabled,
             // Fase 1: preferir codigoUrl (Storage); mantener codigoBase64 legacy si no hay URL
-            codigoUrl: codigoUrl || undefined,
-            codigoBase64: !codigoUrl ? (codigoBase64Legacy || undefined) : undefined,
-            codigoMimeType: codigoMimeType || undefined,
+            codigoUrl: qrEnabled ? (codigoUrl || undefined) : undefined,
+            codigoBase64: qrEnabled && !codigoUrl ? (codigoBase64Legacy || undefined) : undefined,
+            codigoMimeType: qrEnabled ? (codigoMimeType || undefined) : undefined,
           }
         : null;
 
@@ -244,6 +253,8 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
           cover: coverPayload,
           horarios,
           transferencia: transferenciaPayload,
+          ivaEnabled,
+          ivaRate: ivaEnabled ? Number(ivaRate) || 15 : 0,
         }),
       });
       if (!res.ok) {
@@ -536,6 +547,21 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               Los clientes verán estos datos al elegir transferencia en el checkout.
             </p>
             <div className="px-4 pb-4 space-y-3">
+              <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Habilitar cobro con Deuna / QR</p>
+                  <p className="text-xs text-gray-500">Si lo apagas, se oculta el archivo QR y no se exigirá.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={qrEnabled}
+                  onClick={() => setQrEnabled((prev) => !prev)}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${qrEnabled ? 'bg-rojo-andino' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${qrEnabled ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Cooperativa o banco</label>
                 <input
@@ -576,32 +602,45 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Código QR / Deuna (foto o PDF)</label>
-                <p className="text-xs text-gray-500 mb-2">Imagen o PDF para que el cliente escanee o vea al pagar.</p>
-                <input
-                  ref={codigoRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  className="hidden"
-                  onChange={handleCodigoChange}
-                />
-                <button
-                  type="button"
-                  onClick={() => codigoRef.current?.click()}
-                  disabled={codigoUploading}
-                  className="w-full flex items-center justify-center gap-2 py-4 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-dorado-oro/50 hover:bg-amber-50/30 transition-colors text-sm font-semibold text-gray-700 disabled:opacity-60"
-                >
-                  {codigoUploading ? <Loader2 className="w-5 h-5 animate-spin text-gray-400" /> : <Upload className="w-5 h-5 text-gray-500" />}
-                  {codigoUploading ? 'Subiendo...' : (codigoFileName || 'Subir imagen o PDF del código')}
-                </button>
-                {(codigoUrl || codigoBase64Legacy) && (
-                  <div className="mt-2 flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
-                    {codigoUrl ? (
-                      codigoMimeType?.startsWith('image/') ? (
+              {qrEnabled && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Código QR / Deuna (foto o PDF)</label>
+                  <p className="text-xs text-gray-500 mb-2">Imagen o PDF para que el cliente escanee o vea al pagar.</p>
+                  <input
+                    ref={codigoRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={handleCodigoChange}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => codigoRef.current?.click()}
+                    disabled={codigoUploading}
+                    className="w-full flex items-center justify-center gap-2 py-4 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-dorado-oro/50 hover:bg-amber-50/30 transition-colors text-sm font-semibold text-gray-700 disabled:opacity-60"
+                  >
+                    {codigoUploading ? <Loader2 className="w-5 h-5 animate-spin text-gray-400" /> : <Upload className="w-5 h-5 text-gray-500" />}
+                    {codigoUploading ? 'Subiendo...' : (codigoFileName || 'Subir imagen o PDF del código')}
+                  </button>
+                  {(codigoUrl || codigoBase64Legacy) && (
+                    <div className="mt-2 flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                      {codigoUrl ? (
+                        codigoMimeType?.startsWith('image/') ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={codigoUrl}
+                            alt="Código"
+                            className="w-14 h-14 rounded-lg object-cover border border-gray-200"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-lg bg-red-100 flex items-center justify-center">
+                            <FileText className="w-7 h-7 text-red-600" />
+                          </div>
+                        )
+                      ) : codigoMimeType?.startsWith('image/') && getSafeImageSrc(codigoBase64Legacy) ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
-                          src={codigoUrl}
+                          src={getSafeImageSrc(codigoBase64Legacy)}
                           alt="Código"
                           className="w-14 h-14 rounded-lg object-cover border border-gray-200"
                         />
@@ -609,41 +648,67 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                         <div className="w-14 h-14 rounded-lg bg-red-100 flex items-center justify-center">
                           <FileText className="w-7 h-7 text-red-600" />
                         </div>
-                      )
-                    ) : codigoMimeType?.startsWith('image/') && getSafeImageSrc(codigoBase64Legacy) ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={getSafeImageSrc(codigoBase64Legacy)}
-                        alt="Código"
-                        className="w-14 h-14 rounded-lg object-cover border border-gray-200"
-                      />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-red-100 flex items-center justify-center">
-                        <FileText className="w-7 h-7 text-red-600" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{codigoFileName}</p>
+                        <p className="text-xs text-gray-500">
+                          {codigoMimeType?.startsWith('image/') ? 'Imagen' : 'PDF'}
+                          {codigoUrl && <span className="ml-1 text-green-600">· En Storage</span>}
+                        </p>
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{codigoFileName}</p>
-                      <p className="text-xs text-gray-500">
-                        {codigoMimeType?.startsWith('image/') ? 'Imagen' : 'PDF'}
-                        {codigoUrl && <span className="ml-1 text-green-600">· En Storage</span>}
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCodigoUrl('');
+                          setCodigoBase64Legacy('');
+                          setCodigoMimeType('');
+                          setCodigoFileName('');
+                        }}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700"
+                      >
+                        Quitar
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCodigoUrl('');
-                        setCodigoBase64Legacy('');
-                        setCodigoMimeType('');
-                        setCodigoFileName('');
-                      }}
-                      className="text-xs font-semibold text-red-600 hover:text-red-700"
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 p-4 pb-2">
+              <FileText className="w-4 h-4 text-rojo-andino" />
+              <span className="font-semibold text-gray-900">IVA del local</span>
+            </div>
+            <div className="px-4 pb-4 space-y-3">
+              <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Cobrar IVA al cliente</p>
+                  <p className="text-xs text-gray-500">La comisión seguirá siendo solo sobre el subtotal base.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={ivaEnabled}
+                  onClick={() => setIvaEnabled((prev) => !prev)}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${ivaEnabled ? 'bg-rojo-andino' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${ivaEnabled ? 'translate-x-5' : ''}`} />
+                </button>
               </div>
+              {ivaEnabled && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tasa de IVA (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={ivaRate}
+                    onChange={(e) => setIvaRate(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                  />
+                </div>
+              )}
             </div>
           </section>
 

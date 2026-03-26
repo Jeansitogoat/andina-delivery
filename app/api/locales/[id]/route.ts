@@ -114,6 +114,8 @@ export async function PATCH(
     const categories = bodyData.categories;
     const lat = bodyData.lat;
     const lng = bodyData.lng;
+    const ivaEnabled = bodyData.ivaEnabled;
+    const ivaRate = bodyData.ivaRate;
     const isFeatured = bodyData.isFeatured;
 
     // El rol 'local' no puede auto-asignarse como destacado ni cambiar su estado
@@ -144,23 +146,41 @@ export async function PATCH(
     if (categories !== undefined && Array.isArray(categories)) updates.categories = categories;
     if (lat !== undefined) updates.lat = lat;
     if (lng !== undefined) updates.lng = lng;
+    if (ivaEnabled !== undefined) updates.ivaEnabled = ivaEnabled;
+    if (ivaRate !== undefined) updates.ivaRate = ivaRate > 1 ? ivaRate / 100 : ivaRate;
     if (isFeatured !== undefined) (updates as any).isFeatured = Boolean(isFeatured);
     if (transferencia !== undefined) {
-      updates.transferencia =
-        transferencia === null
-          ? undefined
-          : {
-              numeroCuenta: transferencia.numeroCuenta ?? '',
-              cooperativa: transferencia.cooperativa ?? '',
-              titular: transferencia.titular,
-              tipoCuenta: transferencia.tipoCuenta,
-              // Fase 1: guardar URL de Storage preferentemente; legacy Base64 para compatibilidad
-              codigoUrl: (transferencia as { codigoUrl?: string }).codigoUrl,
-              codigoBase64: !(transferencia as { codigoUrl?: string }).codigoUrl
-                ? transferencia.codigoBase64
-                : undefined,
-              codigoMimeType: transferencia.codigoMimeType,
-            };
+      if (transferencia === null) {
+        updates.transferencia = undefined;
+      } else {
+        const qrEnabledFinal = transferencia.qrEnabled ?? false;
+
+        // Construimos el objeto sin campos con `undefined`.
+        // Esto evita que Firestore reviente con: `Cannot use undefined as a Firestore value`.
+        const transferenciaPayload: any = {
+          numeroCuenta: transferencia.numeroCuenta ?? '',
+          cooperativa: transferencia.cooperativa ?? '',
+          titular: transferencia.titular,
+          tipoCuenta: transferencia.tipoCuenta,
+          qrEnabled: qrEnabledFinal,
+        };
+
+        if (qrEnabledFinal) {
+          const codigoUrlMaybe = (transferencia as { codigoUrl?: string }).codigoUrl;
+          if (codigoUrlMaybe !== undefined) transferenciaPayload.codigoUrl = codigoUrlMaybe;
+
+          // Fase 1: si no hay URL, usamos legacy Base64 (si viene).
+          if (codigoUrlMaybe === undefined && transferencia.codigoBase64 !== undefined) {
+            transferenciaPayload.codigoBase64 = transferencia.codigoBase64;
+          }
+
+          if (transferencia.codigoMimeType !== undefined) {
+            transferenciaPayload.codigoMimeType = transferencia.codigoMimeType;
+          }
+        }
+
+        updates.transferencia = transferenciaPayload;
+      }
     }
     if (Object.keys(updates).length > 0) {
       await updateLocalInFirestore(id, updates);

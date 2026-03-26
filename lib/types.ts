@@ -23,6 +23,17 @@ export interface PedidoCentral {
   clienteTelefono: string;
   items: string[];
   total: number;
+  /** Total final cobrado al cliente (compat: suele coincidir con total) */
+  totalCliente?: number;
+  /** Subtotal legacy/base de productos sin IVA */
+  subtotal?: number;
+  /** Subtotal base de productos, sin IVA ni envío */
+  subtotalBase?: number;
+  ivaEnabled?: boolean;
+  /** Tasa de IVA como decimal (ej. 0.15) */
+  ivaRate?: number;
+  ivaAmount?: number;
+  subtotalConIva?: number;
   estado: EstadoPedido;
   riderId: string | null;
   hora: string;
@@ -47,8 +58,12 @@ export interface PedidoCentral {
   deliveryType?: 'delivery' | 'pickup';
   /** Método de pago para mensaje rider y cobro */
   paymentMethod?: 'efectivo' | 'transferencia';
-  /** Costo de envío (para transferencia: cobrar solo envío) */
+  /** Compat legacy: hoy se expone igual que costoEnvio para flujos rider */
   serviceCost?: number;
+  /** Costo de envío/carrera del rider */
+  costoEnvio?: number;
+  /** Cargo de servicio que paga el cliente (no entra en comisión) */
+  serviceFee?: number;
   /** Para "Volver a pedir": estructura del carrito al momento del pedido (opcional) */
   itemsCart?: {
     localId: string;
@@ -109,5 +124,7 @@ export interface CarreraRider {
   paymentMethod?: 'efectivo' | 'transferencia';
   /** Costo de envío (cobrar solo envío si transferencia) */
   costoEnvio?: number;
+  /** Total final cobrado al cliente */
+  totalCliente?: number;
 }
 

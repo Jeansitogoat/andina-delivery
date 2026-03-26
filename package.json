@@ -9,6 +9,7 @@
     "lint": "next lint",
     "seed": "tsx scripts/seed-demo-data.ts",
     "seed:clear": "tsx scripts/clear-demo-data.ts",
+    "reset:test-data": "tsx scripts/reset-test-data-global.ts",
     "migrate:locales": "tsx scripts/migrate-locales-to-firestore.ts",
     "geocode:locales": "tsx scripts/geocode-locales-sin-coords.ts"
   },

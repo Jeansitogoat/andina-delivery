@@ -161,7 +161,7 @@ export default function PanelStatsIdPage({ params }: { params: Promise<{ id: str
               </div>
             ) : (
               [
-                { icon: DollarSign, label: 'Ingresos', value: `$${totalIngresos.toFixed(2)}`, color: 'text-green-600' },
+                { icon: DollarSign, label: 'Ventas', value: `$${totalIngresos.toFixed(2)}`, color: 'text-green-600' },
                 { icon: ShoppingBag, label: 'Pedidos', value: String(totalPedidos), color: 'text-rojo-andino' },
                 { icon: Users, label: 'Clientes', value: String(clientesUnicos), color: 'text-blue-600' },
               ].map(({ icon: Icon, label, value, color }) => (
@@ -178,7 +178,7 @@ export default function PanelStatsIdPage({ params }: { params: Promise<{ id: str
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
             <h2 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
               <Percent className="w-4 h-4 text-amber-600" />
-              Comisión Andina (8% + 2% coste servicio)
+              Comisión Andina (8% sobre subtotal)
             </h2>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-xl p-3 border border-amber-100">
@@ -195,7 +195,7 @@ export default function PanelStatsIdPage({ params }: { params: Promise<{ id: str
               </div>
             </div>
             <p className="text-xs text-gray-400 mt-2">
-              Se calcula al entregar cada pedido (8% local). El cliente paga el 2% como coste de servicio.
+              Se calcula solo sobre el subtotal de productos. Envío, IVA y cargos del cliente no entran en esta comisión.
             </p>
             <div className="mt-4 pt-3 border-t border-amber-200 space-y-3">
               <p className="text-sm font-semibold text-gray-700">Comisiones y administración</p>

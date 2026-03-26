@@ -127,7 +127,7 @@ export default function PanelCentralPage() {
   const newOrderSound = useRef<HTMLAudioElement | null>(null);
   function playNewOrderSound() {
     try {
-      if (!newOrderSound.current) newOrderSound.current = new Audio('/sounds/new-order.mp3');
+      if (!newOrderSound.current) newOrderSound.current = new Audio('/sounds/central-new-order.mp3');
       newOrderSound.current.volume = 1.0;
       newOrderSound.current.play().catch(() => {});
     } catch {

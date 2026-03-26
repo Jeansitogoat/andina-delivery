@@ -14,6 +14,7 @@ import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
+import { resolveIvaConfig } from '@/lib/order-money';
 
 type EnrichedCartItem = {
   id: string;
@@ -174,7 +175,11 @@ export default function CarritoPage() {
   const baseEnvio = km != null ? getTarifaEnvioPorDistancia(km) : tarifaMinima;
   const envioTarifa = numParadas <= 1 ? baseEnvio : baseEnvio + (numParadas - 1) * porParadaAdicional;
   const subtotal = stopsData.reduce((s, d) => s + d.subtotal, 0);
-  const total = subtotal + envioTarifa;
+  const totalIva = stopsData.reduce((sum, stop) => {
+    const iva = resolveIvaConfig(stop.local);
+    return sum + (iva.ivaEnabled ? Math.round(stop.subtotal * iva.ivaRate * 100) / 100 : 0);
+  }, 0);
+  const total = subtotal + totalIva + envioTarifa;
   const totalCount = stopsData.reduce((s, d) => s + d.enrichedItems.reduce((a, i) => a + i.qty, 0), 0);
   const allLoaded = cart.stops.length > 0 && stopsData.length === cart.stops.length && stopsData.every((d) => d.local != null);
 
@@ -362,6 +367,12 @@ export default function CarritoPage() {
               <span>Productos ({totalCount})</span>
               <span className="font-semibold text-gray-900">${subtotal.toFixed(2)}</span>
             </div>
+            {totalIva > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>IVA</span>
+                <span className="font-semibold text-gray-900">${totalIva.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm text-gray-600">
               <span>{km == null ? 'Costo de envío (desde)' : 'Costo de envío'}</span>
               <span className="font-semibold text-rojo-andino">${envioTarifa.toFixed(2)}</span>

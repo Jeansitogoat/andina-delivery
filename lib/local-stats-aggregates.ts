@@ -3,7 +3,7 @@ import { FieldValue, type Firestore, type Transaction } from 'firebase-admin/fir
 type AggregateInput = {
   localId: string;
   pedidoId: string;
-  total: number;
+  subtotalBase: number;
   timestamp: number;
   items: string[];
 };
@@ -71,7 +71,7 @@ export async function applyDeliveredOrderAggregates(
   input: AggregateInput,
   tx?: Transaction
 ): Promise<void> {
-  const safeTotal = Number.isFinite(input.total) ? Number(input.total) : 0;
+  const safeSubtotal = Number.isFinite(input.subtotalBase) ? Number(input.subtotalBase) : 0;
   const ts = Number.isFinite(input.timestamp) && input.timestamp > 0 ? input.timestamp : Date.now();
   const dayKey = formatDayKey(ts);
   const weekKey = formatWeekKey(ts);
@@ -81,7 +81,7 @@ export async function applyDeliveredOrderAggregates(
   const localesRef = db.collection('locales').doc(input.localId);
   const rootPayload = {
     statsPedidosEntregados: FieldValue.increment(1),
-    statsIngresosEntregados: FieldValue.increment(safeTotal),
+    statsIngresosEntregados: FieldValue.increment(safeSubtotal),
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (tx) tx.set(localesRef, rootPayload, { merge: true });
@@ -92,7 +92,7 @@ export async function applyDeliveredOrderAggregates(
     ['locales', input.localId, 'stats', 'resumen'],
     {
       pedidosEntregados: FieldValue.increment(1),
-      ingresosEntregados: FieldValue.increment(safeTotal),
+      ingresosEntregados: FieldValue.increment(safeSubtotal),
       updatedAt: FieldValue.serverTimestamp(),
     },
     pendingWrites,
@@ -103,7 +103,7 @@ export async function applyDeliveredOrderAggregates(
     ['locales', input.localId, 'stats_daily', dayKey],
     {
       pedidosEntregados: FieldValue.increment(1),
-      ingresosEntregados: FieldValue.increment(safeTotal),
+      ingresosEntregados: FieldValue.increment(safeSubtotal),
       updatedAt: FieldValue.serverTimestamp(),
     },
     pendingWrites,
@@ -114,7 +114,7 @@ export async function applyDeliveredOrderAggregates(
     ['locales', input.localId, 'stats_weekly', weekKey],
     {
       pedidosEntregados: FieldValue.increment(1),
-      ingresosEntregados: FieldValue.increment(safeTotal),
+      ingresosEntregados: FieldValue.increment(safeSubtotal),
       updatedAt: FieldValue.serverTimestamp(),
     },
     pendingWrites,
@@ -125,7 +125,7 @@ export async function applyDeliveredOrderAggregates(
     ['locales', input.localId, 'stats_monthly', monthKey],
     {
       pedidosEntregados: FieldValue.increment(1),
-      ingresosEntregados: FieldValue.increment(safeTotal),
+      ingresosEntregados: FieldValue.increment(safeSubtotal),
       updatedAt: FieldValue.serverTimestamp(),
     },
     pendingWrites,

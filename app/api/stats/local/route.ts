@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
+import { dayKeyGuayaquil, startOfDayGuayaquil } from '@/lib/guayaquil-time';
 
 /** GET /api/stats/local?localId=xxx → estadísticas del local (pedidos, ingresos, clientes) */
 export async function GET(request: Request) {
@@ -24,18 +25,15 @@ export async function GET(request: Request) {
 
     const db = getAdminFirestore();
     const now = Date.now();
-    const hoyInicio = new Date();
-    hoyInicio.setHours(0, 0, 0, 0);
-    const hoyTs = hoyInicio.getTime();
+    const hoyTs = startOfDayGuayaquil(now);
+    const hoyInicio = new Date(hoyTs);
     const semanaAtras = now - 7 * 24 * 60 * 60 * 1000;
     const mesAtras = now - 30 * 24 * 60 * 60 * 1000;
     const dayMs = 24 * 60 * 60 * 1000;
 
     const dayKeys: string[] = [];
     for (let i = 0; i < 30; i++) {
-      const d = new Date(now - i * dayMs);
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-      dayKeys.push(key);
+      dayKeys.push(dayKeyGuayaquil(now - i * dayMs));
     }
     const dayRefs = dayKeys.map((key) => db.collection('locales').doc(localId).collection('stats_daily').doc(key));
     const daySnaps = await db.getAll(...dayRefs);
@@ -69,8 +67,7 @@ export async function GET(request: Request) {
 
     for (let i = 0; i < 30; i++) {
       const ts = now - i * dayMs;
-      const d = new Date(ts);
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      const key = dayKeyGuayaquil(ts);
       const row = dailyMap.get(key) ?? { pedidos: 0, ingresos: 0 };
       if (ts >= hoyTs) {
         hoyPedidos += row.pedidos;

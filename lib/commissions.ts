@@ -9,12 +9,18 @@
  *    que reenvíos duplicados no generen dobles cobros.
  */
 
-/** Calcula el monto de comisión en centavos (enteros) y devuelve el valor en pesos/dólares. */
-export function calcularComision(total: number, subtotal?: number | null): number {
-  const base = typeof subtotal === 'number' && !Number.isNaN(subtotal) && subtotal > 0
-    ? subtotal
+import { roundMoney } from '@/lib/order-money';
+
+/** Calcula el monto de comisión sobre subtotalBase (8%). */
+export function calcularComision(total: number, subtotalBase?: number | null): number {
+  const base = typeof subtotalBase === 'number' && !Number.isNaN(subtotalBase) && subtotalBase > 0
+    ? subtotalBase
     : total;
   // Operación en centavos para evitar drift de float
   const centavos = Math.round(base * 100) * 8; // base * 8%  expresado en centavos×100
-  return centavos / 10000;                      // volver a la unidad monetaria
+  return roundMoney(centavos / 10000);          // volver a la unidad monetaria
+}
+
+export function calcularNetoLocal(subtotalBase: number, montoComision: number): number {
+  return roundMoney(subtotalBase - montoComision);
 }

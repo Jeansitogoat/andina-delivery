@@ -14,6 +14,7 @@ const transferenciaSchema = z.object({
   cooperativa: z.string().optional(),
   titular: z.string().optional(),
   tipoCuenta: z.string().optional(),
+  qrEnabled: z.boolean().optional(),
   /** URL de Firebase Storage del QR/código de pago. Reemplaza codigoBase64. */
   codigoUrl: z.string().url('URL de código inválida').optional(),
   /** @deprecated Mantener para compatibilidad con documentos legacy. Usar codigoUrl. */
@@ -39,6 +40,8 @@ export const localPatchSchema = z
     lat: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
     lng: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
     transferencia: transferenciaSchema.optional(),
+    ivaEnabled: z.boolean().optional(),
+    ivaRate: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
     isFeatured: z.boolean().optional(),
   });
 

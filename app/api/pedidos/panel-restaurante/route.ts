@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import type { EstadoPedido } from '@/lib/types';
+import { getOrderMoney } from '@/lib/order-money';
 
 const ESTADOS_ACTIVOS: EstadoPedido[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
 const DEFAULT_ACTIVE_LIMIT = 20;
@@ -14,6 +15,7 @@ type ActiveOrder = {
   clienteNombre: string;
   items: string[];
   total: number;
+  subtotalBase: number;
   timestamp: number;
   estado: EstadoPedido;
   clienteDireccion: string;
@@ -28,6 +30,7 @@ type PendingTransferOrder = {
   orderId: string;
   orderNum: string;
   total: number;
+  subtotalBase: number;
   direccion: string;
   items: string[];
   createdAt: number;
@@ -37,11 +40,13 @@ type PendingTransferOrder = {
 };
 
 function toActiveOrder(id: string, data: Record<string, unknown>): ActiveOrder {
+  const money = getOrderMoney(data);
   return {
     id,
     clienteNombre: (data.clienteNombre as string) || 'Cliente',
     items: Array.isArray(data.items) ? (data.items as string[]) : [],
-    total: Number(data.total ?? 0),
+    total: money.totalCliente,
+    subtotalBase: money.subtotalBase,
     timestamp: Number(data.timestamp ?? 0),
     estado: ((data.estado as EstadoPedido) || 'confirmado'),
     clienteDireccion: (data.clienteDireccion as string) || '—',
@@ -54,10 +59,12 @@ function toActiveOrder(id: string, data: Record<string, unknown>): ActiveOrder {
 }
 
 function toPendingTransfer(id: string, data: Record<string, unknown>): PendingTransferOrder {
+  const money = getOrderMoney(data);
   return {
     orderId: id,
     orderNum: `#${id}`,
-    total: Number(data.total ?? 0),
+    total: money.totalCliente,
+    subtotalBase: money.subtotalBase,
     direccion: (data.clienteDireccion as string) || '—',
     items: Array.isArray(data.items) ? (data.items as string[]) : [],
     createdAt: Number(data.timestamp ?? 0),
