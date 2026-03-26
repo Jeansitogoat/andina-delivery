@@ -1,6 +1,7 @@
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+import { getApp, initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import {
+  getFirestore,
   initializeFirestore,
   memoryLocalCache,
   persistentLocalCache,
@@ -21,6 +22,14 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 } as const;
 
+const isDev = process.env.NODE_ENV === 'development';
+
+function isFailedPrecondition(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  const msg = e instanceof Error ? e.message : String(e);
+  return code === 'failed-precondition' || /failed-precondition/i.test(msg);
+}
+
 let _app: FirebaseApp | null = null;
 let _auth: Auth | null = null;
 let _db: Firestore | null = null;
@@ -28,11 +37,7 @@ let _storage: FirebaseStorage | null = null;
 
 export function getFirebaseApp(): FirebaseApp {
   if (_app) return _app;
-  if (typeof window === 'undefined') {
-    _app = getApps()[0] ?? initializeApp(firebaseConfig);
-    return _app;
-  }
-  _app = getApps()[0] ?? initializeApp(firebaseConfig);
+  _app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   return _app;
 }
 
@@ -45,17 +50,36 @@ export function getFirebaseAuth(): Auth {
 export function getFirestoreDb(): Firestore {
   if (_db) return _db;
   const app = getFirebaseApp();
-  if (typeof window !== 'undefined') {
+
+  if (typeof window === 'undefined') {
+    _db = initializeFirestore(app, {
+      localCache: memoryLocalCache(),
+    });
+    return _db;
+  }
+
+  try {
     _db = initializeFirestore(app, {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
     });
-  } else {
-    _db = initializeFirestore(app, {
-      localCache: memoryLocalCache(),
-    });
+  } catch (e) {
+    if (isDev && isFailedPrecondition(e)) {
+      console.warn(
+        '[Firestore] Persistencia IndexedDB no disponible (p. ej. varias pestañas); usando caché en memoria.',
+        e
+      );
+    }
+    try {
+      _db = initializeFirestore(app, {
+        localCache: memoryLocalCache(),
+      });
+    } catch {
+      _db = getFirestore(app);
+    }
   }
+
   return _db;
 }
 
