@@ -106,7 +106,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [cancelLoading, setCancelLoading] = useState(false);
   const [ocupadoSaving, setOcupadoSaving] = useState(false);
   const [ocupadoToast, setOcupadoToast] = useState<string | null>(null);
-  /** Entregados cargados bajo demanda (paginado, 4 por página) */
+  /** Entregados cargados bajo demanda (paginado, 15 por página) */
   const [deliveredList, setDeliveredList] = useState<Order[]>([]);
   const [deliveredNextCursor, setDeliveredNextCursor] = useState<string | null>(null);
   const [deliveredLoading, setDeliveredLoading] = useState(false);
@@ -227,7 +227,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     if (!token) return;
     const base = user?.rol === 'maestro' ? `/api/pedidos?localId=${encodeURIComponent(id)}` : '/api/pedidos';
     const sep = base.includes('?') ? '&' : '?';
-    let url = `${base}${sep}estado=entregado&limit=4`;
+    let url = `${base}${sep}estado=entregado&limit=15`;
     if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
     setDeliveredLoading(true);
     try {

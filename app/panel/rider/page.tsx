@@ -165,7 +165,7 @@ export default function PanelRiderPage() {
     }
   }, [user, loading, router]);
 
-  /* Suscripción en tiempo real: activos (solo no entregados) + historial (últimos 20 entregados) para optimizar lecturas */
+  /* Suscripción en tiempo real: activos + historial (limit 20). Cleanup con unsub en return evita fugas y lecturas en background. */
   useEffect(() => {
     if (typeof window === 'undefined' || !user?.uid || (user.rol !== 'rider' && user.rol !== 'maestro')) return;
     const db = getFirestoreDb();

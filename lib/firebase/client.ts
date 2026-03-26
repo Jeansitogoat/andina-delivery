@@ -1,6 +1,12 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 // Configuración de Firebase para AndinaApp (frontend).
@@ -23,7 +29,6 @@ let _storage: FirebaseStorage | null = null;
 export function getFirebaseApp(): FirebaseApp {
   if (_app) return _app;
   if (typeof window === 'undefined') {
-    // En entorno de servidor solo necesitamos el objeto de app para SDK modular.
     _app = getApps()[0] ?? initializeApp(firebaseConfig);
     return _app;
   }
@@ -39,7 +44,18 @@ export function getFirebaseAuth(): Auth {
 
 export function getFirestoreDb(): Firestore {
   if (_db) return _db;
-  _db = getFirestore(getFirebaseApp());
+  const app = getFirebaseApp();
+  if (typeof window !== 'undefined') {
+    _db = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } else {
+    _db = initializeFirestore(app, {
+      localCache: memoryLocalCache(),
+    });
+  }
   return _db;
 }
 
@@ -48,4 +64,3 @@ export function getFirebaseStorage(): FirebaseStorage {
   _storage = getStorage(getFirebaseApp());
   return _storage;
 }
-

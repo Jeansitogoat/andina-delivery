@@ -70,6 +70,10 @@ export async function GET(
       timestamp: data.timestamp || 0,
       distancia: data.distancia || '—',
       localId: data.localId ?? null,
+      nombreLocal: typeof data.nombreLocal === 'string' ? data.nombreLocal : undefined,
+      logoLocal: typeof data.logoLocal === 'string' ? data.logoLocal : undefined,
+      fotoLocal: typeof data.fotoLocal === 'string' ? data.fotoLocal : undefined,
+      telefonoLocal: typeof data.telefonoLocal === 'string' ? data.telefonoLocal : undefined,
       codigoVerificacion: data.codigoVerificacion || '',
       propina: data.propina ?? 0,
       deliveryType: (data.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
@@ -233,7 +237,25 @@ export async function PATCH(
     if (body.comprobanteFileName !== undefined) updates.comprobanteFileName = body.comprobanteFileName;
     if (body.comprobanteMimeType !== undefined) updates.comprobanteMimeType = body.comprobanteMimeType;
 
+    const prevEstado = (data.estado as string) || 'confirmado';
+
     await ref.update(sanitizeForFirestore(updates));
+
+    if (
+      body.estado === 'entregado' &&
+      prevEstado !== 'entregado' &&
+      pedidoLocalId &&
+      typeof pedidoLocalId === 'string'
+    ) {
+      try {
+        await db.collection('locales').doc(pedidoLocalId).set(
+          { statsPedidosEntregados: FieldValue.increment(1) },
+          { merge: true }
+        );
+      } catch {
+        // no bloquear actualización del pedido
+      }
+    }
 
     // Al marcar como entregado: crear comision del 10%
     if (body.estado === 'entregado') {

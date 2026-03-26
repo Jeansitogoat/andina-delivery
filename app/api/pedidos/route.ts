@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
-import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentData, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import type { PedidoCentral } from '@/lib/types';
 import { sendFCMToRestaurantByLocalId } from '@/lib/fcm-send-server';
@@ -9,8 +9,12 @@ import { normalizeDataUrl } from '@/lib/validImageUrl';
 import { pedidoPostSchema } from '@/lib/schemas/pedido';
 
 const ESTADOS_ACTIVOS: string[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
+/** Pedidos activos en cocina: límite alto para no ocultar órdenes bajo carga. */
 const LIMIT_POLL = 50;
-const LIMIT_ENTREGADOS = 4;
+/** Historial entregados: página pequeña + cursor (ahorro de lecturas). */
+const LIMIT_ENTREGADOS = 15;
+/** Máx. docs en fallback sin índice compuesto (acotar vs 100). */
+const LIMIT_ENTREGADOS_FALLBACK = 50;
 
 function docToPedidoCentral(d: DocumentSnapshot): PedidoCentral {
   const data = d.data() || {};
@@ -48,7 +52,7 @@ function filterTransferenciaNoConfirmada(d: DocumentSnapshot): boolean {
   return true;
 }
 
-/** GET /api/pedidos?localId=xxx&soloActivos=true | estado=entregado&limit=4&cursor=xxx → pedidos del local. */
+/** GET /api/pedidos?localId=xxx&soloActivos=true | estado=entregado&limit=15&cursor=xxx → pedidos del local. */
 export async function GET(request: Request) {
   let auth: { uid: string; rol: string };
   try {
@@ -92,7 +96,12 @@ export async function GET(request: Request) {
         } catch (err) {
           const msg = (err as Error)?.message ?? '';
           if (msg.includes('index') || msg.includes('Index')) {
-            const snap = await db.collection('pedidos').where('localId', '==', userLocalId).orderBy('timestamp', 'desc').limit(100).get();
+            const snap = await db
+              .collection('pedidos')
+              .where('localId', '==', userLocalId)
+              .orderBy('timestamp', 'desc')
+              .limit(LIMIT_ENTREGADOS_FALLBACK)
+              .get();
             const filtered = snap.docs
               .filter(filterTransferenciaNoConfirmada)
               .filter((d) => (d.data().estado || '') === 'entregado');
@@ -159,7 +168,12 @@ export async function GET(request: Request) {
         } catch (err) {
           const msg = (err as Error)?.message ?? '';
           if (msg.includes('index') || msg.includes('Index')) {
-            const snap = await db.collection('pedidos').where('localId', '==', localIdTrim).orderBy('timestamp', 'desc').limit(100).get();
+            const snap = await db
+              .collection('pedidos')
+              .where('localId', '==', localIdTrim)
+              .orderBy('timestamp', 'desc')
+              .limit(LIMIT_ENTREGADOS_FALLBACK)
+              .get();
             const filtered = snap.docs
               .filter(filterTransferenciaNoConfirmada)
               .filter((d) => (d.data().estado || '') === 'entregado');
@@ -274,6 +288,10 @@ export async function POST(request: Request) {
           timestamp: data?.timestamp ?? 0,
           distancia: data?.distancia ?? '—',
           localId: data?.localId ?? localId,
+          nombreLocal: typeof data?.nombreLocal === 'string' ? data.nombreLocal : undefined,
+          logoLocal: typeof data?.logoLocal === 'string' ? data.logoLocal : undefined,
+          fotoLocal: typeof data?.fotoLocal === 'string' ? data.fotoLocal : undefined,
+          telefonoLocal: typeof data?.telefonoLocal === 'string' ? data.telefonoLocal : undefined,
           codigoVerificacion: data?.codigoVerificacion ?? '',
           propina: data?.propina ?? 0,
           batchId: data?.batchId ?? null,
@@ -329,18 +347,32 @@ export async function POST(request: Request) {
       docData.clienteLat = bodyParsed.clienteLat;
       docData.clienteLng = bodyParsed.clienteLng;
     }
-    // restauranteLat/restauranteLng: body primero, fallback a datos del local
+    // Una sola lectura de locales: coords (fallback) + snapshot denormalizado para historial
+    let localData: DocumentData | undefined;
+    if (localId) {
+      const localSnap = await db.collection('locales').doc(localId).get();
+      localData = localSnap.data();
+      if (localData) {
+        docData.nombreLocal =
+          typeof localData.name === 'string' && localData.name.trim()
+            ? localData.name.trim()
+            : bodyParsed.restaurante || '—';
+        if (typeof localData.logo === 'string' && localData.logo.trim()) docData.logoLocal = localData.logo.trim();
+        if (typeof localData.cover === 'string' && localData.cover.trim()) docData.fotoLocal = localData.cover.trim();
+        if (typeof localData.telefono === 'string' && localData.telefono.trim()) {
+          docData.telefonoLocal = localData.telefono.trim();
+        }
+      }
+    }
     let restauranteLat: number | null = null;
     let restauranteLng: number | null = null;
     if (typeof bodyParsed.restauranteLat === 'number' && typeof bodyParsed.restauranteLng === 'number' &&
         !Number.isNaN(bodyParsed.restauranteLat) && !Number.isNaN(bodyParsed.restauranteLng)) {
       restauranteLat = bodyParsed.restauranteLat;
       restauranteLng = bodyParsed.restauranteLng;
-    } else if (localId) {
-      const localSnap = await db.collection('locales').doc(localId).get();
-      const localData = localSnap.data();
-      const lat = typeof localData?.lat === 'number' && !Number.isNaN(localData.lat) ? localData.lat : null;
-      const lng = typeof localData?.lng === 'number' && !Number.isNaN(localData.lng) ? localData.lng : null;
+    } else if (localData) {
+      const lat = typeof localData.lat === 'number' && !Number.isNaN(localData.lat) ? localData.lat : null;
+      const lng = typeof localData.lng === 'number' && !Number.isNaN(localData.lng) ? localData.lng : null;
       if (lat != null && lng != null) {
         restauranteLat = lat;
         restauranteLng = lng;
@@ -380,6 +412,14 @@ export async function POST(request: Request) {
     }
     await docRef.set(sanitizeForFirestore(docData));
 
+    const pedidoResp: PedidoCentral = {
+      ...pedido,
+      ...(typeof docData.nombreLocal === 'string' ? { nombreLocal: docData.nombreLocal } : {}),
+      ...(typeof docData.logoLocal === 'string' ? { logoLocal: docData.logoLocal } : {}),
+      ...(typeof docData.fotoLocal === 'string' ? { fotoLocal: docData.fotoLocal } : {}),
+      ...(typeof docData.telefonoLocal === 'string' ? { telefonoLocal: docData.telefonoLocal } : {}),
+    };
+
     try {
       if (localId && String(localId).trim()) {
         await sendFCMToRestaurantByLocalId(
@@ -393,7 +433,7 @@ export async function POST(request: Request) {
       // no bloquear la respuesta por fallo de notificación
     }
 
-    return NextResponse.json({ ok: true, pedido });
+    return NextResponse.json({ ok: true, pedido: pedidoResp });
   } catch (e) {
     console.error('POST /api/pedidos', e);
     return NextResponse.json({ error: 'Error al crear pedido' }, { status: 500 });

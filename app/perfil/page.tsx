@@ -46,8 +46,42 @@ function formatFecha(timestamp: number): string {
 function mapEstadoToHistorial(estado: string): PedidoHistorial['estado'] {
   if (estado === 'entregado') return 'entregado';
   if (estado === 'en_camino' || estado === 'asignado') return 'en_camino';
-  if (estado === 'cancelado') return 'cancelado';
+  if (estado === 'cancelado' || estado === 'cancelado_local' || estado === 'cancelado_cliente') return 'cancelado';
   return 'preparando';
+}
+
+type PedidoApiHistorial = {
+  id: string;
+  restaurante: string;
+  nombreLocal?: string | null;
+  logoLocal?: string | null;
+  fotoLocal?: string | null;
+  items: string[];
+  total: number;
+  timestamp: number;
+  estado: string;
+  localId?: string | null;
+  itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
+};
+
+function pedidoApiToHistorial(p: PedidoApiHistorial): PedidoHistorial {
+  const logo =
+    (typeof p.logoLocal === 'string' && p.logoLocal.trim()) ||
+    (typeof p.fotoLocal === 'string' && p.fotoLocal.trim()) ||
+    (p.localId ? `/logos/${p.localId}.png` : '');
+  return {
+    id: `#${p.id}`,
+    orderId: p.id,
+    fecha: formatFecha(p.timestamp || 0),
+    restaurante: (typeof p.nombreLocal === 'string' && p.nombreLocal.trim()) || p.restaurante || '—',
+    logoRestaurante: logo,
+    localId: p.localId ?? null,
+    items: p.items || [],
+    total: p.total || 0,
+    estado: mapEstadoToHistorial(p.estado || 'confirmado'),
+    tiempo: '—',
+    ...(p.itemsCart && p.itemsCart.localId && Array.isArray(p.itemsCart.items) ? { itemsCart: p.itemsCart } : {}),
+  };
 }
 
 function primerNombreParaMostrar(displayName?: string | null, email?: string | null): string {
@@ -70,6 +104,8 @@ export default function PerfilPage() {
   const [pageVisible, setPageVisible] = useState(false);
   const [historial, setHistorial] = useState<PedidoHistorial[]>([]);
   const [historialLoading, setHistorialLoading] = useState(true);
+  const [historialNextCursor, setHistorialNextCursor] = useState<string | null>(null);
+  const [historialLoadingMore, setHistorialLoadingMore] = useState(false);
   const [fotoPreview, setFotoPreview] = useState('');
   const [nombre, setNombre] = useState('');
   const [editandoNombre, setEditandoNombre] = useState(false);
@@ -130,6 +166,7 @@ export default function PerfilPage() {
       setNombre('');
       setTelefono('');
       setHistorial([]);
+      setHistorialNextCursor(null);
       setHistorialLoading(false);
       return;
     }
@@ -143,40 +180,56 @@ export default function PerfilPage() {
   useEffect(() => {
     if (!user || user.rol !== 'cliente') {
       setHistorialLoading(false);
+      setHistorialNextCursor(null);
       return;
     }
     let cancelled = false;
+    setHistorialLoading(true);
     getIdToken()
       .then((token) => {
         if (!token || cancelled) return null;
         return fetch('/api/mis-pedidos', { headers: { Authorization: `Bearer ${token}` } });
       })
       .then((res) => {
-        if (res == null) return { pedidos: [] };
-        return res.ok ? res.json() : { pedidos: [] };
+        if (res == null) return { pedidos: [], nextCursor: null };
+        return res.ok ? res.json() : { pedidos: [], nextCursor: null };
       })
-      .then((data: { pedidos?: Array<{ id: string; restaurante: string; items: string[]; total: number; timestamp: number; estado: string; localId?: string; itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] } }> }) => {
+      .then((data: { pedidos?: PedidoApiHistorial[]; nextCursor?: string | null }) => {
         if (cancelled) return;
-        const list: PedidoHistorial[] = (data.pedidos || []).map((p) => ({
-          id: `#${p.id}`,
-          orderId: p.id,
-          fecha: formatFecha(p.timestamp || 0),
-          restaurante: p.restaurante || '—',
-          logoRestaurante: p.localId ? `/logos/${p.localId}.png` : '',
-          localId: p.localId ?? null,
-          items: p.items || [],
-          total: p.total || 0,
-          estado: mapEstadoToHistorial(p.estado || 'confirmado'),
-          tiempo: '—',
-          ...(p.itemsCart && p.itemsCart.localId && Array.isArray(p.itemsCart.items) ? { itemsCart: p.itemsCart } : {}),
-        }));
+        const list: PedidoHistorial[] = (data.pedidos || []).map(pedidoApiToHistorial);
         setHistorial(list);
+        setHistorialNextCursor(data.nextCursor ?? null);
       })
-      .catch(() => { if (!cancelled) setHistorial([]); })
+      .catch(() => {
+        if (!cancelled) {
+          setHistorial([]);
+          setHistorialNextCursor(null);
+        }
+      })
       .finally(() => { if (!cancelled) setHistorialLoading(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.rol]);
+
+  async function cargarMasHistorial() {
+    if (!historialNextCursor || historialLoadingMore) return;
+    const token = await getIdToken();
+    if (!token) return;
+    setHistorialLoadingMore(true);
+    try {
+      const res = await fetch(
+        `/api/mis-pedidos?cursor=${encodeURIComponent(historialNextCursor)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as { pedidos?: PedidoApiHistorial[]; nextCursor?: string | null };
+      const append = (data.pedidos || []).map(pedidoApiToHistorial);
+      setHistorial((prev) => [...prev, ...append]);
+      setHistorialNextCursor(data.nextCursor ?? null);
+    } finally {
+      setHistorialLoadingMore(false);
+    }
+  }
 
   async function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -400,13 +453,25 @@ export default function PerfilPage() {
                 </button>
               </div>
             ) : (
-              historial.map((pedido) => (
-                <TarjetaPedidoHistorial
-                  key={pedido.id}
-                  pedido={pedido}
-                  onVolverAPedir={volverAPedir}
-                />
-              ))
+              <>
+                {historial.map((pedido) => (
+                  <TarjetaPedidoHistorial
+                    key={pedido.orderId}
+                    pedido={pedido}
+                    onVolverAPedir={volverAPedir}
+                  />
+                ))}
+                {historialNextCursor && (
+                  <button
+                    type="button"
+                    onClick={() => void cargarMasHistorial()}
+                    disabled={historialLoadingMore}
+                    className="w-full py-3 rounded-xl border border-gray-200 bg-white text-rojo-andino font-semibold text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {historialLoadingMore ? 'Cargando…' : 'Cargar más pedidos'}
+                  </button>
+                )}
+              </>
             )}
           </>
         )}

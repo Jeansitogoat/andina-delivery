@@ -29,6 +29,12 @@ export interface PedidoCentral {
   timestamp: number;
   distancia: string;
   localId?: string | null;
+  /** Snapshot del local al momento del pedido (denormalizado) */
+  nombreLocal?: string | null;
+  logoLocal?: string | null;
+  /** Cover / foto destacada del local al momento del pedido */
+  fotoLocal?: string | null;
+  telefonoLocal?: string | null;
   codigoVerificacion?: string;
   propina?: number;
   /** Multi-stop: identificador común del batch */

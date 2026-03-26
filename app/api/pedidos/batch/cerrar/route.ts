@@ -66,6 +66,7 @@ export async function POST(request: Request) {
       for (const { ref, data, id } of docs) {
         const estadoActual = data.estado as string | undefined;
         const esCancelado = ESTADOS_CANCELADOS.includes(estadoActual ?? '');
+        const pasarAEntregado = !esCancelado && estadoActual !== 'entregado';
         transaction.update(ref, {
           estado: esCancelado ? estadoActual : 'entregado',
           updatedAt: FieldValue.serverTimestamp(),
@@ -74,6 +75,14 @@ export async function POST(request: Request) {
 
         const localId = data.localId ?? null;
         if (!localId) continue;
+
+        if (pasarAEntregado) {
+          transaction.set(
+            db.collection('locales').doc(localId),
+            { statsPedidosEntregados: FieldValue.increment(1) },
+            { merge: true }
+          );
+        }
 
         const pedidoTimestamp = (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? (data.timestamp as number | undefined) ?? 0;
         if (programStartTime > 0 && pedidoTimestamp < programStartTime) continue;
