@@ -56,12 +56,22 @@ export default function Home() {
   const [seguimientoOrderId, setSeguimientoOrderId] = useState<string | null>(null);
   const [bannerErrors, setBannerErrors] = useState<Set<string>>(() => new Set());
 
-  const { localesLight: localesList, loading: loadingLocales, error: configError, refreshConfig } = useAndinaConfig();
+  const {
+    localesLight: localesList,
+    loading: loadingLocales,
+    error: configError,
+    refreshConfig,
+    setLocalesCategoryFilter,
+  } = useAndinaConfig();
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
   const { getTarifaEnvioPorDistancia, tarifaMinima } = useTarifasEnvio();
   const { isOpen: fullScreenModalOpen } = useFullScreenModal();
   const originLatLng = direccionEntregarLatLng ?? userLocationLatLng;
   const usuarioLogueado = !!user;
+
+  useEffect(() => {
+    setLocalesCategoryFilter(category === 'all' ? null : category);
+  }, [category, setLocalesCategoryFilter]);
 
   // Primera visita: redirigir a login si nunca ha visitado (opcional; checkout exige sesión igualmente)
   useEffect(() => {
@@ -164,22 +174,18 @@ export default function Home() {
     let list = localesList.filter((l) => l.status !== 'suspended');
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(
-        (l) =>
+      list = list.filter((l) => {
+        const types = l.categorias?.length ? l.categorias : l.type;
+        return (
           l.name.toLowerCase().includes(q) ||
-          l.type.some((t) => t.toLowerCase().includes(q)) ||
-          (q.includes('cafe') && (l.type.includes('Cafes') || l.type.includes('Restaurantes'))) ||
-          (q.includes('farmacia') && l.type.includes('Farmacias')) ||
-          ((q.includes('super') || q.includes('market')) && l.type.includes('Market'))
-      );
+          types.some((t) => t.toLowerCase().includes(q)) ||
+          (q.includes('cafe') && (types.includes('Cafes') || types.includes('Restaurantes'))) ||
+          (q.includes('farmacia') && types.includes('Farmacias')) ||
+          ((q.includes('super') || q.includes('market')) && types.includes('Market'))
+        );
+      });
     }
-    if (category !== 'all') {
-      if (category === 'Restaurantes') {
-        list = list.filter((l) => l.type.includes('Restaurantes') || l.type.includes('Cafes'));
-      } else {
-        list = list.filter((l) => l.type.includes(category));
-      }
-    }
+    // Filtro por categoría discovery: lo aplica el backend (GET /api/locales?categoria=…).
 
     // Garantía UX: primero solo "abiertos" (orden por distancia), luego "cerrados".
     const abiertos: typeof list = [];
@@ -212,7 +218,7 @@ export default function Home() {
     const abiertosSorted = [...abiertos].sort(sortByFeaturedDistanceName);
     const cerradosSorted = [...cerrados].sort(sortByFeaturedDistanceName);
     return [...abiertosSorted, ...cerradosSorted];
-  }, [search, category, localesList, originLatLng]);
+  }, [search, localesList, originLatLng]);
 
   const activeLocal = cartLocalId ? localesList.find((l) => l.id === cartLocalId) : null;
 
@@ -228,41 +234,47 @@ export default function Home() {
               </span>
               <span className="text-white/70 text-xs font-medium">Delivery · Piñas, El Oro</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-h-[40px]">
               <span className="text-white/90 text-sm font-medium hidden sm:inline">Piñas, El Oro</span>
-              {usuarioLogueado && user && user.rol === 'rider' && (
-                <button
-                  type="button"
-                  onClick={() => router.push('/panel/rider')}
-                  className="flex items-center gap-2 py-2 px-3 rounded-xl bg-amber-300 hover:bg-amber-200 text-gray-900 text-sm font-black transition-colors shadow-md border border-amber-100"
-                >
-                  🛵 Modo Trabajo
-                </button>
+              {authLoading ? (
+                <div className="flex items-center gap-2 py-2 pl-3 pr-4 rounded-xl bg-white/10 animate-pulse min-w-[120px] h-10" aria-hidden />
+              ) : (
+                <>
+                  {usuarioLogueado && user && user.rol === 'rider' && (
+                    <button
+                      type="button"
+                      onClick={() => router.push('/panel/rider')}
+                      className="flex items-center gap-2 py-2 px-3 rounded-xl bg-amber-300 hover:bg-amber-200 text-gray-900 text-sm font-black transition-colors shadow-md border border-amber-100"
+                    >
+                      🛵 Modo Trabajo
+                    </button>
+                  )}
+                  {usuarioLogueado && user && user.rol !== 'cliente' && user.rol !== 'rider' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (user.rol === 'central') router.push('/panel/central');
+                        else if (user.rol === 'local') router.push(user.localId ? `/panel/restaurante/${user.localId}` : '/panel/restaurante');
+                        else if (user.rol === 'maestro') router.push('/panel/maestro');
+                      }}
+                      className="flex items-center gap-2 py-2 px-3 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-colors"
+                    >
+                      Volver al panel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => router.push('/perfil')}
+                    className="flex items-center gap-2 py-2 pl-3 pr-4 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"
+                    aria-label="Perfil"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-dorado-oro/80 flex items-center justify-center text-gray-900">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <span className="text-white font-semibold text-sm">Perfil</span>
+                  </button>
+                </>
               )}
-              {usuarioLogueado && user && user.rol !== 'cliente' && user.rol !== 'rider' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (user.rol === 'central') router.push('/panel/central');
-                    else if (user.rol === 'local') router.push(user.localId ? `/panel/restaurante/${user.localId}` : '/panel/restaurante');
-                    else if (user.rol === 'maestro') router.push('/panel/maestro');
-                  }}
-                  className="flex items-center gap-2 py-2 px-3 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-colors"
-                >
-                  Volver al panel
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => router.push('/perfil')}
-                className="flex items-center gap-2 py-2 pl-3 pr-4 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"
-                aria-label="Perfil"
-              >
-                <div className="w-8 h-8 rounded-full bg-dorado-oro/80 flex items-center justify-center text-gray-900">
-                  <User className="w-4 h-4" />
-                </div>
-                <span className="text-white font-semibold text-sm">Perfil</span>
-              </button>
             </div>
           </div>
           <div className="relative mt-3">

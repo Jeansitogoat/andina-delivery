@@ -112,6 +112,7 @@ export async function PATCH(
     const horarios = bodyData.horarios;
     const cerradoHasta = bodyData.cerradoHasta;
     const categories = bodyData.categories;
+    const categorias = bodyData.categorias;
     const lat = bodyData.lat;
     const lng = bodyData.lng;
     const ivaEnabled = bodyData.ivaEnabled;
@@ -144,6 +145,9 @@ export async function PATCH(
     if (horarios !== undefined && Array.isArray(horarios)) updates.horarios = horarios;
     if (cerradoHasta !== undefined) updates.cerradoHasta = cerradoHasta === '' ? undefined : cerradoHasta;
     if (categories !== undefined && Array.isArray(categories)) updates.categories = categories;
+    if (categorias !== undefined && Array.isArray(categorias)) {
+      (updates as { categorias?: string[] }).categorias = categorias;
+    }
     if (lat !== undefined) updates.lat = lat;
     if (lng !== undefined) updates.lng = lng;
     if (ivaEnabled !== undefined) updates.ivaEnabled = ivaEnabled;

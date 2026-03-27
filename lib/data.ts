@@ -55,6 +55,13 @@ export interface Local {
   time: string;
   shipping: number;
   type: string[];
+  /**
+   * Clasificación del negocio para discovery / filtros en Home (fuente de verdad).
+   * Durante la transición, `type` se sincroniza con la primera categoría para compatibilidad legacy.
+   */
+  categorias?: string[];
+  /** true si `categorias` viene persistido en Firestore (no derivado solo de `type`). */
+  categoriasFromFirestore?: boolean;
   distance: string;
   destacado: boolean;
   /** Local destacado (monetización). Refleja el campo Firestore isFeatured. */

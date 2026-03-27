@@ -27,6 +27,7 @@ import {
   Trash2,
   DollarSign,
   Truck,
+  UserCircle,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useNotifications } from '@/lib/useNotifications';
@@ -39,12 +40,15 @@ import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
 import { useAndinaConfig } from '@/lib/AndinaContext';
+import { getFirestoreDb } from '@/lib/firebase/client';
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { docToPedidoCentral } from '@/lib/pedido-central-map';
+import { startOfDayGuayaquil } from '@/lib/guayaquil-time';
 
 /* ─────────────── config y utils ─────────────── */
 const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg: string }> = {
   disponible:     { label: 'Disponible',       dot: 'bg-green-400',  bg: 'bg-green-50 border-green-200 text-green-700' },
   ocupado:        { label: 'Ocupado',           dot: 'bg-yellow-400', bg: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
-  ausente:        { label: 'Ausente',           dot: 'bg-orange-400', bg: 'bg-orange-50 border-orange-200 text-orange-700' },
   fuera_servicio: { label: 'Fuera de servicio', dot: 'bg-red-400',    bg: 'bg-red-50 border-red-200 text-red-700' },
 };
 
@@ -90,7 +94,7 @@ export default function PanelCentralPage() {
   const { user, loading, logout } = useAuth();
   const { permission, requestPermission, loading: notifLoading } = useNotifications('central');
   const [pedidos, setPedidos] = useState<PedidoCentral[]>([]);
-  const [riders, setRiders] = useState<RiderCentral[]>([]);
+  const [rawRiderDocs, setRawRiderDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [tab, setTab] = useState<'activos' | 'riders' | 'historial' | 'tarifas'>('activos');
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState<PedidoCentral | null>(null);
   const [mostrarAsignar, setMostrarAsignar] = useState(false);
@@ -182,83 +186,121 @@ export default function PanelCentralPage() {
     }
   }, [tarifasTiers, tarifasPorParada, refreshConfig]);
 
-  /* Cargar pedidos y riders (token fresco en cada llamada) */
-  const cargarDatos = useCallback(async (filtro?: 'hoy' | 'semana' | 'mes') => {
-    const tok = await getIdToken();
-    if (!tok) return;
+
+  const RIDER_COLORS_INLINE = [
+    "bg-blue-600", "bg-purple-600", "bg-green-600",
+    "bg-orange-500", "bg-red-600", "bg-teal-600",
+  ];
+
+  function normalizeEstadoRiderManual(raw: unknown): 'disponible' | 'fuera_servicio' {
+    if (raw === "fuera_servicio") return "fuera_servicio";
+    return "disponible";
+  }
+
+  const riders = useMemo((): RiderCentral[] => {
+    return rawRiderDocs.map((rd, i) => {
+      const data = rd.data;
+      const nombre = String(data.displayName || data.email || "Rider");
+      const carrerasHoy = pedidos.filter(
+        (p) => p.riderId === rd.id && p.estado === "entregado"
+      ).length;
+      const tieneCarreraActiva = pedidos.some(
+        (p) => p.riderId === rd.id && p.estado !== "entregado"
+      );
+      const estadoManual = normalizeEstadoRiderManual(data.estadoRider);
+      const estado: EstadoRider = tieneCarreraActiva ? "ocupado" : estadoManual;
+      const calificacion = data.ratingPromedio != null ? Number(data.ratingPromedio) : 0;
+      return {
+        id: rd.id,
+        nombre,
+        inicial: nombre.charAt(0).toUpperCase(),
+        telefono: String(data.telefono || ""),
+        estado,
+        carrerasHoy,
+        calificacion,
+        color: RIDER_COLORS_INLINE[i % RIDER_COLORS_INLINE.length],
+        photoURL: typeof data.photoURL === "string" ? data.photoURL : null,
+      };
+    });
+  }, [rawRiderDocs, pedidos]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (sessionInvalid) {
+      router.replace("/auth");
+      return;
+    }
+    if (user.rol !== "central" && user.rol !== "maestro") return;
+
+    const db = getFirestoreDb();
+    const now = Date.now();
+    const semanaAtras = now - 7 * 24 * 60 * 60 * 1000;
+    const mesAtras = now - 30 * 24 * 60 * 60 * 1000;
+    const desde =
+      filtroHistorial === "mes" ? mesAtras : filtroHistorial === "semana" ? semanaAtras : startOfDayGuayaquil();
+
     setLoadingData(true);
-    const f = filtro ?? filtroHistorial;
-    try {
-      const res = await fetch(`/api/central?filtro=${f}`, {
-        headers: { Authorization: `Bearer ${tok}` },
-      });
-      if (res.status === 401) {
-        setSessionInvalid(true);
-        return;
-      }
-      if (!res.ok) return;
-      const data = await res.json() as { pedidos: PedidoCentral[]; riders: RiderCentral[] };
-      if (Array.isArray(data.pedidos)) {
-        const estadosVisiblesCentral: EstadoPedido[] = ['esperando_rider', 'asignado', 'en_camino', 'entregado'];
-        const pedidosCentral = data.pedidos.filter((p) =>
-          estadosVisiblesCentral.includes((p.estado || 'confirmado') as EstadoPedido)
-        );
-        const nuevosEsperando = pedidosCentral.filter((p) => p.estado === 'esperando_rider').length;
+
+    const qPedidos = query(
+      collection(db, "pedidos"),
+      where("timestamp", ">=", desde),
+      orderBy("timestamp", "desc"),
+      limit(50)
+    );
+
+    const unsubPedidos = onSnapshot(
+      qPedidos,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => docToPedidoCentral(d.id, d.data() as Record<string, unknown>))
+          .filter((p) => p.deliveryType !== "pickup");
+        const estadosVisiblesCentral = ["esperando_rider", "asignado", "en_camino", "entregado"];
+        const pedidosCentral = list
+          .filter((p) => estadosVisiblesCentral.includes(p.estado || "confirmado"))
+          .sort((a, b) => b.timestamp - a.timestamp);
+        const nuevosEsperando = pedidosCentral.filter((p) => p.estado === "esperando_rider").length;
         if (nuevosEsperando > 0 && pedidosCentral.length > prevPedidosCount.current) {
-          const nuevo = pedidosCentral.find((p) => p.estado === 'esperando_rider');
+          const nuevo = pedidosCentral.find((p) => p.estado === "esperando_rider");
           if (nuevo) {
             setNuevoPedidoId(nuevo.id);
-            showToast('Nuevo pedido: ' + nuevo.restaurante + ' · ' + nuevo.clienteNombre);
-            sendNotification({ target: 'central', title: 'Nueva carrera', body: nuevo.restaurante + ' · ' + nuevo.clienteNombre });
+            showToast("Nuevo pedido: " + nuevo.restaurante + " · " + nuevo.clienteNombre);
+            sendNotification({ target: "central", title: "Nueva carrera", body: nuevo.restaurante + " · " + nuevo.clienteNombre });
             playNewOrderSound();
             setTimeout(() => setNuevoPedidoId(null), 4000);
           }
         }
         prevPedidosCount.current = pedidosCentral.length;
         setPedidos(pedidosCentral);
+        setLoadingData(false);
+      },
+      () => {
+        setLoadingData(false);
+        showGlobalToast({ type: "error", message: "Error al sincronizar pedidos. Recargá la página." });
       }
-      if (Array.isArray(data.riders)) setRiders(data.riders);
-    } catch {
-      // silencioso
-    } finally {
-      setLoadingData(false);
-    }
-  }, [filtroHistorial]);
+    );
 
-  useEffect(() => {
-    if (!user) return;
-    if (sessionInvalid) {
-      router.replace('/auth');
-      return;
-    }
-    cargarDatos();
-    let t: ReturnType<typeof setInterval> | null = null;
-    const startPolling = () => {
-      if (t) return;
-      // 60s: reduce a la mitad las lecturas del panel central vs 30s previos
-      t = setInterval(cargarDatos, 60_000);
-    };
-    const stopPolling = () => {
-      if (t) {
-        clearInterval(t);
-        t = null;
+    const qRiders = query(
+      collection(db, "users"),
+      where("rol", "==", "rider"),
+      where("riderStatus", "==", "approved"),
+      limit(100)
+    );
+
+    const unsubRiders = onSnapshot(
+      qRiders,
+      (snap) => {
+        setRawRiderDocs(snap.docs.map((d) => ({ id: d.id, data: d.data() })));
+      },
+      () => {
+        showGlobalToast({ type: "error", message: "Error al sincronizar riders. Recargá la página." });
       }
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        cargarDatos();
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-    startPolling();
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    );
+
     return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      unsubPedidos();
+      unsubRiders();
     };
-  }, [user, filtroHistorial, cargarDatos, sessionInvalid, router]);
+  }, [user, filtroHistorial, sessionInvalid, router, showGlobalToast]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -271,7 +313,6 @@ export default function PanelCentralPage() {
     const key = `${pedidoId}_${riderId}`;
     setAsignandoKey(key);
     const prevPedidos = pedidos;
-    const prevRiders = riders;
     // Actualización optimista
     setPedidos((prev) => {
       if (batchId) {
@@ -281,9 +322,6 @@ export default function PanelCentralPage() {
       }
       return prev.map((p) => (p.id === pedidoId ? { ...p, estado: 'asignado', riderId } : p));
     });
-    setRiders((prev) =>
-      prev.map((r) => r.id === riderId ? { ...r, estado: 'ocupado' } : r)
-    );
     const rider = riders.find((r) => r.id === riderId);
     const pedido = pedidos.find((p) => p.id === pedidoId);
     if (batchId) {
@@ -310,7 +348,6 @@ export default function PanelCentralPage() {
     try {
       if (!tok) {
         setPedidos(prevPedidos);
-        setRiders(prevRiders);
         showToast('No se pudo asignar. Revisá la sesión.');
         return;
       }
@@ -327,13 +364,11 @@ export default function PanelCentralPage() {
       });
       if (!res.ok) {
         setPedidos(prevPedidos);
-        setRiders(prevRiders);
         showToast('No se pudo asignar. Revisá la conexión.');
         showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
       setPedidos(prevPedidos);
-      setRiders(prevRiders);
       showToast('No se pudo asignar. Revisá la conexión.');
       showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
@@ -486,6 +521,15 @@ export default function PanelCentralPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => router.push('/panel/central/perfil')}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
+                    title="Editar perfil"
+                  >
+                    <UserCircle className="w-4 h-4" />
+                    <span className="hidden sm:inline">Perfil</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => router.push('/')}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
                     title="Ir como cliente"
@@ -556,15 +600,7 @@ export default function PanelCentralPage() {
                     Limpiar pedidos
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => cargarDatos()}
-                  disabled={loadingData}
-                  className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center disabled:opacity-60"
-                  title="Actualizar"
-                >
-                  <RefreshCw className={'w-4 h-4 text-white ' + (loadingData ? 'animate-spin' : '')} />
-                </button>
+
               </div>
 
               <div className="grid grid-cols-4 gap-2">
@@ -698,7 +734,7 @@ export default function PanelCentralPage() {
                 <div className="bg-white rounded-3xl p-4 shadow-sm">
                   <p className="text-xs font-semibold text-gray-400 mb-3">RESUMEN DE FLOTA</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {(['disponible', 'ocupado', 'ausente', 'fuera_servicio'] as EstadoRider[]).map((estado) => {
+                    {(['disponible', 'ocupado', 'fuera_servicio'] as EstadoRider[]).map((estado) => {
                       const count = riders.filter((r) => r.estado === estado).length;
                       const cfg = ESTADO_RIDER_CONFIG[estado];
                       return (

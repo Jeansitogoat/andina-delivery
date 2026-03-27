@@ -37,7 +37,7 @@ import { resolveIvaConfig } from '@/lib/order-money';
 export default function RestaurantePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { cart, addItem, removeItem } = useCart();
   const { local, menu: allItems, reviews, isLoading: loading, error } = useLocal(id);
   const notFound = !!error || (!loading && !local);
@@ -203,7 +203,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
             >
               <ArrowLeft className="w-4 h-4 md:w-5 md:h-5 text-white" />
             </button>
-            {user && user.rol !== 'cliente' && (
+            {!authLoading && user && user.rol !== 'cliente' && (
               <button
                 type="button"
                 onClick={() => {

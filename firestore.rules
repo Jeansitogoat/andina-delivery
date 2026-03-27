@@ -1,65 +1,100 @@
 rules_version = '2';
-// Andina Express – Reglas v2 con Custom Claims (Fase 3).
-// El rol se lee desde request.auth.token.rol (JWT claim) en lugar de get(users/{uid}).
-// Esto elimina las lecturas extra de Firestore que generaba la función getRole().
+// Andina Express — reglas listas para producción (Motor Real-Time + paneles).
+// Reemplaza TODO el contenido de la consola Firebase con este archivo.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: obtiene el rol del usuario desde el JWT custom claim.
-    // Cero lecturas adicionales de Firestore — el claim viaja en el token.
-    // Fallback vacío para usuarios legacy que aún no tienen el claim fijado.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function getRole() {
       return request.auth.token.get('rol', '');
     }
 
-    // 1. Usuarios: cada uno solo puede leer/escribir su propio documento
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function tokenLocalId() {
+      return request.auth.token.get('localId', '');
     }
 
-    // 2. Pedidos
+    // --- users: yo mismo; central/maestro leen riders (onSnapshot en panel Central) ---
+    match /users/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId
+        || getRole() in ['central', 'maestro']
+      );
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- pedidos ---
     match /pedidos/{pedidoId} {
-      allow read: if request.auth != null && (
+      allow read: if isSignedIn() && (
         resource.data.clienteId == request.auth.uid
         || resource.data.riderId == request.auth.uid
         || getRole() in ['central', 'maestro']
+        || (
+          getRole() == 'local'
+          && resource.data.localId == tokenLocalId()
+        )
       );
-      allow create: if request.auth != null && request.resource.data.clienteId == request.auth.uid;
-      allow update: if request.auth != null && (
+
+      allow create: if isSignedIn() && request.resource.data.clienteId == request.auth.uid;
+
+      allow update: if isSignedIn() && (
         getRole() in ['central', 'maestro']
-        || (resource.data.riderId == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'updatedAt', 'ubicacionRider']))
+        || (
+          resource.data.riderId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'updatedAt', 'ubicacionRider'])
+        )
+        || (
+          resource.data.localId == tokenLocalId()
+          && getRole() == 'local'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'estado', 'updatedAt', 'motivoCancelacion', 'preparacion',
+            'paymentConfirmed', 'comprobanteBase64', 'comprobanteFileName', 'comprobanteMimeType'
+          ])
+        )
       );
-      allow delete: if request.auth != null && getRole() in ['central', 'maestro'];
+
+      allow delete: if isSignedIn() && getRole() in ['central', 'maestro'];
     }
 
-    // 3. Comisiones: lectura solo si el rider es el dueño; escritura denegada (solo Admin SDK)
+    // --- comisiones: solo lectura; escritura solo Admin SDK ---
     match /comisiones/{comisionId} {
-      allow read: if request.auth != null && resource.data.riderId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.riderId == request.auth.uid
+        || (
+          getRole() == 'local'
+          && resource.data.localId == tokenLocalId()
+        )
+        || getRole() in ['central', 'maestro']
+      );
       allow create, update, delete: if false;
     }
 
-    // 4. Locales, Banners y Config: lectura pública; escritura solo maestro
-    match /locales/{document=**} {
+    // --- locales + subcolecciones (ej. productos): público lee; maestro o el dueño del local escribe ---
+    match /locales/{localId}/{document=**} {
       allow read: if true;
-      allow write: if request.auth != null && getRole() == 'maestro';
+      allow write: if isSignedIn() && (
+        getRole() == 'maestro'
+        || (getRole() == 'local' && tokenLocalId() == localId)
+      );
     }
+
     match /banners/{document=**} {
       allow read: if true;
-      allow write: if request.auth != null && getRole() == 'maestro';
+      allow write: if isSignedIn() && getRole() == 'maestro';
     }
+
     match /config/{document=**} {
       allow read: if true;
-      allow write: if request.auth != null && getRole() == 'maestro';
+      allow write: if isSignedIn() && getRole() == 'maestro';
     }
 
-    // 5. Solicitudes: creación pública (nuevos locales); lectura/escritura solo maestro
     match /solicitudes/{solicitudId} {
       allow create: if true;
-      allow read, update, delete: if request.auth != null && getRole() == 'maestro';
+      allow read, update, delete: if isSignedIn() && getRole() == 'maestro';
     }
 
-    // Seguridad global: todo lo no especificado denegado
     match /{document=**} {
       allow read, write: if false;
     }

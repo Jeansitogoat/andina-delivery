@@ -27,7 +27,7 @@ export default function AddressSelector({ className = '', dark = false, compact 
     addDireccion,
     userLocationLatLng,
   } = useAddresses();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [open, setOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -43,6 +43,19 @@ export default function AddressSelector({ className = '', dark = false, compact 
   function handleGuardar(d: Omit<DireccionGuardada, 'id'>) {
     addDireccion(d);
     setShowModal(false);
+  }
+
+  if (authLoading) {
+    return (
+      <div className={`relative ${className}`}>
+        <div
+          className={`flex items-center gap-2 text-sm min-h-[22px] rounded-lg animate-pulse ${
+            dark ? 'bg-gray-200/80 w-56' : 'bg-white/20 w-56'
+          }`}
+          aria-hidden
+        />
+      </div>
+    );
   }
 
   return (

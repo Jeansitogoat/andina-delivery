@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useRef } from 'react';
+import type { User as FirebaseUser } from 'firebase/auth';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -15,22 +16,30 @@ import {
   Upload,
   Lock,
   Loader2,
+  Tag,
 } from 'lucide-react';
-import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword,
-} from 'firebase/auth';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import NavPanel from '@/components/panel/NavPanel';
 import PasswordInput from '@/components/PasswordInput';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseAuth, getFirebaseStorage } from '@/lib/firebase/client';
+import {
+  hasEmailPasswordProvider,
+  validatePasswordChangeFields,
+  mapFirebasePasswordError,
+} from '@/lib/passwordChangeHelpers';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl } from '@/lib/validImageUrl';
 import { uploadLocalQr } from '@/lib/storageUpload';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
+
+const DISCOVERY_CATEGORIAS: { key: string; label: string }[] = [
+  { key: 'Restaurantes', label: 'Restaurantes y cafés' },
+  { key: 'Market', label: 'Comisariatos' },
+  { key: 'Farmacias', label: 'Farmacias' },
+];
 
 const HORARIOS_DEFAULT = [
   { dia: 'Lunes', abierto: true, desde: '09:00', hasta: '22:00' },
@@ -84,6 +93,14 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   const [passwordNuevaConfirm, setPasswordNuevaConfirm] = useState('');
   const [cambiandoPassword, setCambiandoPassword] = useState(false);
   const [mensajePassword, setMensajePassword] = useState<{ tipo: 'ok' | 'error'; text: string } | null>(null);
+  const [categoriasDiscovery, setCategoriasDiscovery] = useState<string[]>(['Restaurantes']);
+  const [fbUserState, setFbUserState] = useState<FirebaseUser | null>(null);
+
+  useEffect(() => {
+    const auth = getFirebaseAuth();
+    setFbUserState(auth.currentUser);
+    return auth.onAuthStateChanged((u) => setFbUserState(u));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +139,15 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
           if (typeof loc.ivaRate === 'number' && !Number.isNaN(loc.ivaRate) && loc.ivaRate > 0) {
             setIvaRate(String(loc.ivaRate > 1 ? loc.ivaRate : loc.ivaRate * 100));
           }
+          const allowed = new Set(DISCOVERY_CATEGORIAS.map((c) => c.key));
+          const rawCats =
+            Array.isArray(loc.categorias) && loc.categorias.length > 0
+              ? loc.categorias
+              : Array.isArray(loc.type)
+                ? loc.type
+                : [];
+          const picked = rawCats.filter((x) => allowed.has(x));
+          setCategoriasDiscovery(picked.length > 0 ? picked : ['Restaurantes']);
         }
       })
       .catch(() => {});
@@ -255,6 +281,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
           transferencia: transferenciaPayload,
           ivaEnabled,
           ivaRate: ivaEnabled ? Number(ivaRate) || 15 : 0,
+          categorias: categoriasDiscovery,
         }),
       });
       if (!res.ok) {
@@ -285,16 +312,13 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   async function handleCambiarPassword(e: React.FormEvent) {
     e.preventDefault();
     setMensajePassword(null);
-    if (!passwordActual.trim()) {
-      setMensajePassword({ tipo: 'error', text: 'Ingresá tu contraseña actual.' });
-      return;
-    }
-    if (passwordNueva.length < 6) {
-      setMensajePassword({ tipo: 'error', text: 'La nueva contraseña debe tener al menos 6 caracteres.' });
-      return;
-    }
-    if (passwordNueva !== passwordNuevaConfirm) {
-      setMensajePassword({ tipo: 'error', text: 'La nueva contraseña y la confirmación no coinciden.' });
+    const v = validatePasswordChangeFields({
+      passwordActual,
+      passwordNueva,
+      passwordNuevaConfirm,
+    });
+    if (!v.ok) {
+      setMensajePassword({ tipo: 'error', text: v.message });
       return;
     }
     const auth = getFirebaseAuth();
@@ -313,16 +337,14 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
       setPasswordNueva('');
       setPasswordNuevaConfirm('');
     } catch (err: unknown) {
-      const msg = err && typeof err === 'object' && 'code' in err
-        ? (err as { code?: string }).code === 'auth/wrong-password'
-          ? 'Contraseña actual incorrecta.'
-          : (err as { message?: string }).message || 'Error al cambiar contraseña.'
-        : 'Error al cambiar contraseña.';
-      setMensajePassword({ tipo: 'error', text: msg });
+      setMensajePassword({ tipo: 'error', text: mapFirebasePasswordError(err) });
     } finally {
       setCambiandoPassword(false);
     }
   }
+
+  const showPasswordFormRestaurante = hasEmailPasswordProvider(fbUserState);
+  const showGoogleMessageRestaurante = fbUserState && !showPasswordFormRestaurante;
 
   if (!local) {
     return (
@@ -474,6 +496,41 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               placeholder="+593 ..."
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
             />
+          </section>
+
+          {/* Categorías discovery (Home) */}
+          <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <Tag className="w-4 h-4 text-rojo-andino" />
+              <span className="font-semibold text-gray-900">Tipo de negocio en la app</span>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Elegí en qué pestañas puede aparecer tu local en el inicio. Podés marcar varias.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {DISCOVERY_CATEGORIAS.map(({ key, label }) => {
+                const on = categoriasDiscovery.includes(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setCategoriasDiscovery((prev) => {
+                        const next = on ? prev.filter((k) => k !== key) : [...prev, key];
+                        return next.length ? next : ['Restaurantes'];
+                      });
+                    }}
+                    className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+                      on
+                        ? 'bg-rojo-andino text-white border-rojo-andino'
+                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-rojo-andino/40'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </section>
 
           {/* Tiempo estimado de entrega */}
@@ -712,61 +769,75 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
             </div>
           </section>
 
-          {/* Cambiar contraseña */}
+          {/* Seguridad / contraseña */}
           <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 p-4 pb-2">
               <Lock className="w-4 h-4 text-rojo-andino" />
-              <span className="font-semibold text-gray-900">Cambiar contraseña</span>
+              <span className="font-semibold text-gray-900">Seguridad</span>
             </div>
-            <p className="text-xs text-gray-500 px-4 pb-3">
-              Por seguridad, cambiá la contraseña que te entregaron al registrarte.
-            </p>
-            <form onSubmit={handleCambiarPassword} className="px-4 pb-4 space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Contraseña actual</label>
-                <PasswordInput
-                  value={passwordActual}
-                  onChange={(e) => setPasswordActual(e.target.value)}
-                  placeholder="••••••••"
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
-                  autoComplete="current-password"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nueva contraseña (mín. 6)</label>
-                <PasswordInput
-                  value={passwordNueva}
-                  onChange={(e) => setPasswordNueva(e.target.value)}
-                  placeholder="••••••••"
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
-                  autoComplete="new-password"
-                  minLength={6}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Confirmar nueva contraseña</label>
-                <PasswordInput
-                  value={passwordNuevaConfirm}
-                  onChange={(e) => setPasswordNuevaConfirm(e.target.value)}
-                  placeholder="••••••••"
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
-                  autoComplete="new-password"
-                  minLength={6}
-                />
-              </div>
-              {mensajePassword && (
-                <p className={`text-sm font-medium ${mensajePassword.tipo === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
-                  {mensajePassword.text}
+            {fbUserState === null && (
+              <div className="mx-4 mb-4 h-24 rounded-xl bg-gray-100 animate-pulse" aria-hidden />
+            )}
+            {fbUserState !== null && showGoogleMessageRestaurante && (
+              <p className="text-sm text-gray-600 px-4 pb-4 leading-relaxed">
+                Tu cuenta está vinculada a Google. Puedes gestionar tu seguridad directamente desde tu perfil de Google.
+              </p>
+            )}
+            {fbUserState !== null && showPasswordFormRestaurante && (
+              <>
+                <p className="text-xs text-gray-500 px-4 pb-3">
+                  Por seguridad, cambiá la contraseña que te entregaron al registrarte.
                 </p>
-              )}
-              <button
-                type="submit"
-                disabled={cambiandoPassword}
-                className="w-full py-2.5 rounded-xl bg-rojo-andino text-white text-sm font-semibold hover:bg-rojo-andino/90 disabled:opacity-70"
-              >
-                {cambiandoPassword ? 'Cambiando...' : 'Cambiar contraseña'}
-              </button>
-            </form>
+                <form onSubmit={handleCambiarPassword} className="px-4 pb-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Contraseña actual</label>
+                    <PasswordInput
+                      value={passwordActual}
+                      onChange={(e) => setPasswordActual(e.target.value)}
+                      placeholder="••••••••"
+                      className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                      autoComplete="current-password"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Nueva contraseña (mín. 6)</label>
+                    <PasswordInput
+                      value={passwordNueva}
+                      onChange={(e) => setPasswordNueva(e.target.value)}
+                      placeholder="••••••••"
+                      className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                      autoComplete="new-password"
+                      minLength={6}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Confirmar nueva contraseña</label>
+                    <PasswordInput
+                      value={passwordNuevaConfirm}
+                      onChange={(e) => setPasswordNuevaConfirm(e.target.value)}
+                      placeholder="••••••••"
+                      className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                      autoComplete="new-password"
+                      minLength={6}
+                    />
+                  </div>
+                  {mensajePassword && (
+                    <p
+                      className={`text-sm font-medium ${mensajePassword.tipo === 'ok' ? 'text-green-600' : 'text-red-600'}`}
+                    >
+                      {mensajePassword.text}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={cambiandoPassword}
+                    className="w-full py-2.5 rounded-xl bg-rojo-andino text-white text-sm font-semibold hover:bg-rojo-andino/90 disabled:opacity-70"
+                  >
+                    {cambiandoPassword ? 'Cambiando...' : 'Cambiar contraseña'}
+                  </button>
+                </form>
+              </>
+            )}
           </section>
         </div>
       </main>

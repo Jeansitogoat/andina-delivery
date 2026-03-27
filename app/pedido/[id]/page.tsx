@@ -18,10 +18,19 @@ import {
   Bell,
   XCircle,
   RefreshCw,
+  MessageCircle,
 } from 'lucide-react';
+
+const MOTIVOS_RAPIDOS_CANCEL_CLIENTE = [
+  'Cambié de opinión',
+  'Pedí por error',
+  'Demora estimada muy larga',
+  'Otro (escribir abajo)',
+] as const;
 import { useNotifications } from '@/lib/useNotifications';
 import { getIdToken } from '@/lib/authToken';
 import { useToast } from '@/lib/ToastContext';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 /* ─────────────── tipos ─────────────── */
 interface EstadoPedido {
@@ -168,6 +177,10 @@ export default function SeguimientoPedidoPage({
   const [restauranteDireccion, setRestauranteDireccion] = useState('');
   const [cancelando, setCancelando] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelMotivoCliente, setCancelMotivoCliente] = useState('');
+  const [pedidoTotalRef, setPedidoTotalRef] = useState(0);
+  const [telefonoLocalRef, setTelefonoLocalRef] = useState<string | null>(null);
+  const [motivoCancelacionApi, setMotivoCancelacionApi] = useState<string | null>(null);
 
   const { showToast } = useToast();
 
@@ -208,6 +221,10 @@ export default function SeguimientoPedidoPage({
         deliveryType?: 'delivery' | 'pickup';
         restaurante?: string;
         restauranteDireccion?: string;
+        total?: number;
+        totalCliente?: number;
+        telefonoLocal?: string | null;
+        motivoCancelacion?: string | null;
       };
       const isPickup = data.deliveryType === 'pickup';
       const uiEstado = mapApiEstadoToUI(data.estado || 'confirmado', isPickup);
@@ -222,6 +239,23 @@ export default function SeguimientoPedidoPage({
       if (data.codigoVerificacion) setCodigoVerificacion(data.codigoVerificacion);
       if (data.paymentMethod) setPaymentMethod(data.paymentMethod);
       if (data.paymentConfirmed !== undefined) setPaymentConfirmed(data.paymentConfirmed);
+      const t =
+        typeof data.totalCliente === 'number' && !Number.isNaN(data.totalCliente)
+          ? data.totalCliente
+          : typeof data.total === 'number' && !Number.isNaN(data.total)
+            ? data.total
+            : 0;
+      setPedidoTotalRef(t);
+      setTelefonoLocalRef(
+        typeof data.telefonoLocal === 'string' && data.telefonoLocal.trim()
+          ? data.telefonoLocal.trim()
+          : null
+      );
+      setMotivoCancelacionApi(
+        typeof data.motivoCancelacion === 'string' && data.motivoCancelacion.trim()
+          ? data.motivoCancelacion.trim()
+          : null
+      );
       if (uiEstado === 'en_camino') setTiempoRestante((t) => Math.max(0, t > 15 ? 15 : t));
       if (uiEstado === 'entregado') {
         setTiempoRestante(0);
@@ -342,7 +376,7 @@ export default function SeguimientoPedidoPage({
         )}
 
         {/* ── Pendiente confirmación de pago (transferencia) ── */}
-        {paymentMethod === 'transferencia' && !paymentConfirmed && (
+        {paymentMethod === 'transferencia' && !paymentConfirmed && !estadoCancelado && (
           <div
             className="rounded-3xl p-6 text-center shadow-lg border-2 border-dorado-oro/30 bg-gradient-to-br from-amber-50 to-yellow-50"
             style={{ animation: 'scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards' }}
@@ -359,7 +393,7 @@ export default function SeguimientoPedidoPage({
         )}
 
         {/* ── estado actual grande ── */}
-        {!(paymentMethod === 'transferencia' && !paymentConfirmed) && (
+        {(paymentMethod !== 'transferencia' || paymentConfirmed || estadoCancelado) && (
         <>
         <div
           className="rounded-3xl p-6 text-white text-center shadow-lg"
@@ -386,6 +420,11 @@ export default function SeguimientoPedidoPage({
           </div>
           <h2 className="font-black text-xl mb-1">{estadosParaMostrar[idxActual]?.label ?? '—'}</h2>
           <p className="text-white/80 text-sm">{estadosParaMostrar[idxActual]?.sublabel ?? ''}</p>
+          {estadoCancelado && motivoCancelacionApi && (
+            <p className="text-white/95 text-sm mt-3 font-medium text-left max-w-sm mx-auto leading-snug">
+              Motivo: {motivoCancelacionApi}
+            </p>
+          )}
 
           {tiempoRestanteMostrar > 0 && estadoActual !== 'entregado' && !estadoCancelado && (
             <div className="mt-4 bg-white/20 rounded-2xl px-5 py-2.5 inline-flex items-center gap-2">
@@ -397,7 +436,10 @@ export default function SeguimientoPedidoPage({
           {estadoActual === 'confirmado' && (
             <button
               type="button"
-              onClick={() => setShowCancelModal(true)}
+              onClick={() => {
+                setCancelMotivoCliente('');
+                setShowCancelModal(true);
+              }}
               disabled={cancelando}
               className="mt-4 px-5 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-semibold text-sm transition-colors disabled:opacity-60"
             >
@@ -453,6 +495,32 @@ export default function SeguimientoPedidoPage({
             })}
           </div>
         </div>
+
+        {estadoCancelado && paymentMethod === 'transferencia' && (
+          <div className="bg-white rounded-3xl p-5 shadow-md border-2 border-emerald-200 ring-1 ring-emerald-100">
+            <h3 className="font-black text-gray-900 text-sm mb-1">Reembolso</h3>
+            <p className="text-xs text-gray-600 mb-4">
+              Pagaste por transferencia y el pedido fue cancelado. Puedes solicitar tu devolución por WhatsApp al local.
+            </p>
+            {formatWhatsAppLink(telefonoLocalRef) ? (
+              <a
+                href={`${formatWhatsAppLink(telefonoLocalRef)}?text=${encodeURIComponent(
+                  `Hola, mi pedido #${id} fue cancelado y solicito mi reembolso de $${pedidoTotalRef.toFixed(2)}.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black text-sm shadow-lg transition-colors"
+              >
+                <MessageCircle className="w-5 h-5 flex-shrink-0" />
+                Solicitar Reembolso por WhatsApp
+              </a>
+            ) : (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                No encontramos el WhatsApp del local en este pedido. Escribinos a soporte Andina o al restaurante por el canal que usaste al pedir.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* ── Retiro en local: dirección del negocio ── */}
         {isPickup && (restauranteNombre || restauranteDireccion) && (
@@ -713,9 +781,33 @@ export default function SeguimientoPedidoPage({
       {/* Modal confirmar cancelación por cliente */}
       {showCancelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => !cancelando && setShowCancelModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg text-gray-900 mb-2">¿Cancelar pedido?</h3>
-            <p className="text-sm text-gray-600 mb-6">El local aún no ha aceptado tu pedido. Si cancelas, no se preparará.</p>
+            <p className="text-sm text-gray-600 mb-3">El local aún no ha aceptado tu pedido. Si cancelas, no se preparará.</p>
+            <p className="text-xs font-semibold text-gray-500 mb-2">Motivo de cancelación (obligatorio)</p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {MOTIVOS_RAPIDOS_CANCEL_CLIENTE.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setCancelMotivoCliente(m === 'Otro (escribir abajo)' ? '' : m)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                    cancelMotivoCliente === m
+                      ? 'bg-rojo-andino text-white border-rojo-andino'
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-rojo-andino/40'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={cancelMotivoCliente}
+              onChange={(e) => setCancelMotivoCliente(e.target.value.slice(0, 500))}
+              rows={3}
+              placeholder="Escribe el motivo…"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+            />
             <div className="flex gap-3">
               <button
                 type="button"
@@ -728,17 +820,24 @@ export default function SeguimientoPedidoPage({
               <button
                 type="button"
                 onClick={async () => {
+                  const motivoOk = cancelMotivoCliente.trim();
+                  if (!motivoOk) {
+                    showToast({ type: 'error', message: 'Indica el motivo de cancelación.' });
+                    return;
+                  }
                   setCancelando(true);
                   try {
                     const token = await getIdToken();
                     const res = await fetch(`/api/pedidos/${id}`, {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                      body: JSON.stringify({ accion: 'cancelar' }),
+                      body: JSON.stringify({ accion: 'cancelar', motivo: motivoOk }),
                     });
                     if (res.ok) {
                       setShowCancelModal(false);
-                      router.push('/');
+                      setCancelMotivoCliente('');
+                      await fetchEstado(false);
+                      showToast({ type: 'success', message: 'Pedido cancelado' });
                     } else {
                       const d = await res.json().catch(() => ({}));
                       showToast({ type: 'error', message: (d as { error?: string })?.error || 'No se pudo cancelar' });
@@ -749,10 +848,10 @@ export default function SeguimientoPedidoPage({
                     setCancelando(false);
                   }
                 }}
-                disabled={cancelando}
+                disabled={cancelando || !cancelMotivoCliente.trim()}
                 className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold text-sm hover:bg-red-700 disabled:opacity-60"
               >
-                {cancelando ? '...' : 'Sí, cancelar'}
+                {cancelando ? '...' : 'Confirmar cancelación'}
               </button>
             </div>
           </div>

@@ -43,6 +43,8 @@ export interface LocaleLight {
 /** LocaleLight extendido para la Home: permite filtros, orden por distancia y estado abierto real. */
 export interface LocaleLightHome extends LocaleLight {
   type: string[];
+  /** Categorías de discovery (Home); preferir sobre `type` para filtros. */
+  categorias?: string[];
   status?: 'active' | 'suspended';
   lat?: number;
   lng?: number;

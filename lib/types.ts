@@ -9,7 +9,7 @@ export type EstadoPedido =
   | 'cancelado_local'
   | 'cancelado_cliente';
 
-export type EstadoRider = 'disponible' | 'ocupado' | 'ausente' | 'fuera_servicio';
+export type EstadoRider = 'disponible' | 'ocupado' | 'fuera_servicio';
 
 export interface PedidoCentral {
   id: string;
@@ -27,7 +27,7 @@ export interface PedidoCentral {
   totalCliente?: number;
   /** Subtotal legacy/base de productos sin IVA */
   subtotal?: number;
-  /** Subtotal base de productos, sin IVA ni envío */
+  /** Subtotal base de productos, sin IVA ni envÃ­o */
   subtotalBase?: number;
   ivaEnabled?: boolean;
   /** Tasa de IVA como decimal (ej. 0.15) */
@@ -46,23 +46,25 @@ export interface PedidoCentral {
   /** Cover / foto destacada del local al momento del pedido */
   fotoLocal?: string | null;
   telefonoLocal?: string | null;
+  /** Motivo de cancelación (cliente o local), texto libre */
+  motivoCancelacion?: string | null;
   codigoVerificacion?: string;
   propina?: number;
-  /** Multi-stop: identificador común del batch */
+  /** Multi-stop: identificador comÃºn del batch */
   batchId?: string | null;
   /** Orden de recogida dentro del batch (0 = primera parada) */
   batchIndex?: number | null;
-  /** localId del local líder que puede pedir rider cuando todos estén listos */
+  /** localId del local lÃ­der que puede pedir rider cuando todos estÃ©n listos */
   batchLeaderLocalId?: string | null;
   /** 'delivery' = entrega a domicilio (pasa por central/riders), 'pickup' = retiro en local */
   deliveryType?: 'delivery' | 'pickup';
-  /** Método de pago para mensaje rider y cobro */
+  /** MÃ©todo de pago para mensaje rider y cobro */
   paymentMethod?: 'efectivo' | 'transferencia';
   /** Compat legacy: hoy se expone igual que costoEnvio para flujos rider */
   serviceCost?: number;
-  /** Costo de envío/carrera del rider */
+  /** Costo de envÃ­o/carrera del rider */
   costoEnvio?: number;
-  /** Cargo de servicio que paga el cliente (no entra en comisión) */
+  /** Cargo de servicio que paga el cliente (no entra en comisiÃ³n) */
   serviceFee?: number;
   /** Para "Volver a pedir": estructura del carrito al momento del pedido (opcional) */
   itemsCart?: {
@@ -120,9 +122,9 @@ export interface CarreraRider {
   batchIndex?: number | null;
   /** Timestamp para filtrado por fecha (p. ej. historial) */
   timestamp?: number;
-  /** Método de pago para claridad de cobro */
+  /** MÃ©todo de pago para claridad de cobro */
   paymentMethod?: 'efectivo' | 'transferencia';
-  /** Costo de envío (cobrar solo envío si transferencia) */
+  /** Costo de envÃ­o (cobrar solo envÃ­o si transferencia) */
   costoEnvio?: number;
   /** Total final cobrado al cliente */
   totalCliente?: number;

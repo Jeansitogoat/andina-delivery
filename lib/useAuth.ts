@@ -35,8 +35,8 @@ export interface AndinaUser {
   localId?: string | null;
   /** Solo para rol rider: pending hasta que Central valide; approved para usar panel; suspended si Central lo da de baja. */
   riderStatus?: RiderStatus;
-  /** Estado manual del rider: disponible | ausente | fuera_servicio (ocupado se deduce si tiene carrera activa). */
-  estadoRider?: 'disponible' | 'ausente' | 'fuera_servicio';
+  /** Estado manual del rider: disponible | fuera_servicio (ocupado se deduce si tiene carrera activa). */
+  estadoRider?: 'disponible' | 'fuera_servicio';
   /** Promedio de calificaciones (riders). */
   ratingPromedio?: number | null;
 }
@@ -66,7 +66,8 @@ async function ensureUserDocument(firebaseUser: User): Promise<AndinaUser> {
 
   const rol: UserRole = data?.rol ?? 'cliente';
   const riderStatus: RiderStatus | undefined = data?.riderStatus;
-  const estadoRider = data?.estadoRider as 'disponible' | 'ausente' | 'fuera_servicio' | undefined;
+  const rawEstado = data?.estadoRider as string | undefined;
+  const estadoRider = (rawEstado === 'ausente' ? 'disponible' : rawEstado) as 'disponible' | 'fuera_servicio' | undefined;
   const andinaUser: AndinaUser = {
     uid: firebaseUser.uid,
     email: firebaseUser.email,
@@ -124,8 +125,8 @@ export function useAuth() {
       lastAndinaUserRef.current = andinaUser;
       setState({ user: andinaUser, loading: false });
 
-      // Sincronizar custom claims en background para que el próximo token incluya el rol.
-      // Después refrescamos el token para que las API routes lo vean de inmediato.
+      // Sincronizar custom claims en background para que el prÃ³ximo token incluya el rol.
+      // DespuÃ©s refrescamos el token para que las API routes lo vean de inmediato.
       cred.user.getIdToken().then((idToken) => {
         fetch('/api/users/sync-claims', {
           method: 'POST',
@@ -142,7 +143,7 @@ export function useAuth() {
             localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
           }
         } catch {
-          /* Silencioso en móvil (modo privado, WebView, etc.) */
+          /* Silencioso en mÃ³vil (modo privado, WebView, etc.) */
         }
       }
 
@@ -208,10 +209,10 @@ export function useAuth() {
           method: 'POST',
           headers: { Authorization: `Bearer ${idToken}` },
         });
-        // Forzar refresh del token para que el claim esté disponible de inmediato.
+        // Forzar refresh del token para que el claim estÃ© disponible de inmediato.
         await user.getIdToken(true);
       } catch {
-        // No bloquear el registro si falla la sincronización de claims.
+        // No bloquear el registro si falla la sincronizaciÃ³n de claims.
       }
 
       setState({ user: andinaUser, loading: false });
@@ -224,7 +225,7 @@ export function useAuth() {
             localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
           }
         } catch {
-          /* Silencioso en móvil (modo privado, WebView, etc.) */
+          /* Silencioso en mÃ³vil (modo privado, WebView, etc.) */
         }
       }
       return andinaUser;
@@ -269,7 +270,7 @@ export function useAuth() {
         localStorage.removeItem('andina_visitado');
         localStorage.removeItem('andina_usuario_nombre');
       } catch {
-        /* Silencioso en móvil (modo privado, WebView, etc.) */
+        /* Silencioso en mÃ³vil (modo privado, WebView, etc.) */
       }
     }
   }, [state.user]);
@@ -287,7 +288,7 @@ export function useAuth() {
         try {
           localStorage.setItem('andina_usuario_nombre', andinaUser.displayName);
         } catch {
-          /* Silencioso en móvil */
+          /* Silencioso en mÃ³vil */
         }
       }
     } catch (err) {
@@ -304,4 +305,5 @@ export function useAuth() {
     refreshUser,
   };
 }
+
 

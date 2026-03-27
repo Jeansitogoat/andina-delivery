@@ -29,6 +29,7 @@ import {
   Check,
   Bell,
   ShoppingBag,
+  UserCircle,
   LogOut,
   Camera,
   MessageCircle,
@@ -103,7 +104,6 @@ function getRestauranteMapsUrl(c: { restauranteLat?: number | null; restauranteL
 const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg: string }> = {
   disponible: { label: 'Disponible', dot: 'bg-green-400', bg: 'bg-green-500' },
   ocupado: { label: 'Ocupado', dot: 'bg-yellow-400', bg: 'bg-yellow-500' },
-  ausente: { label: 'Ausente', dot: 'bg-orange-400', bg: 'bg-orange-500' },
   fuera_servicio: { label: 'Fuera de servicio', dot: 'bg-red-400', bg: 'bg-red-500' },
 };
 
@@ -157,7 +157,8 @@ export default function PanelRiderPage() {
     if (carreras.filter((c) => c.estado !== 'entregada').length > 0) {
       setMiEstado('ocupado');
     } else {
-      const manual = (user as { estadoRider?: EstadoRider }).estadoRider ?? 'disponible';
+      const raw = (user as { estadoRider?: string }).estadoRider;
+      const manual: EstadoRider = raw === 'fuera_servicio' ? 'fuera_servicio' : 'disponible';
       setMiEstado(manual);
     }
   }, [user, carreras]);
@@ -511,6 +512,15 @@ export default function PanelRiderPage() {
                 <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => router.push('/panel/rider/perfil')}
+                  className="touch-target-lg flex items-center gap-2 px-3 py-2 rounded-2xl bg-white/15 border border-white/25 hover:bg-white/25 text-sm font-semibold transition-colors"
+                  title="Editar perfil"
+                >
+                  <UserCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Perfil</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => router.push('/')}
                   className="touch-target-lg flex items-center gap-2 px-3 py-2 rounded-2xl bg-cyan-300/20 border border-cyan-200/40 hover:bg-cyan-300/30 text-sm font-semibold transition-colors"
                   title="Pedir comida"
@@ -559,18 +569,17 @@ export default function PanelRiderPage() {
             <div className="mb-5 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-sm p-4">
               <p className="text-xs text-blue-100 font-semibold mb-2">Mi estado operativo</p>
               <div className="flex flex-wrap gap-2">
-                {(['disponible', 'ocupado', 'ausente', 'fuera_servicio'] as EstadoRider[]).map((estado) => {
+                {(['disponible', 'fuera_servicio'] as const).map((estado) => {
                   const cfg = ESTADO_RIDER_CONFIG[estado];
                   const activo = miEstado === estado;
                   const tieneCarrera = carreras.filter((c) => c.estado !== 'entregada').length > 0;
-                  const deshabilitado = estado !== 'ocupado' && tieneCarrera;
+                  const deshabilitado = tieneCarrera;
                   return (
                     <button
                       key={estado}
                       type="button"
                       disabled={deshabilitado}
                       onClick={async () => {
-                        if (estado === 'ocupado') return;
                         setMiEstado(estado);
                         const tok = await getIdToken();
                         if (tok && user?.uid) {

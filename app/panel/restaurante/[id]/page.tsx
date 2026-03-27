@@ -17,6 +17,8 @@ import {
   X,
   LogOut,
   Trash2,
+  Phone,
+  MessageCircle,
 } from 'lucide-react';
 import NavPanel from '@/components/panel/NavPanel';
 import BotonPedirRider from '@/components/panel/BotonPedirRider';
@@ -45,6 +47,18 @@ import { isNightMode } from '@/lib/time';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
 import { startOfDayGuayaquil } from '@/lib/guayaquil-time';
+import { getFirestoreDb } from '@/lib/firebase/client';
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { getOrderMoney } from '@/lib/order-money';
+import { formatWhatsAppLink } from '@/lib/utils/phone';
+import { CENTRAL_LOGISTICA_PHONE } from '@/lib/constants/centralLogistics';
+
+const MOTIVOS_RAPIDOS_CANCEL_LOCAL = [
+  'Sin stock / ingrediente',
+  'Demora operativa',
+  'Cliente pidió cancelar por teléfono',
+  'Otro (detallar abajo)',
+] as const;
 
 type OrderStatus = 'nuevo' | 'preparando' | 'listo' | 'entregado' | 'cancelado';
 
@@ -97,8 +111,6 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [local, setLocal] = useState<Local | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [activeNextCursor, setActiveNextCursor] = useState<string | null>(null);
-  const [activeLoadingMore, setActiveLoadingMore] = useState(false);
   const [newOrderToast, _setNewOrderToast] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(false);
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferOrder[]>([]);
@@ -122,7 +134,6 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const [advancingOrderId, setAdvancingOrderId] = useState<string | null>(null);
   const [retirandoOrderId, setRetirandoOrderId] = useState<string | null>(null);
   const [confirmingPaymentOrderId, setConfirmingPaymentOrderId] = useState<string | null>(null);
-  const useUnifiedEndpoint = process.env.NEXT_PUBLIC_FEATURE_RESTAURANTE_UNIFIED !== '0';
 
   const [eliminarOrderId, setEliminarOrderId] = useState<string | null>(null);
 
@@ -139,94 +150,80 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     }
   }
 
-  const cargarPanelData = useCallback(async (cursor?: string | null, appendActivos = false) => {
-    const token = await getIdToken();
-    if (!token) {
-      setOrdersLoading(false);
-      return;
-    }
-    if (user?.rol === 'maestro' && !id) {
-      setOrders([]);
-      setPendingTransfer([]);
-      setOrdersLoading(false);
-      return;
-    }
-    let url = user?.rol === 'maestro' ? `/api/pedidos?localId=${encodeURIComponent(id)}` : '/api/pedidos';
-    const sep = url.includes('?') ? '&' : '?';
-    let unifiedUrl = user?.rol === 'maestro'
-      ? `/api/pedidos/panel-restaurante?localId=${encodeURIComponent(id)}&activeLimit=20`
-      : '/api/pedidos/panel-restaurante?activeLimit=20';
-    if (cursor) {
-      url += `${sep}soloActivos=true&limit=20&cursor=${encodeURIComponent(cursor)}`;
-      unifiedUrl += `&cursor=${encodeURIComponent(cursor)}`;
-    } else {
-      url += `${sep}soloActivos=true&limit=20`;
-    }
-    if (appendActivos) setActiveLoadingMore(true);
-    else setOrdersLoading(true);
-    try {
-      const res = await fetch(useUnifiedEndpoint ? unifiedUrl : url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) {
-        if (!appendActivos) {
-          setOrders([]);
-          setPendingTransfer([]);
-        }
-        return;
-      }
-      const data = await res.json() as {
-        activos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; subtotalBase?: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
-        pedidos?: Array<{ id: string; clienteNombre: string; items: string[]; total: number; subtotalBase?: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string; batchId?: string | null; batchLeaderLocalId?: string | null; deliveryType?: 'delivery' | 'pickup'; paymentMethod?: 'efectivo' | 'transferencia'; serviceCost?: number }>;
-        pendientesTransferencia?: PendingTransferOrder[];
-        nextCursorActivos?: string | null;
-        nextCursor?: string | null;
-      };
-      const activos = Array.isArray(data.activos) ? data.activos : (data.pedidos || []);
-      const list: Order[] = activos.map((p) => ({
-        id: p.id,
-        cliente: p.clienteNombre || 'Cliente',
-        items: p.items || [],
-        total: p.total || 0,
-        subtotalBase: typeof p.subtotalBase === 'number' && !Number.isNaN(p.subtotalBase) ? p.subtotalBase : p.total || 0,
-        tiempo: tiempoTranscurrido(p.timestamp || 0),
-        status: estadoToStatus(p.estado || 'confirmado'),
-        direccion: p.clienteDireccion || '—',
-        estadoFirestore: p.estado || 'confirmado',
-        batchId: p.batchId ?? null,
-        batchLeaderLocalId: p.batchLeaderLocalId ?? null,
-        deliveryType: p.deliveryType === 'pickup' ? 'pickup' : 'delivery',
-        paymentMethod: p.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
-        serviceCost: typeof p.serviceCost === 'number' && !Number.isNaN(p.serviceCost) ? p.serviceCost : undefined,
-      }));
-      const newIds = new Set(list.map((o) => o.id));
-      if (list.some((o) => !prevOrderIdsRef.current.has(o.id))) {
-        playNewOrderSound();
-      }
-      if (!appendActivos) prevOrderIdsRef.current = newIds;
-      setOrders((prev) => (appendActivos ? [...prev, ...list] : list));
-      if (!appendActivos) {
-        if (useUnifiedEndpoint) {
-          setPendingTransfer(Array.isArray(data.pendientesTransferencia) ? data.pendientesTransferencia : []);
-        } else {
-          const pRes = await fetch(`/api/pedidos/pendientes-transferencia?localId=${encodeURIComponent(id)}&limit=20`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            setPendingTransfer(Array.isArray(pData) ? pData : []);
+  useEffect(() => {
+    if (!user || (user.rol !== 'local' && user.rol !== 'maestro') || !id) return;
+    const db = getFirestoreDb();
+    const desde = startOfDayGuayaquil();
+    const ESTADOS_ACTIVOS_SNAP: EstadoPedido[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
+
+    const q = query(
+      collection(db, 'pedidos'),
+      where('localId', '==', id),
+      where('timestamp', '>=', desde),
+      orderBy('timestamp', 'desc'),
+      limit(50)
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const activos: Order[] = [];
+        const pend: PendingTransferOrder[] = [];
+        const newIds = new Set<string>();
+        for (const d of snap.docs) {
+          const data = d.data() as Record<string, unknown>;
+          const estado = (data.estado as EstadoPedido) || 'confirmado';
+          const money = getOrderMoney(data);
+          const isPendingTransfer = data.paymentMethod === 'transferencia' && data.paymentConfirmed === false;
+          if (isPendingTransfer) {
+            pend.push({
+              orderId: d.id,
+              orderNum: `#${d.id}`,
+              total: money.totalCliente,
+              subtotalBase: money.subtotalBase,
+              direccion: (data.clienteDireccion as string) || '—',
+              items: Array.isArray(data.items) ? (data.items as string[]) : [],
+              createdAt: Number(data.timestamp ?? 0),
+              comprobanteBase64: (data.comprobanteBase64 as string | null) ?? null,
+              comprobanteFileName: (data.comprobanteFileName as string | null) ?? null,
+              comprobanteMimeType: (data.comprobanteMimeType as string | null) ?? null,
+            });
+          }
+          if (ESTADOS_ACTIVOS_SNAP.includes(estado) && !isPendingTransfer) {
+            newIds.add(d.id);
+            activos.push({
+              id: d.id,
+              cliente: String(data.clienteNombre || 'Cliente'),
+              items: Array.isArray(data.items) ? (data.items as string[]) : [],
+              total: money.totalCliente,
+              subtotalBase: money.subtotalBase,
+              tiempo: tiempoTranscurrido(Number(data.timestamp ?? 0)),
+              status: estadoToStatus(estado),
+              direccion: String(data.clienteDireccion || '—'),
+              estadoFirestore: estado,
+              batchId: (data.batchId as string) ?? null,
+              batchLeaderLocalId: (data.batchLeaderLocalId as string) ?? null,
+              deliveryType: data.deliveryType === 'pickup' ? 'pickup' : 'delivery',
+              paymentMethod: data.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
+              serviceCost: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost as number) ? (data.serviceCost as number) : undefined,
+            });
           }
         }
+        if (activos.some((o) => !prevOrderIdsRef.current.has(o.id))) {
+          playNewOrderSound();
+        }
+        prevOrderIdsRef.current = newIds;
+        setOrders(activos);
+        setPendingTransfer(pend);
+        setOrdersLoading(false);
+      },
+      () => {
+        setOrdersLoading(false);
+        showToast({ type: 'error', message: 'Error al sincronizar pedidos. Recargá la página.' });
       }
-      setActiveNextCursor((useUnifiedEndpoint ? data.nextCursorActivos : data.nextCursor) ?? null);
-    } catch {
-      if (!appendActivos) {
-        setOrders([]);
-        setPendingTransfer([]);
-      }
-    } finally {
-      if (appendActivos) setActiveLoadingMore(false);
-      else setOrdersLoading(false);
-    }
-  }, [id, user?.rol, useUnifiedEndpoint]);
+    );
+    return () => unsub();
+  }, [user, id, showToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,35 +238,6 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     return () => { cancelled = true; };
   }, [id]);
 
-  useEffect(() => {
-    if (!user || (user.rol !== 'local' && user.rol !== 'maestro')) return;
-    cargarPanelData();
-    let t: ReturnType<typeof setInterval> | null = null;
-    const startPolling = () => {
-      if (t) return;
-      t = setInterval(cargarPanelData, 45_000); // una sola llamada para activos + transferencias
-    };
-    const stopPolling = () => {
-      if (t) {
-        clearInterval(t);
-        t = null;
-      }
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        cargarPanelData();
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-    startPolling();
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [user, id, cargarPanelData]);
 
   const loadEntregados = useCallback(async (cursor?: string | null) => {
     const token = await getIdToken();
@@ -386,7 +354,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   }, [id, orders, cargarEstadoBatch]);
 
   const refreshPendingTransfer = () => {
-    cargarPanelData();
+    /* onSnapshot actualiza pendientes */
   };
 
   useEffect(() => {
@@ -515,28 +483,43 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
 
   async function confirmarCancelacion() {
     if (!cancelOrderId) return;
+    const motivoTrim = cancelMotivo.trim();
+    if (!motivoTrim) {
+      showToast({ type: 'error', message: 'Indica el motivo de cancelación.' });
+      return;
+    }
+    const idToCancel = cancelOrderId;
+    const motivo = motivoTrim;
     const token = await getIdToken();
     if (!token) return;
+
+    const prevOrders = orders;
+    const prevPending = pendingTransfer;
+    setOrders((prev) => prev.filter((o) => o.id !== idToCancel));
+    setPendingTransfer((prev) => prev.filter((p) => p.orderId !== idToCancel));
+    setCancelOrderId(null);
+    setCancelMotivo('');
     setCancelLoading(true);
+
     try {
-      const res = await fetch(`/api/pedidos/${cancelOrderId}`, {
+      const res = await fetch(`/api/pedidos/${idToCancel}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ accion: 'cancelar', motivo: cancelMotivo }),
+        body: JSON.stringify({ accion: 'cancelar', motivo }),
       });
-      if (res.ok) {
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.id === cancelOrderId ? { ...o, status: 'cancelado', estadoFirestore: 'cancelado_local' as EstadoPedido } : o
-          )
-        );
-        setCancelOrderId(null);
-        setCancelMotivo('');
-      } else {
+      if (!res.ok) {
+        setOrders(prevOrders);
+        setPendingTransfer(prevPending);
+        setCancelOrderId(idToCancel);
+        setCancelMotivo(motivo);
         if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
         else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
+      setOrders(prevOrders);
+      setPendingTransfer(prevPending);
+      setCancelOrderId(idToCancel);
+      setCancelMotivo(motivo);
       showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setCancelLoading(false);
@@ -1061,6 +1044,34 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                 </button>
                               </div>
                             </div>
+                            {(order.status === 'preparando' || order.status === 'listo') && (
+                              <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+                                <p className="text-xs font-bold text-gray-700 mb-1">Central / Logística</p>
+                                <p className="text-xs text-gray-500 mb-2">
+                                  Coordiná tiempos de cocción o al rider con anticipación.
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <a
+                                    href={`tel:+${CENTRAL_LOGISTICA_PHONE}`}
+                                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                                  >
+                                    <Phone className="w-3.5 h-3.5" />
+                                    Llamar a Central
+                                  </a>
+                                  <a
+                                    href={`${formatWhatsAppLink(CENTRAL_LOGISTICA_PHONE)}?text=${encodeURIComponent(
+                                      `Hola, soy ${local.name} · Pedido #${order.id} · necesito coordinar tiempos o rider.`
+                                    )}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 transition-colors"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                    WhatsApp Central
+                                  </a>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -1070,19 +1081,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               );
             });
           })()}
-          {activeNextCursor && (
-            <button
-              type="button"
-              onClick={() => {
-                if (!activeNextCursor || activeLoadingMore) return;
-                cargarPanelData(activeNextCursor, true);
-              }}
-              disabled={activeLoadingMore}
-              className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 disabled:opacity-60"
-            >
-              {activeLoadingMore ? 'Cargando...' : 'Ver más pedidos activos'}
-            </button>
-          )}
+
 
           {(delivered.length > 0 || deliveredLoading) && (
             <div className="pt-6 border-t border-gray-200">
@@ -1185,11 +1184,28 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             <p className="text-sm text-gray-600 mb-3">
               ¿Seguro que deseas cancelar este pedido? El cliente será notificado y no se asignará rider.
             </p>
+            <p className="text-xs font-semibold text-gray-600 mb-2">Motivo de cancelación (obligatorio)</p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {MOTIVOS_RAPIDOS_CANCEL_LOCAL.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setCancelMotivo(m === 'Otro (detallar abajo)' ? '' : m)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                    cancelMotivo === m
+                      ? 'bg-rojo-andino text-white border-rojo-andino'
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-rojo-andino/40'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
             <label className="block mb-3">
-              <span className="text-xs font-semibold text-gray-500">Motivo (opcional)</span>
+              <span className="text-xs font-semibold text-gray-500">Detalle</span>
               <textarea
                 value={cancelMotivo}
-                onChange={(e) => setCancelMotivo(e.target.value)}
+                onChange={(e) => setCancelMotivo(e.target.value.slice(0, 500))}
                 rows={3}
                 className="mt-1 w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-rojo-andino"
                 placeholder="Ej: Cliente llamó para cancelar, problema con stock, etc."
@@ -1211,6 +1227,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               <LoadingButton
                 type="button"
                 loading={cancelLoading}
+                disabled={cancelLoading || !cancelMotivo.trim()}
                 onClick={confirmarCancelacion}
                 className="px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-70"
               >

@@ -27,6 +27,8 @@ type AndinaState = {
   loading: boolean;
   error: boolean;
   refreshConfig: () => Promise<void>;
+  /** Filtro discovery (Restaurantes | Market | Farmacias); null = todos. */
+  setLocalesCategoryFilter: (categoria: string | null) => void;
 };
 
 const DEFAULT_CONFIG: AndinaConfigValue = {
@@ -56,14 +58,15 @@ function readStoredLocales(): LocaleLightHome[] {
   }
 }
 
-async function fetchAndinaConfig(): Promise<{
+async function fetchAndinaConfig(localesCategoryFilter: string | null): Promise<{
   config: AndinaConfigValue;
   localesLight: LocaleLightHome[];
 }> {
-  const [configRes, localesRes] = await Promise.all([
-    fetch('/api/config/all'),
-    fetch('/api/locales?light=1'),
-  ]);
+  const localesUrl =
+    localesCategoryFilter && localesCategoryFilter !== 'all'
+      ? `/api/locales?light=1&categoria=${encodeURIComponent(localesCategoryFilter)}`
+      : '/api/locales?light=1';
+  const [configRes, localesRes] = await Promise.all([fetch('/api/config/all'), fetch(localesUrl)]);
 
   let config: AndinaConfigValue = DEFAULT_CONFIG;
   if (configRes.ok) {
@@ -87,6 +90,11 @@ async function fetchAndinaConfig(): Promise<{
       logoUrl: typeof loc.logoUrl === 'string' ? loc.logoUrl : typeof loc.logo === 'string' ? (loc.logo as string) : '',
       estadoAbierto: typeof loc.estadoAbierto === 'boolean' ? loc.estadoAbierto : loc.status !== 'suspended',
       type: Array.isArray(loc.type) ? (loc.type as string[]) : ['Restaurantes'],
+      categorias: Array.isArray(loc.categorias)
+        ? (loc.categorias as string[])
+        : Array.isArray(loc.type)
+          ? (loc.type as string[])
+          : ['Restaurantes'],
       status: loc.status === 'active' || loc.status === 'suspended' ? loc.status : undefined,
       lat: typeof loc.lat === 'number' ? loc.lat : undefined,
       lng: typeof loc.lng === 'number' ? loc.lng : undefined,
@@ -107,13 +115,14 @@ export function AndinaProvider({ children }: { children: React.ReactNode }) {
   const [localesLight, setLocalesLight] = useState<LocaleLightHome[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [localesCategoryFilter, setLocalesCategoryFilter] = useState<string | null>(null);
   const hasLocalesRef = React.useRef(0);
 
   const load = useCallback(async () => {
     if (hasLocalesRef.current === 0) setLoading(true);
     setError(false);
     try {
-      const { config: cfg, localesLight: locs } = await fetchAndinaConfig();
+      const { config: cfg, localesLight: locs } = await fetchAndinaConfig(localesCategoryFilter);
       setConfig(cfg);
       setLocalesLight(locs);
       try {
@@ -127,7 +136,7 @@ export function AndinaProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       setError(true);
     }
-  }, []);
+  }, [localesCategoryFilter]);
 
   useEffect(() => {
     const stored = readStoredLocales();
@@ -148,6 +157,7 @@ export function AndinaProvider({ children }: { children: React.ReactNode }) {
       loading,
       error,
       refreshConfig: load,
+      setLocalesCategoryFilter,
     }),
     [config, localesLight, loading, error, load]
   );

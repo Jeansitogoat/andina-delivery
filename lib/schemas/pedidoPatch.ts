@@ -16,7 +16,7 @@ const ESTADOS_PEDIDO = [
 
 const ACCIONES_PEDIDO = ['cancelar', 'rechazar_carrera', 'avanzar_estado'] as const;
 
-export const pedidoPatchSchema = z.object({
+const pedidoPatchBaseSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, { error: 'Estado de pedido no válido' }).optional(),
   riderId: z.string().nullable().optional(),
   propina: z.number().min(0).optional(),
@@ -26,6 +26,20 @@ export const pedidoPatchSchema = z.object({
   comprobanteBase64: z.string().max(500_000, 'El comprobante es demasiado grande').nullable().optional(),
   comprobanteFileName: z.string().max(200).nullable().optional(),
   comprobanteMimeType: z.string().max(100).nullable().optional(),
+});
+
+/** Si `accion` es cancelar, `motivo` (→ motivoCancelacion en Firestore) es obligatorio. */
+export const pedidoPatchSchema = pedidoPatchBaseSchema.superRefine((data, ctx) => {
+  if (data.accion === 'cancelar') {
+    const m = typeof data.motivo === 'string' ? data.motivo.trim() : '';
+    if (!m) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Debes indicar el motivo de cancelación',
+        path: ['motivo'],
+      });
+    }
+  }
 });
 
 export type PedidoPatchInput = z.infer<typeof pedidoPatchSchema>;

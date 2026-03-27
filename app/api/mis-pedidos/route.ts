@@ -19,6 +19,8 @@ function mapDocToPedido(id: string, data: DocumentData): PedidoCentral {
     clienteTelefono: data.clienteTelefono || '',
     items: data.items || [],
     total: data.total || 0,
+    motivoCancelacion:
+      typeof data.motivoCancelacion === 'string' ? data.motivoCancelacion : undefined,
     estado: data.estado || 'confirmado',
     riderId: data.riderId ?? null,
     hora: data.hora || '',

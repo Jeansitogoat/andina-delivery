@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { riderEstadoPatchSchema } from '@/lib/schemas/riderEstado';
 
-/** PATCH /api/riders/[uid]/estado → el rider actualiza su estado manual (disponible, ausente, fuera_servicio). */
+/** PATCH /api/riders/[uid]/estado → el rider actualiza su estado manual (disponible, fuera_servicio). */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ uid: string }> }

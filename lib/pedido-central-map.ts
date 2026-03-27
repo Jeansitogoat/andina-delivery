@@ -1,0 +1,41 @@
+﻿import type { EstadoPedido, PedidoCentral } from '@/lib/types';
+
+/** Mapea un documento Firestore `pedidos/{id}` al tipo usado por el panel central (cliente). */
+export function docToPedidoCentral(id: string, data: Record<string, unknown>): PedidoCentral {
+  return {
+    id,
+    clienteId: typeof data.clienteId === 'string' ? data.clienteId : null,
+    restaurante: String(data.restaurante || '—'),
+    restauranteDireccion: String(data.restauranteDireccion || '—'),
+    restauranteLat: typeof data.restauranteLat === 'number' ? data.restauranteLat : null,
+    restauranteLng: typeof data.restauranteLng === 'number' ? data.restauranteLng : null,
+    clienteNombre: String(data.clienteNombre || 'Cliente'),
+    clienteDireccion: String(data.clienteDireccion || '—'),
+    clienteTelefono: String(data.clienteTelefono || ''),
+    items: Array.isArray(data.items) ? (data.items as string[]) : [],
+    total: Number(data.total ?? 0),
+    totalCliente: typeof data.totalCliente === 'number' ? data.totalCliente : undefined,
+    subtotal: typeof data.subtotal === 'number' ? data.subtotal : undefined,
+    subtotalBase: typeof data.subtotalBase === 'number' ? data.subtotalBase : undefined,
+    estado: (data.estado || 'esperando_rider') as EstadoPedido,
+    riderId: (data.riderId as string | null) ?? null,
+    hora: String(data.hora || ''),
+    timestamp: Number(data.timestamp ?? 0),
+    distancia: String(data.distancia || '—'),
+    localId: (data.localId as string | null) ?? null,
+    nombreLocal: typeof data.nombreLocal === 'string' ? data.nombreLocal : null,
+    logoLocal: typeof data.logoLocal === 'string' ? data.logoLocal : null,
+    fotoLocal: typeof data.fotoLocal === 'string' ? data.fotoLocal : null,
+    telefonoLocal: typeof data.telefonoLocal === 'string' ? data.telefonoLocal : null,
+    codigoVerificacion: String(data.codigoVerificacion || ''),
+    propina: Number(data.propina ?? 0),
+    deliveryType: (data.deliveryType === 'pickup' ? 'pickup' : 'delivery') as 'delivery' | 'pickup',
+    batchId: (data.batchId as string | null) ?? null,
+    batchIndex: data.batchIndex != null ? Number(data.batchIndex) : null,
+    batchLeaderLocalId: (data.batchLeaderLocalId as string | null) ?? null,
+    paymentMethod: data.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
+    serviceCost: typeof data.serviceCost === 'number' ? data.serviceCost : undefined,
+    costoEnvio: typeof data.costoEnvio === 'number' ? data.costoEnvio : undefined,
+    serviceFee: typeof data.serviceFee === 'number' ? data.serviceFee : undefined,
+  };
+}

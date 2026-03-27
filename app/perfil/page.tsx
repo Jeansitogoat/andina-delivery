@@ -60,6 +60,7 @@ type PedidoApiHistorial = {
   total: number;
   timestamp: number;
   estado: string;
+  motivoCancelacion?: string | null;
   localId?: string | null;
   itemsCart?: { localId: string; items: { id: string; qty: number; note?: string }[] };
 };
@@ -79,6 +80,7 @@ function pedidoApiToHistorial(p: PedidoApiHistorial): PedidoHistorial {
     items: p.items || [],
     total: p.total || 0,
     estado: mapEstadoToHistorial(p.estado || 'confirmado'),
+    motivoCancelacion: p.motivoCancelacion ?? null,
     tiempo: '—',
     ...(p.itemsCart && p.itemsCart.localId && Array.isArray(p.itemsCart.items) ? { itemsCart: p.itemsCart } : {}),
   };

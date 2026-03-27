@@ -14,6 +14,8 @@ export interface PedidoHistorial {
   items: string[];
   total: number;
   estado: 'entregado' | 'cancelado' | 'en_camino' | 'preparando';
+  /** Motivo de cancelación (cliente o local) */
+  motivoCancelacion?: string | null;
   tiempo: string;
   /** ID del local (para fallback "volver a pedir" sin itemsCart) */
   localId?: string | null;
@@ -54,9 +56,16 @@ export default function TarjetaPedidoHistorial({ pedido, onVolverAPedir }: Tarje
                     : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
               }`}
             >
-              {entregado ? 'Entregado' : cancelado ? 'Cancelado' : pedido.estado}
+              {entregado ? 'Entregado' : cancelado ? 'CANCELADO' : pedido.estado}
             </span>
           </div>
+          {cancelado && (
+            <p className="text-xs text-red-700 font-medium mt-1">
+              {pedido.motivoCancelacion?.trim()
+                ? `Motivo: ${pedido.motivoCancelacion.trim()}`
+                : 'Motivo: no registrado (pedido anterior)'}
+            </p>
+          )}
           <p className="font-semibold text-gray-900 text-sm mt-0.5">{pedido.restaurante}</p>
           <p className="text-xs text-gray-500 mt-0.5">{pedido.fecha}</p>
           <ul className="text-xs text-gray-600 mt-1.5 space-y-0.5">

@@ -98,6 +98,8 @@ export async function GET(
       comprobanteBase64: data.comprobanteBase64 ?? null,
       comprobanteFileName: data.comprobanteFileName ?? null,
       comprobanteMimeType: data.comprobanteMimeType ?? null,
+      motivoCancelacion:
+        typeof data.motivoCancelacion === 'string' ? data.motivoCancelacion : undefined,
       ...(data.itemsCart && typeof data.itemsCart === 'object' && data.itemsCart.localId && Array.isArray(data.itemsCart.items)
         ? { itemsCart: data.itemsCart as PedidoCentral['itemsCart'] }
         : {}),
@@ -168,12 +170,23 @@ export async function PATCH(
       if (estadoActual !== 'confirmado') {
         return NextResponse.json({ error: 'Solo puedes cancelar mientras el local no haya aceptado el pedido' }, { status: 400 });
       }
-      await ref.update({
-        estado: 'cancelado_cliente',
-        updatedAt: FieldValue.serverTimestamp(),
-        canceladoPor: 'cliente',
-        canceladoPorUid: auth.uid,
-      });
+      const motivoTrim =
+        typeof body.motivo === 'string' ? body.motivo.trim().slice(0, 500) : '';
+      if (!motivoTrim) {
+        return NextResponse.json(
+          { error: 'Debes indicar el motivo de cancelación' },
+          { status: 400 }
+        );
+      }
+      await ref.update(
+        sanitizeForFirestore({
+          estado: 'cancelado_cliente',
+          updatedAt: FieldValue.serverTimestamp(),
+          canceladoPor: 'cliente',
+          canceladoPorUid: auth.uid,
+          motivoCancelacion: motivoTrim,
+        })
+      );
       return NextResponse.json({ ok: true, cancelado: true });
     }
 
@@ -190,15 +203,21 @@ export async function PATCH(
         if (!cancelables.includes(estadoActual)) {
           return NextResponse.json({ error: 'No se puede cancelar en este estado' }, { status: 400 });
         }
+        const motivoTrim =
+          typeof body.motivo === 'string' ? body.motivo.trim().slice(0, 500) : '';
+        if (!motivoTrim) {
+          return NextResponse.json(
+            { error: 'Debes indicar el motivo de cancelación' },
+            { status: 400 }
+          );
+        }
         const updatesCancel: Record<string, unknown> = {
           estado: 'cancelado_local',
           updatedAt: FieldValue.serverTimestamp(),
           canceladoPor: 'local',
           canceladoPorUid: auth.uid,
+          motivoCancelacion: motivoTrim,
         };
-        if (typeof body.motivo === 'string' && body.motivo.trim()) {
-          updatesCancel.motivoCancelacion = body.motivo.trim().slice(0, 200);
-        }
         await ref.update(sanitizeForFirestore(updatesCancel));
         const clienteId = data.clienteId ?? null;
         if (clienteId && typeof clienteId === 'string') {

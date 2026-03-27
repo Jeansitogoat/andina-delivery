@@ -32,6 +32,11 @@ function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<strin
 
 function docToLocal(data: Record<string, unknown>, id: string): Local {
   const horarios = Array.isArray(data.horarios) ? (data.horarios as HorarioItem[]) : undefined;
+  const typeArr = Array.isArray(data.type) ? (data.type as string[]) : ['Restaurantes'];
+  const rawCategorias = Array.isArray(data.categorias) ? (data.categorias as string[]) : [];
+  const categoriasFromFirestore = rawCategorias.length > 0;
+  const categorias =
+    rawCategorias.length > 0 ? rawCategorias : typeArr.length > 0 ? [...typeArr] : ['Restaurantes'];
   return {
     id,
     name: String(data.name ?? ''),
@@ -39,7 +44,9 @@ function docToLocal(data: Record<string, unknown>, id: string): Local {
     reviews: Number(data.reviews ?? data.reviewsCount ?? 0),
     time: String(data.time ?? '20-35 min'),
     shipping: Number(data.shipping ?? 1.5),
-    type: Array.isArray(data.type) ? (data.type as string[]) : ['Restaurantes'],
+    type: typeArr,
+    categorias,
+    categoriasFromFirestore,
     distance: String(data.distance ?? '—'),
     destacado: Boolean(data.destacado),
     isFeatured: Boolean((data as { isFeatured?: boolean }).isFeatured),
@@ -98,6 +105,52 @@ export async function getLocalesFromFirestore(): Promise<{ locales: Local[] }> {
   return { locales };
 }
 
+/** Filtro discovery Home: `array-contains` en Firestore + locales legacy sin `categorias` persistido. */
+function matchesDiscoveryCategory(loc: Local, categoria: string): boolean {
+  const cats = loc.categorias?.length ? loc.categorias : loc.type ?? [];
+  if (categoria === 'Restaurantes') {
+    return cats.some((c) => c === 'Restaurantes' || c === 'Cafes');
+  }
+  return cats.includes(categoria);
+}
+
+/**
+ * Listado filtrado por categoría de discovery (Restaurantes | Market | Farmacias).
+ * Usa consulta Firestore `categorias` array-contains y completa con legacy (`type` / categorías derivadas).
+ */
+export async function getLocalesForHomeFilter(
+  categoria: string,
+  incluirSuspendidos: boolean
+): Promise<{ locales: Local[] }> {
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(LOCALES_COLLECTION)
+    .where('categorias', 'array-contains', categoria)
+    .limit(200)
+    .get();
+
+  const fromQuery = new Map<string, Local>();
+  for (const d of snap.docs) {
+    fromQuery.set(d.id, docToLocal(d.data() as Record<string, unknown>, d.id));
+  }
+
+  const { locales: all } = await getLocalesFromFirestore();
+  let list = all.slice();
+  if (!incluirSuspendidos) {
+    list = list.filter((loc) => loc.status !== 'suspended');
+  }
+
+  for (const loc of list) {
+    if (fromQuery.has(loc.id)) continue;
+    if (!loc.categoriasFromFirestore && matchesDiscoveryCategory(loc, categoria)) {
+      fromQuery.set(loc.id, loc);
+    }
+  }
+
+  const merged = Array.from(fromQuery.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return { locales: merged };
+}
+
 /**
  * Lee el menú de un local desde la subcolección `productos`.
  * Fallback: si la subcolección está vacía, lee el campo `menu[]` legacy del documento raíz.
@@ -150,7 +203,7 @@ export async function setLocalInFirestore(
   menu: MenuItem[]
 ): Promise<void> {
   const db = getAdminFirestore();
-  const { id: _id, ...rest } = local;
+  const { id: _id, categoriasFromFirestore: _meta, ...rest } = local;
 
   // Escribir el documento raíz sin el campo menu[]
   const rootPayload = stripUndefined({
@@ -185,7 +238,29 @@ export type { HorarioItem };
 
 export async function updateLocalInFirestore(
   localId: string,
-  updates: Partial<Pick<Local, 'name' | 'address' | 'telefono' | 'status' | 'transferencia' | 'time' | 'shipping' | 'logo' | 'cover' | 'categories' | 'ownerName' | 'ownerPhone' | 'ownerEmail' | 'lat' | 'lng' | 'ivaEnabled' | 'ivaRate'>> & { cerradoHasta?: string | null; horarios?: HorarioItem[] }
+  updates: Partial<
+    Pick<
+      Local,
+      | 'name'
+      | 'address'
+      | 'telefono'
+      | 'status'
+      | 'transferencia'
+      | 'time'
+      | 'shipping'
+      | 'logo'
+      | 'cover'
+      | 'categories'
+      | 'type'
+      | 'ownerName'
+      | 'ownerPhone'
+      | 'ownerEmail'
+      | 'lat'
+      | 'lng'
+      | 'ivaEnabled'
+      | 'ivaRate'
+    >
+  > & { cerradoHasta?: string | null; horarios?: HorarioItem[]; categorias?: string[] }
 ): Promise<void> {
   // El menú vive en la subcolección productos; no actualizar el documento raíz con menu.
   const u = updates as Record<string, unknown>;
@@ -214,6 +289,16 @@ export async function updateLocalInFirestore(
   if (updates.cover !== undefined) obj.cover = updates.cover;
   if (updates.cerradoHasta !== undefined) obj.cerradoHasta = updates.cerradoHasta || null;
   if (updates.categories !== undefined && Array.isArray(updates.categories)) obj.categories = updates.categories;
+  if ((updates as { categorias?: string[] }).categorias !== undefined) {
+    const cats = (updates as { categorias?: string[] }).categorias;
+    if (Array.isArray(cats)) {
+      obj.categorias = cats;
+      const first = cats[0];
+      if (typeof first === 'string' && first.trim()) {
+        obj.type = [first.trim()];
+      }
+    }
+  }
   if (updates.ivaEnabled !== undefined) obj.ivaEnabled = updates.ivaEnabled;
   if (updates.ivaRate !== undefined) obj.ivaRate = updates.ivaRate;
   if ((updates as { horarios?: HorarioItem[] }).horarios !== undefined) obj.horarios = (updates as { horarios?: HorarioItem[] }).horarios;

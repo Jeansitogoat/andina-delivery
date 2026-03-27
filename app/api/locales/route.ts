@@ -3,7 +3,12 @@ import { unstable_cache } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 import type { Local, MenuItem } from '@/lib/data';
-import { getLocalesFromFirestore, getExistingLocalIdsFromFirestore, setLocalInFirestore } from '@/lib/locales-firestore';
+import {
+  getLocalesFromFirestore,
+  getLocalesForHomeFilter,
+  getExistingLocalIdsFromFirestore,
+  setLocalInFirestore,
+} from '@/lib/locales-firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { slugify, ensureUniqueLocalId } from '@/lib/slugify';
@@ -23,13 +28,21 @@ function getCommissionStartDate(programStartDate: string): string {
 
 const CACHE_REVALIDATE = 60;
 
-async function fetchLocalesData(incluirSuspendidos: boolean) {
+const DISCOVERY_CATEGORIAS = new Set(['Restaurantes', 'Market', 'Farmacias']);
+
+async function fetchLocalesData(incluirSuspendidos: boolean, categoria: string | null) {
   // Fase 2: getLocalesFromFirestore() ya no descarga los menús (subcolección productos).
-  // El listado del home solo necesita metadatos del local.
-  const { locales } = await getLocalesFromFirestore();
-  let localesResult = locales.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
-  if (!incluirSuspendidos) {
-    localesResult = localesResult.filter((loc) => loc.status !== 'suspended');
+  // Con `categoria`: filtro en backend (array-contains + fallback legacy).
+  let localesResult: Local[];
+  if (categoria) {
+    const { locales } = await getLocalesForHomeFilter(categoria, incluirSuspendidos);
+    localesResult = locales;
+  } else {
+    const { locales } = await getLocalesFromFirestore();
+    localesResult = locales.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    if (!incluirSuspendidos) {
+      localesResult = localesResult.filter((loc) => loc.status !== 'suspended');
+    }
   }
   // Sanitizar logo y cover para que la home no reciba data URLs inválidos (evita ERR_INVALID_URL)
   localesResult = localesResult.map((loc) => {
@@ -49,10 +62,13 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const incluirSuspendidos = searchParams.get('incluirSuspendidos') === '1';
     const light = searchParams.get('light') === '1' || searchParams.get('light') === 'true';
+    const rawCat = searchParams.get('categoria') ?? searchParams.get('category');
+    const categoria =
+      rawCat && DISCOVERY_CATEGORIAS.has(rawCat) ? rawCat : null;
 
     const getCached = unstable_cache(
-      () => fetchLocalesData(incluirSuspendidos),
-      ['locales', incluirSuspendidos ? 'suspendidos' : 'activos'],
+      () => fetchLocalesData(incluirSuspendidos, categoria),
+      ['locales', incluirSuspendidos ? 'suspendidos' : 'activos', categoria ?? 'all'],
       { revalidate: CACHE_REVALIDATE, tags: ['locales'] }
     );
     const data = await getCached();
@@ -68,6 +84,12 @@ export async function GET(request: Request) {
         logoUrl: loc.logo ?? '',
         estadoAbierto: loc.status !== 'suspended',
         type: Array.isArray(loc.type) ? loc.type : ['Restaurantes'],
+        categorias:
+          Array.isArray(loc.categorias) && loc.categorias.length > 0
+            ? loc.categorias
+            : Array.isArray(loc.type)
+              ? loc.type
+              : ['Restaurantes'],
         status: loc.status,
         lat: typeof loc.lat === 'number' ? loc.lat : undefined,
         lng: typeof loc.lng === 'number' ? loc.lng : undefined,
@@ -133,6 +155,8 @@ export async function POST(request: Request) {
       time: typeof bodyData.time === 'string' && bodyData.time.trim() ? bodyData.time.trim() : '20-35 min',
       shipping: 1.5,
       type: ['Restaurantes'],
+      categorias: ['Restaurantes'],
+      categoriasFromFirestore: true,
       distance: '—',
       destacado: false,
       isFeatured: false,

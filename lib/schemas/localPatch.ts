@@ -37,6 +37,8 @@ export const localPatchSchema = z
     horarios: z.array(horarioSchema).optional(),
     cerradoHasta: z.string().nullable().optional(),
     categories: z.array(z.string().max(50)).max(20).optional(),
+    /** Categorías de discovery (Home); al guardar se sincroniza `type` con la primera. */
+    categorias: z.array(z.string().max(50)).max(10).optional(),
     lat: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
     lng: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
     transferencia: transferenciaSchema.optional(),
