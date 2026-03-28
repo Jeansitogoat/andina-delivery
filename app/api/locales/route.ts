@@ -14,6 +14,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { slugify, ensureUniqueLocalId } from '@/lib/slugify';
 import { normalizeDataUrl, isValidImageUrl } from '@/lib/validImageUrl';
 import { localPostSchema } from '@/lib/schemas/localPost';
+import { DISCOVERY_CATEGORY_SET } from '@/lib/discovery-categorias';
 
 const CONFIG_DOC_ID = 'transferenciaAndina';
 
@@ -27,8 +28,6 @@ function getCommissionStartDate(programStartDate: string): string {
 }
 
 const CACHE_REVALIDATE = 60;
-
-const DISCOVERY_CATEGORIAS = new Set(['Restaurantes', 'Market', 'Farmacias']);
 
 async function fetchLocalesData(incluirSuspendidos: boolean, categoria: string | null) {
   // Fase 2: getLocalesFromFirestore() ya no descarga los menús (subcolección productos).
@@ -63,8 +62,7 @@ export async function GET(request: Request) {
     const incluirSuspendidos = searchParams.get('incluirSuspendidos') === '1';
     const light = searchParams.get('light') === '1' || searchParams.get('light') === 'true';
     const rawCat = searchParams.get('categoria') ?? searchParams.get('category');
-    const categoria =
-      rawCat && DISCOVERY_CATEGORIAS.has(rawCat) ? rawCat : null;
+    const categoria = rawCat && DISCOVERY_CATEGORY_SET.has(rawCat) ? rawCat : null;
 
     const getCached = unstable_cache(
       () => fetchLocalesData(incluirSuspendidos, categoria),
@@ -89,7 +87,7 @@ export async function GET(request: Request) {
             ? loc.categorias
             : Array.isArray(loc.type)
               ? loc.type
-              : ['Restaurantes'],
+              : ['cafes'],
         status: loc.status,
         lat: typeof loc.lat === 'number' ? loc.lat : undefined,
         lng: typeof loc.lng === 'number' ? loc.lng : undefined,
@@ -155,7 +153,7 @@ export async function POST(request: Request) {
       time: typeof bodyData.time === 'string' && bodyData.time.trim() ? bodyData.time.trim() : '20-35 min',
       shipping: 1.5,
       type: ['Restaurantes'],
-      categorias: ['Restaurantes'],
+      categorias: ['cafes'],
       categoriasFromFirestore: true,
       distance: '—',
       destacado: false,

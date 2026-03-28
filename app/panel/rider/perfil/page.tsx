@@ -48,7 +48,7 @@ export default function RiderPerfilPage() {
       </header>
 
       <div className="max-w-lg mx-auto safe-x mt-6 px-4">
-        <ProfileSettingsForm variant="rider" />
+        <ProfileSettingsForm variant="rider" notificationRole="rider" />
       </div>
     </main>
   );

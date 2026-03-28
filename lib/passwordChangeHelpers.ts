@@ -25,7 +25,7 @@ const MIN_LEN = 6;
 export function validatePasswordChangeFields(fields: PasswordChangeFields): PasswordValidationResult {
   const { passwordActual, passwordNueva, passwordNuevaConfirm } = fields;
   if (!passwordActual.trim()) {
-    return { ok: false, message: 'Ingresá tu contraseña actual.' };
+    return { ok: false, message: 'Ingresa tu contraseña actual.' };
   }
   if (passwordNueva.length < MIN_LEN) {
     return { ok: false, message: `La nueva contraseña debe tener al menos ${MIN_LEN} caracteres.` };
@@ -46,7 +46,7 @@ export function mapFirebasePasswordError(err: unknown): string {
     return 'La contraseña es demasiado débil.';
   }
   if (code === 'auth/requires-recent-login') {
-    return 'Por seguridad, volvé a iniciar sesión e intentá de nuevo.';
+    return 'Por seguridad, vuelve a iniciar sesión e intenta de nuevo.';
   }
   const msg = 'message' in err && typeof (err as { message?: string }).message === 'string'
     ? (err as { message: string }).message

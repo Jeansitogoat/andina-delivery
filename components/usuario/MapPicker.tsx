@@ -146,7 +146,7 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
           {error}
         </div>
       )}
-      <p className="text-xs text-gray-500 mt-1.5 px-1">Hacé clic en el mapa para marcar tu ubicación</p>
+      <p className="text-xs text-gray-500 mt-1.5 px-1">Haz clic en el mapa para marcar tu ubicación</p>
     </div>
   );
 }

@@ -232,8 +232,13 @@ export default function PanelMaestroPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/fcm/last-sync')
-      .then((res) => (res.ok ? res.json() : { lastSync: null }))
+    getIdToken()
+      .then((tok) =>
+        fetch('/api/fcm/last-sync', {
+          headers: tok ? { Authorization: `Bearer ${tok}` } : undefined,
+        })
+      )
+      .then((res) => (res && res.ok ? res.json() : { lastSync: null }))
       .then((data: { lastSync: number | null }) => {
         if (cancelled) return;
         if (typeof data.lastSync === 'number') {
@@ -416,7 +421,7 @@ export default function PanelMaestroPage() {
       const url = await getDownloadURL(storageRef);
       setBannerForm((prev) => ({ ...prev, imageUrl: url }));
     } catch {
-      showToast('Error al subir imagen. Verificá el formato e intentá de nuevo.');
+      showToast('Error al subir imagen. Verifica el formato e intenta de nuevo.');
     } finally {
       setBannerUploading(false);
     }
@@ -657,7 +662,7 @@ export default function PanelMaestroPage() {
           setLocalCreadoResult({ localId, email: ownerEmail.trim(), password: ownerPassword });
         }
       } else {
-        showToast('Local creado. Agregá después un usuario desde "Usuarios" o al editar el local.');
+        showToast('Local creado. Agrega después un usuario desde "Usuarios" o al editar el local.');
         setLocalCreadoResult({ localId, email: '', password: '' });
       }
       setNuevoLocalManual({
@@ -1657,7 +1662,7 @@ export default function PanelMaestroPage() {
                 Crear local
               </h2>
               <p className="text-sm text-gray-600 mt-0.5">
-                Para negocios por WhatsApp u otro medio. Creás el local y las credenciales; después configurás menú desde el panel del restaurante.
+                Para negocios por WhatsApp u otro medio. Creas el local y las credenciales; después configuras el menú desde el panel del restaurante.
               </p>
             </div>
             {localCreadoResult ? (
@@ -1862,7 +1867,7 @@ export default function PanelMaestroPage() {
             <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
               <Building2 className="w-12 h-12 text-gray-200 mx-auto mb-3" />
               <p className="font-bold text-gray-400">No hay locales</p>
-              <p className="text-sm text-gray-400 mt-1">Creá uno desde el formulario de arriba.</p>
+              <p className="text-sm text-gray-400 mt-1">Crea uno desde el formulario de arriba.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -2161,7 +2166,7 @@ export default function PanelMaestroPage() {
                 <Loader2 className="w-8 h-8 animate-spin text-gray-300" />
               </div>
             ) : bannersList.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">No hay banners. Creá uno arriba.</p>
+              <p className="text-sm text-gray-500 py-4">No hay banners. Crea uno arriba.</p>
             ) : (
               <ul className="space-y-3">
                 {bannersList.map((b) => (

@@ -153,7 +153,7 @@ export default function SociosPage() {
       !telefonoLocal.trim() ||
       !direccion.trim()
     ) {
-      setError('Completá todos los campos obligatorios.');
+      setError('Completa todos los campos obligatorios.');
       return;
     }
     // Fase 1: enviar URLs de Storage en lugar de Base64
@@ -257,7 +257,7 @@ export default function SociosPage() {
           <div className="absolute inset-0 bg-[url('/food/food-pollo-brasa-mitad.png')] bg-cover bg-center opacity-30" />
           <div className="relative z-10">
             <h2 className="text-lg font-bold mb-1">Un nuevo canal para vender más</h2>
-            <p className="text-white/90 text-sm">Llegá a más clientes en Piñas y gestioná tus pedidos desde un solo panel.</p>
+            <p className="text-white/90 text-sm">Llega a más clientes en Piñas y gestiona tus pedidos desde un solo panel.</p>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 mt-3">
@@ -276,12 +276,12 @@ export default function SociosPage() {
 
       {/* Banda oferta */}
       <div className="mx-4 mt-4 px-4 py-3 bg-amber-400 text-gray-900 rounded-xl text-center font-semibold text-sm">
-        Registrá tu local y empezá a vender
+        Registra tu local y empieza a vender
       </div>
 
       {/* Formulario */}
       <section className="px-4 mt-6">
-        <h3 className="font-bold text-gray-900 mb-4">Registrá tu local</h3>
+        <h3 className="font-bold text-gray-900 mb-4">Registra tu local</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del local *</label>
@@ -498,9 +498,9 @@ export default function SociosPage() {
         <h3 className="font-bold text-gray-900 mb-4">Comenzar a vender es así de simple</h3>
         <div className="space-y-4">
           {[
-            { step: 1, icon: ClipboardList, title: 'Registrá y cargá tus datos', desc: 'Completá el formulario con los datos de tu negocio.' },
+            { step: 1, icon: ClipboardList, title: 'Registra y carga tus datos', desc: 'Completa el formulario con los datos de tu negocio.' },
             { step: 2, icon: FileText, title: 'Validamos tu información', desc: 'Revisamos tu solicitud y te contactamos.' },
-            { step: 3, icon: Smartphone, title: 'Activás tu negocio en la app', desc: 'Tu local aparece en Andina y puedes gestionar pedidos desde el panel.' },
+            { step: 3, icon: Smartphone, title: 'Activa tu negocio en la app', desc: 'Tu local aparece en Andina y puedes gestionar pedidos desde el panel.' },
           ].map(({ step, icon: Icon, title, desc }) => (
             <div key={step} className="flex gap-4 items-start bg-white rounded-xl p-4 shadow-sm border border-gray-100">
               <div className="w-10 h-10 rounded-full bg-rojo-andino/10 flex items-center justify-center flex-shrink-0">
@@ -534,7 +534,7 @@ export default function SociosPage() {
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex items-start gap-2">
                 <span className="text-rojo-andino font-bold">•</span>
-                Imagen o fotos del menú (productos que vendés).
+                Imagen o fotos del menú (productos que vendes).
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-rojo-andino font-bold">•</span>

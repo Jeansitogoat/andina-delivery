@@ -9,6 +9,9 @@ export type EstadoPedido =
   | 'cancelado_local'
   | 'cancelado_cliente';
 
+/** Logística / rider: independiente del estado de cocina (preparando / listo). */
+export type EstadoTransportePedido = 'pendiente' | 'buscando_rider';
+
 export type EstadoRider = 'disponible' | 'ocupado' | 'fuera_servicio';
 
 export interface PedidoCentral {
@@ -35,7 +38,13 @@ export interface PedidoCentral {
   ivaAmount?: number;
   subtotalConIva?: number;
   estado: EstadoPedido;
+  /** Solicitud anticipada de rider sin marcar la comida como lista. */
+  transporte?: EstadoTransportePedido;
   riderId: string | null;
+  /** Denormalizado desde users al asignar rider (panel local sin GET). */
+  riderNombre?: string | null;
+  /** Último re-toque logístico (ms); prioriza orden en panel central. */
+  logisticaBumpAt?: number;
   hora: string;
   timestamp: number;
   distancia: string;

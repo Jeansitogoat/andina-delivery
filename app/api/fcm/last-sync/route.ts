@@ -23,8 +23,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ lastSync: null });
     }
     const doc = snap.docs[0];
-    const data = doc.data() as { updatedAt?: FirebaseFirestore.Timestamp };
-    const ts = data.updatedAt;
+    const data = doc.data() as { updatedAt?: FirebaseFirestore.Timestamp; lastUpdated?: FirebaseFirestore.Timestamp };
+    const ts = data.updatedAt ?? data.lastUpdated;
     const lastSync = ts ? ts.toMillis() : null;
     return NextResponse.json({ lastSync });
   } catch (e) {

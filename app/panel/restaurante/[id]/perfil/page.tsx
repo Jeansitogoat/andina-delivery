@@ -29,17 +29,20 @@ import {
   validatePasswordChangeFields,
   mapFirebasePasswordError,
 } from '@/lib/passwordChangeHelpers';
+import { useNotifications } from '@/lib/useNotifications';
+import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl } from '@/lib/validImageUrl';
 import { uploadLocalQr } from '@/lib/storageUpload';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
+import {
+  DISCOVERY_CATEGORIES,
+  DISCOVERY_CATEGORY_SET,
+  mapLegacyTypeToDiscoveryCategory,
+} from '@/lib/discovery-categorias';
 
-const DISCOVERY_CATEGORIAS: { key: string; label: string }[] = [
-  { key: 'Restaurantes', label: 'Restaurantes y cafés' },
-  { key: 'Market', label: 'Comisariatos' },
-  { key: 'Farmacias', label: 'Farmacias' },
-];
+
 
 const HORARIOS_DEFAULT = [
   { dia: 'Lunes', abierto: true, desde: '09:00', hasta: '22:00' },
@@ -93,8 +96,11 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   const [passwordNuevaConfirm, setPasswordNuevaConfirm] = useState('');
   const [cambiandoPassword, setCambiandoPassword] = useState(false);
   const [mensajePassword, setMensajePassword] = useState<{ tipo: 'ok' | 'error'; text: string } | null>(null);
-  const [categoriasDiscovery, setCategoriasDiscovery] = useState<string[]>(['Restaurantes']);
+  const [categoriasDiscovery, setCategoriasDiscovery] = useState<string[]>(['cafes']);
   const [fbUserState, setFbUserState] = useState<FirebaseUser | null>(null);
+  const { permission: notifPermission, requestPermission, reintentarRegistro, loading: notifLoading } = useNotifications('local', { localId: id });
+  const [tokenActivo, setTokenActivo] = useState<boolean | null>(null);
+  const [syncingDevice, setSyncingDevice] = useState(false);
 
   useEffect(() => {
     const auth = getFirebaseAuth();
@@ -139,20 +145,51 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
           if (typeof loc.ivaRate === 'number' && !Number.isNaN(loc.ivaRate) && loc.ivaRate > 0) {
             setIvaRate(String(loc.ivaRate > 1 ? loc.ivaRate : loc.ivaRate * 100));
           }
-          const allowed = new Set(DISCOVERY_CATEGORIAS.map((c) => c.key));
           const rawCats =
             Array.isArray(loc.categorias) && loc.categorias.length > 0
               ? loc.categorias
               : Array.isArray(loc.type)
                 ? loc.type
+                    .map((t) => mapLegacyTypeToDiscoveryCategory(t))
+                    .filter((v): v is NonNullable<typeof v> => v !== null)
                 : [];
-          const picked = rawCats.filter((x) => allowed.has(x));
-          setCategoriasDiscovery(picked.length > 0 ? picked : ['Restaurantes']);
+          const picked = rawCats.filter((x) => DISCOVERY_CATEGORY_SET.has(x));
+          setCategoriasDiscovery(picked.length > 0 ? picked : ['cafes']);
         }
       })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (!id || notifPermission !== 'granted') {
+      setTokenActivo(null);
+      return;
+    }
+    let cancelled = false;
+    const loadStatus = async () => {
+      const tok = await getIdToken();
+      if (!tok || cancelled) return;
+      const stored =
+        typeof window !== 'undefined' ? localStorage.getItem('andina_fcm_token_local') ?? '' : '';
+      const res = await fetch('/api/fcm/status?role=local', {
+        headers: {
+          Authorization: `Bearer ${tok}`,
+          ...(stored ? { 'x-fcm-token': stored } : {}),
+        },
+      }).catch(() => null);
+      if (!res || !res.ok || cancelled) {
+        if (!cancelled) setTokenActivo(false);
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean };
+      if (!cancelled) setTokenActivo(Boolean(data.hasCurrentToken));
+    };
+    loadStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, notifPermission, notifLoading]);
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
@@ -350,6 +387,34 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   const showPasswordFormRestaurante = hasEmailPasswordProvider(fbUserState);
   const showGoogleMessageRestaurante = fbUserState && !showPasswordFormRestaurante;
 
+  async function syncCurrentDevice() {
+    setSyncingDevice(true);
+    try {
+      if (notifPermission !== 'granted') {
+        await requestPermission();
+      } else {
+        await reintentarRegistro();
+      }
+      const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 1500 });
+      if (token && typeof window !== 'undefined') {
+        localStorage.setItem('andina_fcm_token_local', token);
+      }
+      const tok = await getIdToken();
+      if (tok) {
+        const res = await fetch('/api/fcm/status?role=local', {
+          headers: {
+            Authorization: `Bearer ${tok}`,
+            ...(token ? { 'x-fcm-token': token } : {}),
+          },
+        }).catch(() => null);
+        const data = res && res.ok ? ((await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean }) : null;
+        setTokenActivo(Boolean(data?.hasCurrentToken));
+      }
+    } finally {
+      setSyncingDevice(false);
+    }
+  }
+
   if (!local) {
     return (
       <main className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -465,7 +530,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2">
                 <MapPin className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-800 font-medium">
-                  Configurá tu ubicación exacta en el mapa para que los riders lleguen sin errores.
+                  Configura tu ubicación exacta en el mapa para que los riders lleguen sin errores.
                 </p>
               </div>
             )}
@@ -509,10 +574,10 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               <span className="font-semibold text-gray-900">Tipo de negocio en la app</span>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              Elegí en qué pestañas puede aparecer tu local en el inicio. Podés marcar varias.
+              Elige en qué pestañas puede aparecer tu local en el inicio. Puedes marcar varias.
             </p>
             <div className="flex flex-wrap gap-2">
-              {DISCOVERY_CATEGORIAS.map(({ key, label }) => {
+              {DISCOVERY_CATEGORIES.map(({ key, label }) => {
                 const on = categoriasDiscovery.includes(key);
                 return (
                   <button
@@ -521,7 +586,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                     onClick={() => {
                       setCategoriasDiscovery((prev) => {
                         const next = on ? prev.filter((k) => k !== key) : [...prev, key];
-                        return next.length ? next : ['Restaurantes'];
+                        return next.length ? next : ['cafes'];
                       });
                     }}
                     className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${
@@ -611,7 +676,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Habilitar cobro con Deuna / QR</p>
-                  <p className="text-xs text-gray-500">Si lo apagas, se oculta el archivo QR y no se exigirá.</p>
+                
                 </div>
                 <button
                   type="button"
@@ -745,7 +810,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               {!local.ivaPermitidoMaestro ? (
                 <p className="text-sm text-gray-600 leading-relaxed rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                   La opción de cobrar IVA solo está disponible si el administrador de Andina la habilita para tu
-                  negocio. Si necesitás facturar con IVA, contactá a soporte.
+                  negocio. Si necesitas facturar con IVA, contacta a soporte.
                 </p>
               ) : (
                 <>
@@ -784,6 +849,29 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
             </div>
           </section>
 
+          <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 p-4 pb-2">
+              <Phone className="w-4 h-4 text-rojo-andino" />
+              <span className="font-semibold text-gray-900">Estado del dispositivo</span>
+            </div>
+            <div className="px-4 pb-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                Permiso: <strong>{notifPermission === 'granted' ? 'Activo' : notifPermission === 'denied' ? 'Bloqueado' : 'Pendiente'}</strong>
+              </p>
+              <p className="text-sm text-gray-600">
+                Token actual: <strong>{notifPermission !== 'granted' ? 'Sin permiso' : tokenActivo ? 'Activo' : 'No sincronizado'}</strong>
+              </p>
+              <button
+                type="button"
+                disabled={syncingDevice || notifLoading}
+                onClick={() => void syncCurrentDevice()}
+                className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-70"
+              >
+                {syncingDevice ? 'Sincronizando...' : 'Sincronizar dispositivo'}
+              </button>
+            </div>
+          </section>
+
           {/* Seguridad / contraseña */}
           <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 p-4 pb-2">
@@ -801,7 +889,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
             {fbUserState !== null && showPasswordFormRestaurante && (
               <>
                 <p className="text-xs text-gray-500 px-4 pb-3">
-                  Por seguridad, cambiá la contraseña que te entregaron al registrarte.
+                  Por seguridad, cambia la contraseña que te entregaron al registrarte.
                 </p>
                 <form onSubmit={handleCambiarPassword} className="px-4 pb-4 space-y-3">
                   <div>

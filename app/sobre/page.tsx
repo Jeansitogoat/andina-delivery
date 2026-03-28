@@ -21,7 +21,7 @@ export default function SobrePage() {
           </button>
           <div className="flex-1">
             <h1 className="text-lg font-bold">Sobre Andina</h1>
-            <p className="text-white/80 text-sm">Conocé nuestra historia</p>
+            <p className="text-white/80 text-sm">Conoce nuestra historia</p>
           </div>
         </div>
       </header>
@@ -48,7 +48,7 @@ export default function SobrePage() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 text-sm">Delivery</h3>
-                  <p className="text-gray-600 text-sm">Pedidos de restaurantes y locales a tu puerta.</p>
+                  <p className="text-gray-600 text-sm">Pedidos de  locales a tu puerta.</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-4 rounded-xl bg-gray-50 border border-gray-100">

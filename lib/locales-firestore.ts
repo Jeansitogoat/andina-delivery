@@ -17,6 +17,11 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { Local, MenuItem, HorarioItem } from '@/lib/data';
+import {
+  getLegacyTypeFromDiscoveryCategory,
+  mapLegacyTypeToDiscoveryCategory,
+  matchesLegacyTypeForDiscoveryCategory,
+} from '@/lib/discovery-categorias';
 
 const LOCALES_COLLECTION = 'locales';
 const PRODUCTOS_SUBCOLLECTION = 'productos';
@@ -35,8 +40,11 @@ function docToLocal(data: Record<string, unknown>, id: string): Local {
   const typeArr = Array.isArray(data.type) ? (data.type as string[]) : ['Restaurantes'];
   const rawCategorias = Array.isArray(data.categorias) ? (data.categorias as string[]) : [];
   const categoriasFromFirestore = rawCategorias.length > 0;
+  const categoriasDerivadas = typeArr
+    .map((t) => mapLegacyTypeToDiscoveryCategory(t))
+    .filter((v): v is NonNullable<typeof v> => v !== null);
   const categorias =
-    rawCategorias.length > 0 ? rawCategorias : typeArr.length > 0 ? [...typeArr] : ['Restaurantes'];
+    rawCategorias.length > 0 ? rawCategorias : categoriasDerivadas;
   return {
     id,
     name: String(data.name ?? ''),
@@ -108,11 +116,9 @@ export async function getLocalesFromFirestore(): Promise<{ locales: Local[] }> {
 
 /** Filtro discovery Home: `array-contains` en Firestore + locales legacy sin `categorias` persistido. */
 function matchesDiscoveryCategory(loc: Local, categoria: string): boolean {
-  const cats = loc.categorias?.length ? loc.categorias : loc.type ?? [];
-  if (categoria === 'Restaurantes') {
-    return cats.some((c) => c === 'Restaurantes' || c === 'Cafes');
-  }
-  return cats.includes(categoria);
+  if (loc.categorias?.includes(categoria)) return true;
+  const legacyTypes = Array.isArray(loc.type) ? loc.type : [];
+  return legacyTypes.some((legacyType) => matchesLegacyTypeForDiscoveryCategory(categoria, legacyType));
 }
 
 /**
@@ -297,7 +303,7 @@ export async function updateLocalInFirestore(
       obj.categorias = cats;
       const first = cats[0];
       if (typeof first === 'string' && first.trim()) {
-        obj.type = [first.trim()];
+        obj.type = [getLegacyTypeFromDiscoveryCategory(first.trim())];
       }
     }
   }

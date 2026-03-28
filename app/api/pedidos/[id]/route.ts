@@ -9,8 +9,9 @@ import { pedidoPatchSchema } from '@/lib/schemas/pedidoPatch';
 import { applyDeliveredOrderAggregates } from '@/lib/local-stats-aggregates';
 import { calcularComision, calcularNetoLocal } from '@/lib/commissions';
 import { getOrderMoney } from '@/lib/order-money';
+import { getRiderDisplayNameForPedido } from '@/lib/rider-profile-admin';
 
-type PedidoConRider = PedidoCentral & { riderNombre?: string; riderRating?: number | null };
+type PedidoConRider = PedidoCentral & { riderRating?: number | null };
 
 /** GET /api/pedidos/[id] → pedido por id. Requiere auth: solo dueño del pedido, dueño del local, rider asignado o central/maestro. */
 export async function GET(
@@ -38,7 +39,12 @@ export async function GET(
     const isCliente = auth.uid === clienteId;
     const isCentralOrMaestro = auth.rol === 'central' || auth.rol === 'maestro';
     const isRiderAsignado = auth.rol === 'rider' && data.riderId === auth.uid;
-    const isRiderVerPreview = auth.rol === 'rider' && (data.estado === 'esperando_rider') && (data.riderId ?? null) === null;
+    const transporte = data.transporte === 'buscando_rider' ? 'buscando_rider' : 'pendiente';
+    const isRiderVerPreview =
+      auth.rol === 'rider' &&
+      (data.riderId ?? null) === null &&
+      ((data.estado === 'esperando_rider') ||
+        (transporte === 'buscando_rider' && ['preparando', 'listo'].includes(String(data.estado || ''))));
     let isLocalDelPedido = false;
     if (auth.rol === 'local') {
       const userSnap = await db.collection('users').doc(auth.uid).get();
@@ -58,6 +64,7 @@ export async function GET(
       comprobanteBase64?: string | null;
       comprobanteFileName?: string | null;
       comprobanteMimeType?: string | null;
+      transporte?: 'pendiente' | 'buscando_rider';
     };
     const money = getOrderMoney(data);
     const pedidoBase: PedidoPublico = {
@@ -79,6 +86,10 @@ export async function GET(
       subtotalConIva: money.subtotalConIva,
       estado: data.estado || 'confirmado',
       riderId: data.riderId ?? null,
+      riderNombre:
+        typeof data.riderNombre === 'string' && data.riderNombre.trim()
+          ? data.riderNombre.trim()
+          : null,
       hora: data.hora || '',
       timestamp: data.timestamp || 0,
       distancia: data.distancia || '—',
@@ -98,6 +109,7 @@ export async function GET(
       comprobanteBase64: data.comprobanteBase64 ?? null,
       comprobanteFileName: data.comprobanteFileName ?? null,
       comprobanteMimeType: data.comprobanteMimeType ?? null,
+      transporte: transporte === 'buscando_rider' ? 'buscando_rider' : undefined,
       motivoCancelacion:
         typeof data.motivoCancelacion === 'string' ? data.motivoCancelacion : undefined,
       ...(data.itemsCart && typeof data.itemsCart === 'object' && data.itemsCart.localId && Array.isArray(data.itemsCart.items)
@@ -109,9 +121,13 @@ export async function GET(
       const riderSnap = await db.collection('users').doc(data.riderId as string).get();
       if (riderSnap.exists) {
         const riderData = riderSnap.data()!;
+        const denorm =
+          typeof pedidoBase.riderNombre === 'string' && pedidoBase.riderNombre.trim()
+            ? pedidoBase.riderNombre.trim()
+            : '';
         pedido = {
           ...pedidoBase,
-          riderNombre: riderData.displayName || riderData.email || 'Rider',
+          riderNombre: denorm || riderData.displayName || riderData.email || 'Rider',
           riderRating: riderData.ratingPromedio != null ? Number(riderData.ratingPromedio) : null,
         };
       }
@@ -229,7 +245,110 @@ export async function PATCH(
         }
         return NextResponse.json({ ok: true, cancelado: true });
       }
-      const estadosPermitidosLocal = ['preparando', 'listo', 'esperando_rider'];
+
+      if (body.accion === 'solicitar_rider') {
+        if (body.estado !== undefined || body.riderId !== undefined) {
+          return NextResponse.json(
+            { error: 'Para pedir rider usa solo la acción solicitar_rider' },
+            { status: 400 }
+          );
+        }
+        if (data.deliveryType === 'pickup') {
+          return NextResponse.json({ error: 'Pedir rider no aplica a retiro en local' }, { status: 400 });
+        }
+        const estadoProd = (data.estado as string) || 'confirmado';
+        if (!['preparando', 'listo'].includes(estadoProd)) {
+          return NextResponse.json(
+            { error: 'Solo puedes pedir rider mientras preparas o ya marcaste listo' },
+            { status: 400 }
+          );
+        }
+        if (data.riderId) {
+          return NextResponse.json({ error: 'Este pedido ya tiene rider asignado' }, { status: 400 });
+        }
+        const batchLeaderLocalId = data.batchLeaderLocalId as string | null | undefined;
+        const batchId = data.batchId as string | null | undefined;
+        if (batchId && batchLeaderLocalId && batchLeaderLocalId !== userLocalId) {
+          return NextResponse.json(
+            { error: 'Solo el local líder del batch puede pedir rider' },
+            { status: 403 }
+          );
+        }
+        const restaurante = (data.restaurante as string) || 'Restaurante';
+        const clienteNombre = (data.clienteNombre as string) || 'Cliente';
+        const isRetry = body.isRetry === true;
+        if (isRetry) {
+          if (data.transporte !== 'buscando_rider') {
+            return NextResponse.json(
+              { error: 'Solo puedes re-notificar si ya pediste rider a central' },
+              { status: 400 }
+            );
+          }
+          const lastBump =
+            typeof data.logisticaBumpAt === 'number' && !Number.isNaN(data.logisticaBumpAt)
+              ? data.logisticaBumpAt
+              : 0;
+          if (lastBump > 0 && Date.now() - lastBump < 120_000) {
+            return NextResponse.json(
+              { error: 'Espera al menos 2 minutos entre re-notificaciones' },
+              { status: 429 }
+            );
+          }
+          const now = Date.now();
+          await ref.update(
+            sanitizeForFirestore({
+              logisticaBumpAt: now,
+              updatedAt: FieldValue.serverTimestamp(),
+            })
+          );
+          try {
+            await sendFCMToRole(
+              'central',
+              'Pedido lento — re-notificación',
+              `${restaurante} · ${clienteNombre} — priorizar rider`,
+              { pedidoId: id, localId: String(pedidoLocalId ?? ''), renotify: '1' }
+            );
+          } catch {
+            // ignorar
+          }
+          return NextResponse.json({ ok: true, retry: true, logisticaBumpAt: now });
+        }
+        if (data.transporte === 'buscando_rider') {
+          return NextResponse.json({ ok: true, already: true });
+        }
+        await ref.update(
+          sanitizeForFirestore({
+            transporte: 'buscando_rider',
+            updatedAt: FieldValue.serverTimestamp(),
+          })
+        );
+        try {
+          await sendFCMToRole(
+            'central',
+            'Solicitud de rider',
+            `${restaurante} · ${clienteNombre} (anticipada)`,
+            { pedidoId: id, localId: String(pedidoLocalId ?? '') }
+          );
+        } catch {
+          // ignorar
+        }
+        const clienteId = data.clienteId ?? null;
+        if (clienteId && typeof clienteId === 'string') {
+          try {
+            await sendFCMToUser(
+              clienteId,
+              'Coordinando reparto',
+              ' Estamos buscando un repartidor para tu pedido.',
+              { pedidoId: id }
+            );
+          } catch {
+            // ignorar
+          }
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      const estadosPermitidosLocal = ['preparando', 'listo'];
       const isPickup = data.deliveryType === 'pickup';
       if (isPickup && body.estado === 'entregado') {
         estadosPermitidosLocal.push('entregado');
@@ -252,6 +371,7 @@ export async function PATCH(
         await ref.update(
           sanitizeForFirestore({
             riderId: null,
+            riderNombre: null,
             estado: 'esperando_rider',
             updatedAt: FieldValue.serverTimestamp(),
           })
@@ -291,7 +411,14 @@ export async function PATCH(
 
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
     if (body.estado !== undefined) updates.estado = body.estado;
-    if (body.riderId !== undefined) updates.riderId = body.riderId;
+    if (body.riderId !== undefined) {
+      updates.riderId = body.riderId;
+      if (typeof body.riderId === 'string' && body.riderId.trim()) {
+        updates.riderNombre = await getRiderDisplayNameForPedido(db, body.riderId.trim());
+      } else {
+        updates.riderNombre = null;
+      }
+    }
     if (body.propina !== undefined) updates.propina = body.propina;
     if (body.paymentConfirmed !== undefined) updates.paymentConfirmed = body.paymentConfirmed;
     if (body.comprobanteBase64 !== undefined) updates.comprobanteBase64 = body.comprobanteBase64;
@@ -384,7 +511,10 @@ export async function PATCH(
         confirmado: { title: '¡Pedido confirmado!', body: 'El restaurante aceptó tu pedido.' },
         preparando: { title: 'Tu pedido se está preparando', body: 'El restaurante está cocinando.' },
         listo: { title: 'Tu pedido está listo', body: 'Pronto saldrá hacia ti.' },
-        esperando_rider: { title: 'Tu pedido está listo', body: 'Estamos buscando un repartidor.' },
+        esperando_rider: {
+          title: 'Buscando repartidor',
+          body: 'Seguimos coordinando la entrega. Te avisamos cuando vaya en camino.',
+        },
         asignado: { title: 'Repartidor asignado', body: 'Tu pedido tiene repartidor asignado.' },
         en_camino: { title: 'Tu pedido va en camino', body: 'El repartidor está llevando tu pedido.' },
         entregado: { title: '¡Pedido entregado!', body: 'Que lo disfrutes.' },

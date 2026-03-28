@@ -64,6 +64,43 @@ const ESTADO_PEDIDO_CONFIG: Record<EstadoPedido, { label: string; color: string;
   cancelado_cliente: { label: 'Cancelado por cliente', color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
 };
 
+/** Sin rider y (estado clásico o pedida anticipada con transporte). */
+function solicitudRiderPendiente(p: PedidoCentral): boolean {
+  if (p.riderId) return false;
+  if (p.estado === 'esperando_rider') return true;
+  return (
+    p.transporte === 'buscando_rider' &&
+    (p.estado === 'preparando' || p.estado === 'listo')
+  );
+}
+
+function visibleEnPanelCentral(p: PedidoCentral): boolean {
+  const e = p.estado;
+  if (e === 'asignado' || e === 'en_camino' || e === 'entregado') return true;
+  if (e === 'esperando_rider') return true;
+  return solicitudRiderPendiente(p);
+}
+
+/** Orden y badges: anticipada se muestra como “esperando rider”. */
+function estadoVistaCentral(p: PedidoCentral): EstadoPedido {
+  if (solicitudRiderPendiente(p) && p.estado !== 'esperando_rider') {
+    return 'esperando_rider';
+  }
+  return p.estado;
+}
+
+const ORDEN_ESTADO_CENTRAL: Record<EstadoPedido, number> = {
+  confirmado: 0,
+  preparando: 1,
+  listo: 2,
+  esperando_rider: 3,
+  asignado: 4,
+  en_camino: 5,
+  entregado: 6,
+  cancelado_local: 7,
+  cancelado_cliente: 8,
+};
+
 const PANEL_CENTRAL_KEYFRAMES = `
   @keyframes slideUp {
     from { transform: translateY(100%); }
@@ -88,6 +125,11 @@ function tiempoTranscurrido(timestamp: number): string {
   return `hace ${Math.floor(mins / 60)}h ${mins % 60}min`;
 }
 
+function effectiveSortTs(p: PedidoCentral): number {
+  const bump = typeof p.logisticaBumpAt === 'number' && !Number.isNaN(p.logisticaBumpAt) ? p.logisticaBumpAt : 0;
+  return Math.max(Number(p.timestamp ?? 0), bump);
+}
+
 /* ─────────────── componente principal ─────────────── */
 export default function PanelCentralPage() {
   const router = useRouter();
@@ -108,6 +150,7 @@ export default function PanelCentralPage() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const prevPedidosCount = useRef(0);
+  const prevLogisticaBumpByPedidoId = useRef<Record<string, number>>({});
   const [sessionInvalid, setSessionInvalid] = useState(false);
   const [tarifasTiers, setTarifasTiers] = useState<Array<{ kmMax: number | null; tarifa: number }>>([
     { kmMax: 2.5, tarifa: 1.5 },
@@ -254,17 +297,35 @@ export default function PanelCentralPage() {
         const list = snap.docs
           .map((d) => docToPedidoCentral(d.id, d.data() as Record<string, unknown>))
           .filter((p) => p.deliveryType !== "pickup");
-        const estadosVisiblesCentral = ["esperando_rider", "asignado", "en_camino", "entregado"];
         const pedidosCentral = list
-          .filter((p) => estadosVisiblesCentral.includes(p.estado || "confirmado"))
-          .sort((a, b) => b.timestamp - a.timestamp);
-        const nuevosEsperando = pedidosCentral.filter((p) => p.estado === "esperando_rider").length;
+          .filter(visibleEnPanelCentral)
+          .sort((a, b) => effectiveSortTs(b) - effectiveSortTs(a));
+        const bumpMap = prevLogisticaBumpByPedidoId.current;
+        for (const p of pedidosCentral) {
+          if (!solicitudRiderPendiente(p)) continue;
+          const bump = typeof p.logisticaBumpAt === 'number' && !Number.isNaN(p.logisticaBumpAt) ? p.logisticaBumpAt : 0;
+          const prevBump = bumpMap[p.id];
+          if (prevBump !== undefined && bump > prevBump && bump > 0) {
+            setNuevoPedidoId(p.id);
+            showToast("Re-notificación (pedido lento): " + p.restaurante + " · " + p.clienteNombre);
+            playNewOrderSound();
+            setTimeout(() => setNuevoPedidoId(null), 4000);
+            break;
+          }
+        }
+        const nextBump: Record<string, number> = { ...bumpMap };
+        for (const p of pedidosCentral) {
+          nextBump[p.id] =
+            typeof p.logisticaBumpAt === 'number' && !Number.isNaN(p.logisticaBumpAt) ? p.logisticaBumpAt : 0;
+        }
+        prevLogisticaBumpByPedidoId.current = nextBump;
+
+        const nuevosEsperando = pedidosCentral.filter(solicitudRiderPendiente).length;
         if (nuevosEsperando > 0 && pedidosCentral.length > prevPedidosCount.current) {
-          const nuevo = pedidosCentral.find((p) => p.estado === "esperando_rider");
+          const nuevo = pedidosCentral.find(solicitudRiderPendiente);
           if (nuevo) {
             setNuevoPedidoId(nuevo.id);
             showToast("Nuevo pedido: " + nuevo.restaurante + " · " + nuevo.clienteNombre);
-            sendNotification({ target: "central", title: "Nueva carrera", body: nuevo.restaurante + " · " + nuevo.clienteNombre });
             playNewOrderSound();
             setTimeout(() => setNuevoPedidoId(null), 4000);
           }
@@ -275,7 +336,7 @@ export default function PanelCentralPage() {
       },
       () => {
         setLoadingData(false);
-        showGlobalToast({ type: "error", message: "Error al sincronizar pedidos. Recargá la página." });
+        showGlobalToast({ type: "error", message: "Error al sincronizar pedidos. Recarga la página." });
       }
     );
 
@@ -292,7 +353,7 @@ export default function PanelCentralPage() {
         setRawRiderDocs(snap.docs.map((d) => ({ id: d.id, data: d.data() })));
       },
       () => {
-        showGlobalToast({ type: "error", message: "Error al sincronizar riders. Recargá la página." });
+        showGlobalToast({ type: "error", message: "Error al sincronizar riders. Recarga la página." });
       }
     );
 
@@ -348,7 +409,7 @@ export default function PanelCentralPage() {
     try {
       if (!tok) {
         setPedidos(prevPedidos);
-        showToast('No se pudo asignar. Revisá la sesión.');
+        showToast('No se pudo asignar. Revisa la sesión.');
         return;
       }
       const url = batchId
@@ -364,12 +425,12 @@ export default function PanelCentralPage() {
       });
       if (!res.ok) {
         setPedidos(prevPedidos);
-        showToast('No se pudo asignar. Revisá la conexión.');
-        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+        showToast('No se pudo asignar. Revisa la conexión.');
+        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tienes permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
       setPedidos(prevPedidos);
-      showToast('No se pudo asignar. Revisá la conexión.');
+      showToast('No se pudo asignar. Revisa la conexión.');
       showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAsignandoKey(null);
@@ -403,7 +464,7 @@ export default function PanelCentralPage() {
       const tok = await getIdToken();
       if (!tok) {
         setPedidos(prevPedidos);
-        showToast('No se pudo avanzar. Revisá la sesión.');
+        showToast('No se pudo avanzar. Revisa la sesión.');
         return;
       }
       const res = await fetch(`/api/pedidos/${pedidoId}`, {
@@ -413,12 +474,12 @@ export default function PanelCentralPage() {
       });
       if (!res.ok) {
         setPedidos(prevPedidos);
-        showToast('No se pudo avanzar. Revisá la conexión.');
-        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+        showToast('No se pudo avanzar. Revisa la conexión.');
+        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tienes permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
       setPedidos(prevPedidos);
-      showToast('No se pudo avanzar. Revisá la conexión.');
+      showToast('No se pudo avanzar. Revisa la conexión.');
       showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAvanzandoId(null);
@@ -468,7 +529,7 @@ export default function PanelCentralPage() {
   }
 
   /* stats */
-  const esperando = pedidos.filter((p) => p.estado === 'esperando_rider').length;
+  const esperando = pedidos.filter(solicitudRiderPendiente).length;
   const enCurso = pedidos.filter((p) => p.estado === 'asignado' || p.estado === 'en_camino').length;
   const entregadosHoy = pedidos.filter((p) => p.estado === 'entregado').length;
   const ridersDisponibles = riders.filter((r) => r.estado === 'disponible').length;
@@ -480,7 +541,9 @@ export default function PanelCentralPage() {
       p.clienteNombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.restaurante.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.id.includes(busqueda);
-    const coincideEstado = filtroEstado === 'todos' || p.estado === filtroEstado;
+    const coincideEstado =
+      filtroEstado === 'todos' ||
+      (filtroEstado === 'esperando_rider' ? solicitudRiderPendiente(p) : p.estado === filtroEstado);
     return coincideBusqueda && coincideEstado;
   }), [pedidos, busqueda, filtroEstado]);
 
@@ -503,14 +566,14 @@ export default function PanelCentralPage() {
     return (
       <>
         <main
-          className={'min-h-screen bg-gray-50 pb-6 transition-all duration-300 ' + (pageVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2')}
+          className={'min-h-screen bg-gray-50 pb-6 safe-bottom transition-all duration-300 ' + (pageVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2')}
         >
           <header
-            className="text-white px-4 pt-10 pb-6"
+            className="text-white px-4 safe-top pt-10 pb-6"
             style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 60%, #5b21b6 100%)' }}
           >
             <div className="max-w-2xl mx-auto">
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between gap-3 mb-3">
                 <button
                   type="button"
                   onClick={() => router.push('/')}
@@ -519,91 +582,96 @@ export default function PanelCentralPage() {
                   <ArrowLeft className="w-5 h-5 text-white" />
                 </button>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => router.push('/panel/central/perfil')}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
-                    title="Editar perfil"
-                  >
-                    <UserCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Perfil</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push('/')}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
-                    title="Ir como cliente"
-                  >
-                    <ShoppingBag className="w-4 h-4" />
-                    <span className="hidden sm:inline">Ir a pedir</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowLogoutModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
-                    title="Cerrar sesión"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span className="hidden sm:inline">Cerrar sesión</span>
-                  </button>
-                  {permission === 'default' && (
-                    <button
-                      type="button"
-                      onClick={requestPermission}
-                      disabled={notifLoading}
-                      className="text-xs font-semibold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-70"
-                    >
-                      {notifLoading ? '...' : 'Activar notificaciones'}
-                    </button>
-                  )}
                   {permission === 'granted' && (
-                    <span className="text-xs text-white/70 flex items-center gap-1">
+                    <span className="text-xs text-white/70 inline-flex items-center gap-1 rounded-xl bg-white/10 px-2.5 py-1.5">
                       <Bell className="w-3.5 h-3.5" />
-                      Notificaciones activadas
+                      <span className="hidden sm:inline">Notificaciones activadas</span>
+                      <span className="sm:hidden">Activas</span>
                     </span>
                   )}
                   {esperando > 0 && (
-                    <div className="flex items-center gap-1.5 bg-orange-400/30 border border-orange-300/40 px-3 py-1.5 rounded-xl">
+                    <div className="inline-flex items-center gap-1.5 bg-orange-400/30 border border-orange-300/40 px-3 py-1.5 rounded-xl">
                       <Bell className="w-4 h-4 text-orange-200 animate-bounce" />
                       <span className="text-xs font-bold text-orange-100">{esperando} sin rider</span>
                     </div>
                   )}
                 </div>
               </div>
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide whitespace-nowrap md:flex-wrap md:overflow-visible md:whitespace-normal mb-4">
+                <button
+                  type="button"
+                  onClick={() => router.push('/panel/central/perfil')}
+                  className="flex-shrink-0 min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
+                  title="Editar perfil"
+                >
+                  <UserCircle className="w-4 h-4" />
+                  <span>Perfil</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/')}
+                  className="flex-shrink-0 min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
+                  title="Ir como cliente"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>Modo Cliente</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutModal(true)}
+                  className="flex-shrink-0 min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Cerrar sesión</span>
+                </button>
+                {permission === 'default' && (
+                  <button
+                    type="button"
+                    onClick={requestPermission}
+                    disabled={notifLoading}
+                    className="flex-shrink-0 min-h-[44px] text-xs font-semibold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-70"
+                  >
+                    {notifLoading ? '...' : 'Activar notificaciones'}
+                  </button>
+                )}
+              </div>
 
-              <div className="flex items-center justify-between gap-4 mb-5">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
                     <Zap className="w-7 h-7 text-white" />
                   </div>
                   <div>
-                    <h1 className="font-black text-xl">Panel Central</h1>
-                    <p className="text-white/70 text-sm">Cía. Virgen de la Merced · Piñas</p>
+                    <h1 className="font-black text-[clamp(1.05rem,3.6vw,1.25rem)]">Panel Central</h1>
+                    <p className="text-white/70 text-[clamp(0.78rem,2.9vw,0.9rem)]">Cía. Virgen de la Merced · Piñas</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => router.push('/panel/central/validaciones')}
-                  className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors"
-                >
-                  <UserCheck className="w-4 h-4" />
-                  Validaciones
-                </button>
-                {user?.rol === 'maestro' && (
+                <div className="flex flex-wrap items-center gap-2 md:justify-end">
                   <button
                     type="button"
-                    onClick={() => setShowLimpiarModal(true)}
-                    className="flex items-center gap-2 bg-red-500/30 hover:bg-red-500/50 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors border border-red-300/40"
-                    title="Borrar todos los pedidos (dejar paneles como nuevos)"
+                    onClick={() => router.push('/panel/central/validaciones')}
+                    className="min-h-[44px] flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    Limpiar pedidos
+                    <UserCheck className="w-4 h-4" />
+                    Validaciones
                   </button>
-                )}
+                  {user?.rol === 'maestro' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowLimpiarModal(true)}
+                      className="min-h-[44px] flex items-center gap-2 bg-red-500/30 hover:bg-red-500/50 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors border border-red-300/40"
+                      title="Borrar todos los pedidos (dejar paneles como nuevos)"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Limpiar pedidos
+                    </button>
+                  )}
+                </div>
 
               </div>
 
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {[
                   { label: 'Esperando', value: esperando, icon: AlertCircle, alert: esperando > 0 },
                   { label: 'En curso', value: enCurso, icon: Bike, alert: false },
@@ -616,7 +684,7 @@ export default function PanelCentralPage() {
                   >
                     <Icon className={'w-4 h-4 mx-auto mb-1 ' + (alert ? 'text-orange-200' : 'text-white/70')} />
                     <p className={'font-black text-lg leading-tight ' + (alert ? 'text-orange-100' : 'text-white')}>{value}</p>
-                    <p className="text-[10px] text-white/50 leading-tight">{label}</p>
+                    <p className="text-[10px] md:text-xs text-white/50 leading-tight">{label}</p>
                   </div>
                 ))}
               </div>
@@ -651,7 +719,7 @@ export default function PanelCentralPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-1 flex shadow-sm mb-4 overflow-x-auto">
+            <div className="bg-white rounded-2xl p-1 flex shadow-sm mb-4 overflow-x-auto scrollbar-hide">
               {[
                 { id: 'activos', label: 'Activos (' + pedidosActivos.length + ')', icon: Package },
                 { id: 'riders', label: 'Riders (' + riders.length + ')', icon: Bike },
@@ -662,10 +730,19 @@ export default function PanelCentralPage() {
                   key={id}
                   type="button"
                   onClick={() => setTab(id as 'activos' | 'riders' | 'historial' | 'tarifas')}
-                  className={'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all min-w-[80px] ' + (tab === id ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600')}
+                  className={'flex-1 min-w-[108px] sm:min-w-[120px] md:min-w-[80px] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ' + (tab === id ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600')}
                 >
                   <Icon className="w-3.5 h-3.5" />
-                  {label}
+                  <span className="sm:hidden">
+                    {id === 'activos'
+                      ? `Activos (${pedidosActivos.length})`
+                      : id === 'riders'
+                        ? `Riders (${riders.length})`
+                        : id === 'historial'
+                          ? `Historial (${pedidosHistorial.length})`
+                          : 'Tarifas'}
+                  </span>
+                  <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
             </div>
@@ -683,18 +760,10 @@ export default function PanelCentralPage() {
                   pedidosActivos
                     .slice()
                     .sort((a, b) => {
-                      const orden: Record<EstadoPedido, number> = {
-                        confirmado: 0,
-                        preparando: 1,
-                        listo: 2,
-                        esperando_rider: 3,
-                        asignado: 4,
-                        en_camino: 5,
-                        entregado: 6,
-                        cancelado_local: 7,
-                        cancelado_cliente: 8,
-                      };
-                      return orden[a.estado] - orden[b.estado];
+                      const da = ORDEN_ESTADO_CENTRAL[estadoVistaCentral(a)];
+                      const db = ORDEN_ESTADO_CENTRAL[estadoVistaCentral(b)];
+                      if (da !== db) return da - db;
+                      return effectiveSortTs(b) - effectiveSortTs(a);
                     })
                     .map((pedido) => {
                       const esMultiStop = !!pedido.batchId;
@@ -971,7 +1040,7 @@ export default function PanelCentralPage() {
                 type="text"
                 value={confirmacionLimpiar}
                 onChange={(e) => setConfirmacionLimpiar(e.target.value)}
-                placeholder="Escribí ELIMINAR para confirmar"
+                placeholder="Escribe ELIMINAR para confirmar"
                 className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-red-500"
                 disabled={loadingLimpiar}
               />
@@ -1048,10 +1117,10 @@ export default function PanelCentralPage() {
               </div>
 
               <div className="p-5 space-y-4">
-                <div className={'flex items-center gap-2 px-4 py-2.5 rounded-2xl border ' + ESTADO_PEDIDO_CONFIG[pedidoSeleccionado.estado].bg}>
-                  <div className={'w-2 h-2 rounded-full ' + (pedidoSeleccionado.estado === 'esperando_rider' ? 'bg-orange-400 animate-pulse' : pedidoSeleccionado.estado === 'en_camino' ? 'bg-purple-400 animate-pulse' : 'bg-green-400')} />
-                  <span className={'text-sm font-bold ' + ESTADO_PEDIDO_CONFIG[pedidoSeleccionado.estado].color}>
-                    {ESTADO_PEDIDO_CONFIG[pedidoSeleccionado.estado].label}
+                <div className={'flex items-center gap-2 px-4 py-2.5 rounded-2xl border ' + ESTADO_PEDIDO_CONFIG[estadoVistaCentral(pedidoSeleccionado)].bg}>
+                  <div className={'w-2 h-2 rounded-full ' + (estadoVistaCentral(pedidoSeleccionado) === 'esperando_rider' ? 'bg-orange-400 animate-pulse' : pedidoSeleccionado.estado === 'en_camino' ? 'bg-purple-400 animate-pulse' : 'bg-green-400')} />
+                  <span className={'text-sm font-bold ' + ESTADO_PEDIDO_CONFIG[estadoVistaCentral(pedidoSeleccionado)].color}>
+                    {ESTADO_PEDIDO_CONFIG[estadoVistaCentral(pedidoSeleccionado)].label}
                   </span>
                 </div>
 
@@ -1140,7 +1209,7 @@ export default function PanelCentralPage() {
                 })()}
 
                 <div className="space-y-2 pt-1">
-                  {pedidoSeleccionado.estado === 'esperando_rider' && (
+                  {solicitudRiderPendiente(pedidoSeleccionado) && (
                     <button
                       type="button"
                       onClick={() => setMostrarAsignar(true)}
@@ -1246,7 +1315,7 @@ export default function PanelCentralPage() {
 
         {toast && (
           <div
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-2xl whitespace-nowrap"
+            className="fixed safe-bottom-fixed left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-2xl whitespace-nowrap"
             style={{ animation: 'fadeSlideIn 0.3s ease forwards' }}
           >
             {toast}
@@ -1289,9 +1358,10 @@ const TarjetaPedidoCentral = memo(function TarjetaPedidoCentral({
   onAvanzar: () => void;
   onEliminar: () => void;
 }) {
-  const cfg = ESTADO_PEDIDO_CONFIG[pedido.estado];
+  const vista = estadoVistaCentral(pedido);
+  const cfg = ESTADO_PEDIDO_CONFIG[vista];
   const rider = riders.find((r) => r.id === pedido.riderId);
-  const esUrgente = pedido.estado === 'esperando_rider';
+  const esUrgente = solicitudRiderPendiente(pedido);
 
   return (
     <div

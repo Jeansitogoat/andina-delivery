@@ -580,8 +580,8 @@ export default function PerfilPage() {
                       : notifLoading
                         ? 'Activando...'
                         : optedOut
-                          ? 'Desactivadas · Tocá abajo para volver a activar'
-                          : 'Tocá abajo para activar avisos de pedidos'}
+                          ? 'Desactivadas · Toca abajo para volver a activar'
+                          : 'Toca abajo para activar avisos de pedidos'}
                 </p>
                 <div className="mt-3 flex items-center gap-3 flex-wrap">
                   {permission === 'granted' && !optedOut ? (

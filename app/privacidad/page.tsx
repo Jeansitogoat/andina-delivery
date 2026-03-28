@@ -73,14 +73,14 @@ export default function PrivacidadPage() {
             <section>
               <h2 className="text-gray-900 font-bold text-base mb-2">5. Compartición de datos</h2>
               <p>
-                Compartimos tus datos solo cuando sea necesario para el servicio: con los establecimientos para preparar y facturar pedidos; con motorizados para realizar la entrega; con proveedores de pago cuando pagás con medios electrónicos. No vendemos ni cedemos tus datos a terceros con fines de marketing no autorizados. Podemos divulgar datos cuando la ley lo exija o para proteger derechos y seguridad.
+                Compartimos tus datos solo cuando sea necesario para el servicio: con los establecimientos para preparar y facturar pedidos; con motorizados para realizar la entrega; con proveedores de pago cuando pagas con medios electrónicos. No vendemos ni cedemos tus datos a terceros con fines de marketing no autorizados. Podemos divulgar datos cuando la ley lo exija o para proteger derechos y seguridad.
               </p>
             </section>
 
             <section>
               <h2 className="text-gray-900 font-bold text-base mb-2">6. Conservación</h2>
               <p>
-                Conservamos tus datos mientras mantengás una cuenta activa y durante los plazos necesarios para cumplir obligaciones legales, contables o de reclamaciones. Pasado ese plazo, los datos se eliminan o se anonimizan.
+                Conservamos tus datos mientras mantengas una cuenta activa y durante los plazos necesarios para cumplir obligaciones legales, contables o de reclamaciones. Pasado ese plazo, los datos se eliminan o se anonimizan.
               </p>
             </section>
 

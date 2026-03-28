@@ -94,6 +94,7 @@ export default function NotificationPromptBanner() {
     ready &&
     !authLoading &&
     user &&
+    user.rol === 'cliente' &&
     !inPanel &&
     isSupported &&
     permission !== 'granted' &&

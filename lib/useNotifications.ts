@@ -168,7 +168,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         if (!idToken) {
           console.warn('[FCM] registerToken: No se pudo obtener idToken. Marcando pendiente.');
           setPendingRegister(true);
-          if (!silent) setError('Sesión expirada. Recargá la página e intentá de nuevo.');
+          if (!silent) setError('Sesión expirada. Recarga la página e intenta de nuevo.');
           return false;
         }
         // Payload obligatorio: token + uid + rol (+ localId si rol=local)
@@ -193,7 +193,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
           return true;
         }
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        const errMsg = data?.error ?? 'No se pudo registrar. Intentá de nuevo.';
+        const errMsg = data?.error ?? 'No se pudo registrar. Intenta de nuevo.';
         const errorType = classifyRegisterError(res.status, errMsg);
 
         if (errorType === 'validation') {
@@ -361,13 +361,18 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     try {
       const idToken = await getIdToken();
       if (!idToken) return;
+      const token = readStoredToken() ?? (await getFCMToken());
+      if (!token) {
+        setError('No se encontró el token del dispositivo actual.');
+        return;
+      }
       const res = await fetch('/api/fcm/unregister', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, token }),
       });
       if (res.ok) {
         if (typeof window !== 'undefined') {
@@ -382,9 +387,9 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         setError(null);
       }
     } catch {
-      setError('No se pudo desactivar. Intentá de nuevo.');
+      setError('No se pudo desactivar. Intenta de nuevo.');
     }
-  }, [role, setPendingRegister]);
+  }, [role, setPendingRegister, readStoredToken]);
 
   const isSupported = typeof window !== 'undefined' && 'Notification' in window;
 

@@ -2,7 +2,7 @@
  * Envía una solicitud al backend para que dispare una notificación push.
  * Requiere usuario autenticado (envía Bearer token).
  */
-export type NotificationTarget = 'central' | 'rider' | 'restaurant' | 'user';
+export type NotificationTarget = 'central' | 'rider' | 'local' | 'user';
 
 export interface SendNotificationParams {
   target: NotificationTarget;

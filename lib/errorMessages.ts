@@ -22,7 +22,7 @@ export function mapErrorToUserMessage(error: unknown): ErrorUserMessage {
       name === 'typeerror' && msg.includes('fetch')
     ) {
       return {
-        message: 'Revisá tu conexión e intentá de nuevo.',
+        message: 'Revisa tu conexión e intenta de nuevo.',
         action: 'reload',
       };
     }
@@ -30,7 +30,7 @@ export function mapErrorToUserMessage(error: unknown): ErrorUserMessage {
     // Timeout
     if (msg.includes('timeout') || msg.includes('timed out')) {
       return {
-        message: 'La solicitud tardó demasiado. Revisá tu conexión e intentá de nuevo.',
+        message: 'La solicitud tardó demasiado. Revisa tu conexión e intenta de nuevo.',
         action: 'reload',
       };
     }
@@ -46,7 +46,7 @@ export function mapErrorToUserMessage(error: unknown): ErrorUserMessage {
       msg.includes('403')
     ) {
       return {
-        message: 'Tu sesión venció. Volvé a iniciar sesión.',
+        message: 'Tu sesión venció. Vuelve a iniciar sesión.',
         action: 'login',
       };
     }
@@ -58,7 +58,7 @@ export function mapErrorToUserMessage(error: unknown): ErrorUserMessage {
       msg.includes('permission_denied')
     ) {
       return {
-        message: 'No tenés permiso para esta acción.',
+        message: 'No tienes permiso para esta acción.',
         action: 'home',
       };
     }
@@ -71,7 +71,7 @@ export function mapErrorToUserMessage(error: unknown): ErrorUserMessage {
       msg.includes('too many requests')
     ) {
       return {
-        message: 'Demasiadas solicitudes. Esperá un momento e intentá de nuevo.',
+        message: 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.',
         action: 'reload',
       };
     }
@@ -79,7 +79,7 @@ export function mapErrorToUserMessage(error: unknown): ErrorUserMessage {
     // Firestore: documento no encontrado
     if (msg.includes('not-found') || msg.includes('document not found')) {
       return {
-        message: 'No se encontró lo que buscás. Probablemente fue eliminado.',
+        message: 'No se encontró lo que buscas. Probablemente fue eliminado.',
         action: 'home',
       };
     }
@@ -87,7 +87,7 @@ export function mapErrorToUserMessage(error: unknown): ErrorUserMessage {
 
   // Genérico
   return {
-    message: 'Algo salió mal. Intentá recargar o volvé al inicio.',
+    message: 'Algo salió mal. Intenta recargar o vuelve al inicio.',
     action: 'reload',
   };
 }

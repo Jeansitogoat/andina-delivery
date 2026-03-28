@@ -139,7 +139,7 @@ export default function AgregarDireccionModal({ onClose, onGuardar, telefonoUsua
             </div>
           ) : (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-              Agregá tu teléfono en Mi perfil para que el rider te contacte.
+              Agrega tu teléfono en Mi perfil para que el rider te contacte.
             </p>
           )}
 

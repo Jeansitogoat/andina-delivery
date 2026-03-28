@@ -27,13 +27,14 @@ import {
   Navigation,
   X,
   Check,
-  Bell,
   ShoppingBag,
   UserCircle,
   LogOut,
   Camera,
   MessageCircle,
   CreditCard,
+  ChevronDown,
+  Settings,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { useAuth } from '@/lib/useAuth';
@@ -42,7 +43,6 @@ import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
 import { normalizePhoneForWhatsApp, formatWhatsAppLink } from '@/lib/utils/phone';
-import MobileHeader from '@/components/ui/MobileHeader';
 import KpiCard from '@/components/ui/KpiCard';
 
 function mapEstado(estadoPedido: string): EstadoCarrera {
@@ -113,7 +113,7 @@ const ESTADOS_ACTIVOS = ['confirmado', 'preparando', 'listo', 'esperando_rider',
 export default function PanelRiderPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const { permission, requestPermission, loading: notifLoading } = useNotifications('rider');
+  useNotifications('rider');
   const [carreras, setCarreras] = useState<CarreraRider[]>([]);
   const [historialHoy, setHistorialHoy] = useState<CarreraRider[]>([]);
   const [tab, setTab] = useState<'activas' | 'historial'>('activas');
@@ -126,10 +126,12 @@ export default function PanelRiderPage() {
   const [pageVisible, setPageVisible] = useState(false);
   const [toast, setToast] = useState('');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [miEstado, setMiEstado] = useState<EstadoRider>('disponible');
   const [sessionInvalid, setSessionInvalid] = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const fotoRef = useRef<HTMLInputElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [avanzandoKey, setAvanzandoKey] = useState<string | null>(null);
   const [rechazandoCarreraId, setRechazandoCarreraId] = useState<string | null>(null);
 
@@ -168,6 +170,17 @@ export default function PanelRiderPage() {
   }, []);
 
   useEffect(() => {
+    const onPointerDown = (ev: MouseEvent) => {
+      if (!profileMenuRef.current) return;
+      if (!profileMenuRef.current.contains(ev.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, []);
+
+  useEffect(() => {
     if (loading) return;
     if (!user || (user.rol !== 'rider' && user.rol !== 'maestro')) {
       router.replace('/auth');
@@ -197,7 +210,7 @@ export default function PanelRiderPage() {
       prevCarreraIdsRef.current = newIds;
       setCarreras(activas);
     }, () => {
-      showGlobalToast({ type: 'error', message: 'Error al cargar carreras. Recargá la página.' });
+      showGlobalToast({ type: 'error', message: 'Error al cargar carreras. Recarga la página.' });
     });
 
     const qHistorial = query(
@@ -220,7 +233,7 @@ export default function PanelRiderPage() {
       const desde = filtroHistorial === 'mes' ? mesAtras : filtroHistorial === 'semana' ? semanaAtras : hoyTs;
       setHistorialHoy(list.filter((c) => (c.timestamp ?? 0) >= desde));
     }, () => {
-      showGlobalToast({ type: 'error', message: 'Error al cargar historial. Recargá la página.' });
+      showGlobalToast({ type: 'error', message: 'Error al cargar historial. Recarga la página.' });
     });
 
     return () => {
@@ -313,7 +326,7 @@ export default function PanelRiderPage() {
       const tok = await getIdToken();
       if (!tok) {
         setCarreras(prevCarreras);
-        showToast('No se pudo avanzar. Revisá la sesión.');
+        showToast('No se pudo avanzar. Revisa la sesión.');
         return;
       }
       const url = batchId
@@ -327,12 +340,12 @@ export default function PanelRiderPage() {
       });
       if (!res.ok) {
         setCarreras(prevCarreras);
-        showToast('No se pudo avanzar. Revisá la conexión.');
-        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+        showToast('No se pudo avanzar. Revisa la conexión.');
+        showGlobalToast({ type: 'error', message: res.status === 403 ? 'No tienes permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
       setCarreras(prevCarreras);
-      showToast('No se pudo avanzar. Revisá la conexión.');
+      showToast('No se pudo avanzar. Revisa la conexión.');
       showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAvanzandoKey(null);
@@ -360,7 +373,7 @@ export default function PanelRiderPage() {
         showGlobalToast({ type: 'error', message: (data.error as string) || 'No se pudo rechazar.' });
       }
     } catch {
-      showGlobalToast({ type: 'error', message: 'Error de conexión. Reintentá.' });
+      showGlobalToast({ type: 'error', message: 'Error de conexión. Reintenta.' });
     } finally {
       setRechazandoCarreraId(null);
     }
@@ -494,81 +507,170 @@ export default function PanelRiderPage() {
   return (
     <>
       <main
-        className={`surface-rider min-h-screen pb-6 transition-all duration-300 ${
+        className={`surface-rider min-h-screen pb-6 safe-bottom transition-all duration-300 ${
           pageVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
         }`}
       >
         {/* ── encabezado ── */}
-        <header className="text-white safe-x pt-8 pb-7 bg-gradient-to-br from-rider-900 via-rider-700 to-rider-600 shadow-softlg">
-          <div className="max-w-lg mx-auto">
-            <MobileHeader
-              tone="rider"
-              left={(
-                <span className="inline-flex items-center rounded-xl border border-white/20 bg-white/10 px-2.5 py-1 text-xs font-semibold text-blue-100">
-                  Panel Rider
-                </span>
-              )}
-              right={(
-                <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => router.push('/panel/rider/perfil')}
-                  className="touch-target-lg flex items-center gap-2 px-3 py-2 rounded-2xl bg-white/15 border border-white/25 hover:bg-white/25 text-sm font-semibold transition-colors"
-                  title="Editar perfil"
-                >
-                  <UserCircle className="w-4 h-4" />
-                  <span className="hidden sm:inline">Perfil</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push('/')}
-                  className="touch-target-lg flex items-center gap-2 px-3 py-2 rounded-2xl bg-cyan-300/20 border border-cyan-200/40 hover:bg-cyan-300/30 text-sm font-semibold transition-colors"
-                  title="Pedir comida"
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>Modo Cliente</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowLogoutModal(true)}
-                  className="touch-target-lg inline-flex items-center justify-center px-3 py-2 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/25 text-sm font-medium transition-colors md:hidden"
-                  title="Cerrar sesión"
-                  aria-label="Cerrar sesión"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowLogoutModal(true)}
-                  className="hidden md:inline-flex touch-target-lg items-center gap-2 px-3 py-2 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/25 text-sm font-medium transition-colors"
-                  title="Cerrar sesión"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span className="hidden sm:inline">Cerrar sesión</span>
-                </button>
+        <header className="text-white safe-x safe-top pt-6 pb-6 sm:pt-8 sm:pb-7 bg-gradient-to-br from-rider-900 via-rider-700 to-rider-600 shadow-softlg overflow-visible">
+          <div className="max-w-lg mx-auto overflow-visible">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-100/90">
+                Panel Rider
+              </span>
+            </div>
+
+            {/* Hero: saludo + avatar + acciones — z-index alto para que el menú Mi perfil no quede debajo de Disponibilidad */}
+            <div className="relative z-30 overflow-visible rounded-3xl border border-white/15 bg-white/[0.07] backdrop-blur-sm p-3 sm:p-4 mb-4 shadow-inner">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="relative flex-shrink-0">
+                    {getSafeImageSrc(user?.photoURL) ? (
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-white/20 relative ring-2 ring-white/20">
+                        <Image
+                          src={getSafeImageSrc(user?.photoURL)!}
+                          alt={user.displayName ?? 'Rider'}
+                          fill
+                          sizes="56px"
+                          className="object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center text-white font-black text-lg sm:text-xl ring-2 ring-white/20">
+                        {(user
+                          ? (() => {
+                              const dn = (user.displayName ?? '').trim();
+                              if (dn) return (dn.split(/\s+/)[0] || dn).charAt(0);
+                              if (user.email) return (user.email.split('@')[0] || 'R').charAt(0);
+                              return 'R';
+                            })()
+                          : 'R'
+                        ).toUpperCase()}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => fotoRef.current?.click()}
+                      disabled={subiendoFoto}
+                      className="absolute -bottom-0.5 -right-0.5 w-7 h-7 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors disabled:opacity-70"
+                      title="Cambiar foto de perfil"
+                    >
+                      {subiendoFoto ? (
+                        <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin block" />
+                      ) : (
+                        <Camera className="w-3.5 h-3.5 text-blue-600" />
+                      )}
+                    </button>
+                    <input
+                      ref={fotoRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !user?.uid) return;
+                        e.target.value = '';
+                        setSubiendoFoto(true);
+                        const storage = getFirebaseStorage();
+                        const storageRef = ref(storage, `users/${user.uid}/avatar`);
+                        try {
+                          const compressed = await compressImage(file, 'avatar');
+                          await uploadBytes(storageRef, compressed);
+                          const url = await getDownloadURL(storageRef);
+                          const db = getFirestoreDb();
+                          await setDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: serverTimestamp() }, { merge: true });
+                          const auth = getFirebaseAuth();
+                          if (auth.currentUser) await updateProfile(auth.currentUser, { photoURL: url });
+                        } catch {
+                          showGlobalToast({ type: 'error', message: 'Error al subir la foto. Intenta de nuevo.' });
+                        } finally {
+                          setSubiendoFoto(false);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <h1 className="font-black text-[clamp(1rem,4.2vw,1.35rem)] leading-tight truncate">
+                      ¡Hola,{' '}
+                      {user
+                        ? (() => {
+                            const dn = (user.displayName ?? '').trim();
+                            if (dn) return dn.split(/\s+/)[0] || dn;
+                            if (user.email) return user.email.split('@')[0] || 'Usuario';
+                            return 'Rider';
+                          })()
+                        : 'Rider'}
+                      !
+                    </h1>
+                    <p className="text-blue-100/90 text-[clamp(0.72rem,2.8vw,0.85rem)] mt-0.5 truncate">
+                      Rider · Cía. Virgen de la Merced
+                    </p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Star className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300 flex-shrink-0" />
+                      <span className="text-xs sm:text-sm font-bold text-yellow-300">
+                        {user?.ratingPromedio != null && user.ratingPromedio > 0 ? user.ratingPromedio.toFixed(1) : 'Sin calificar aún'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              )}
-            />
-            <div className="mt-2 flex items-center justify-between rounded-2xl border border-white/20 bg-white/10 px-3 py-2 text-xs">
-              <button
-                type="button"
-                onClick={requestPermission}
-                disabled={notifLoading || permission !== 'default'}
-                className="flex items-center gap-1.5 text-white/85 disabled:opacity-80"
-              >
-                <Bell className="h-3.5 w-3.5" />
-                {permission === 'granted' ? 'Notificaciones activadas' : permission === 'default' ? 'Activar notificaciones' : 'Notificaciones bloqueadas'}
-              </button>
-              <div className="flex items-center gap-1.5">
-                <div className={`h-2.5 w-2.5 rounded-full ${ESTADO_RIDER_CONFIG[miEstado].dot} ${miEstado === 'disponible' ? 'animate-pulse' : ''}`} />
-                <span className="font-semibold text-white/95">{ESTADO_RIDER_CONFIG[miEstado].label}</span>
+                <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-stretch sm:w-auto sm:min-w-[148px]">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/')}
+                    className="touch-target-lg min-h-[44px] flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 py-2 rounded-2xl bg-cyan-300/25 border border-cyan-200/35 hover:bg-cyan-300/35 text-sm font-bold transition-colors"
+                    title="Pedir comida"
+                  >
+                    <ShoppingBag className="w-4 h-4 flex-shrink-0" />
+                    <span>Modo Cliente</span>
+                  </button>
+                  <div ref={profileMenuRef} className="relative z-50 flex-1 sm:flex-none min-w-[140px]">
+                    <button
+                      type="button"
+                      onClick={() => setShowProfileMenu((v) => !v)}
+                      className="touch-target-lg min-h-[44px] w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-2xl bg-white/15 border border-white/25 hover:bg-white/25 text-sm font-bold transition-colors"
+                      title="Mi perfil"
+                      aria-haspopup="menu"
+                      aria-expanded={showProfileMenu}
+                    >
+                      <UserCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>Mi perfil</span>
+                      <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showProfileMenu && (
+                      <div className="absolute right-0 left-0 sm:left-auto sm:w-56 top-[calc(100%+8px)] z-[100] rounded-2xl border border-white/20 bg-rider-900/95 backdrop-blur-md p-2 shadow-2xl">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            router.push('/panel/rider/perfil');
+                          }}
+                          className="w-full min-h-[44px] rounded-xl px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors inline-flex items-center gap-2"
+                        >
+                          <Settings className="w-4 h-4" />
+                          Configuración de cuenta
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            setShowLogoutModal(true);
+                          }}
+                          className="w-full min-h-[44px] rounded-xl px-3 py-2 text-left text-sm font-medium text-red-200 hover:bg-red-500/20 transition-colors inline-flex items-center gap-2"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Cerrar sesión
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Selector de estado del rider: se persiste en Firestore y la central lo refleja. */}
-            <div className="mb-5 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-sm p-4">
-              <p className="text-xs text-blue-100 font-semibold mb-2">Mi estado operativo</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="relative z-10 mb-5 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-sm p-3 sm:p-4">
+              <p className="text-[11px] sm:text-xs text-blue-100 font-bold uppercase tracking-wide mb-2">Disponibilidad</p>
+              <div className="flex w-full rounded-2xl bg-black/20 p-1 gap-1">
                 {(['disponible', 'fuera_servicio'] as const).map((estado) => {
                   const cfg = ESTADO_RIDER_CONFIG[estado];
                   const activo = miEstado === estado;
@@ -594,112 +696,36 @@ export default function PanelRiderPage() {
                           }
                         }
                       }}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                      className={`min-h-[44px] flex-1 flex items-center justify-center gap-2 px-2 sm:px-3 py-2 rounded-xl text-sm font-bold transition-all ${
                         deshabilitado ? 'opacity-60 cursor-not-allowed' : ''
                       } ${
-                        activo ? 'bg-white text-rider-900 shadow-md' : 'bg-white/15 text-white/90 hover:bg-white/25'
+                        activo
+                          ? estado === 'disponible'
+                            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-900/30'
+                            : 'bg-white text-rider-900 shadow-md'
+                          : 'bg-white/5 text-white/80 hover:bg-white/10'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-                      {cfg.label}
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot} ${activo ? 'ring-2 ring-white/40' : ''}`} />
+                      {estado === 'fuera_servicio' ? (
+                        <>
+                          <span className="sm:hidden">Fuera</span>
+                          <span className="hidden sm:inline">{cfg.label}</span>
+                        </>
+                      ) : (
+                        cfg.label
+                      )}
                     </button>
                   );
                 })}
               </div>
               {carreras.filter((c) => c.estado !== 'entregada').length > 0 && (
-                <p className="text-xs text-blue-100/80 mt-1.5">Tienes una carrera activa; al entregar podrás cambiar tu estado.</p>
+                <p className="text-xs text-blue-100/80 mt-2">Tienes una carrera activa; al entregar podrás cambiar tu estado.</p>
               )}
             </div>
 
-            <div className="flex items-center gap-4 mb-5">
-              <div className="relative flex-shrink-0">
-                {getSafeImageSrc(user?.photoURL) ? (
-                  <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/20 relative">
-                    <Image
-                      src={getSafeImageSrc(user?.photoURL)!}
-                      alt={user.displayName ?? 'Rider'}
-                      fill
-                      sizes="56px"
-                      className="object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-white font-black text-xl">
-                    {(user
-                      ? (() => {
-                          const dn = (user.displayName ?? '').trim();
-                          if (dn) return (dn.split(/\s+/)[0] || dn).charAt(0);
-                          if (user.email) return (user.email.split('@')[0] || 'R').charAt(0);
-                          return 'R';
-                        })()
-                      : 'R'
-                    ).toUpperCase()}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => fotoRef.current?.click()}
-                  disabled={subiendoFoto}
-                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors disabled:opacity-70"
-                  title="Cambiar foto de perfil"
-                >
-                  {subiendoFoto ? (
-                    <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin block" />
-                  ) : (
-                    <Camera className="w-3.5 h-3.5 text-blue-600" />
-                  )}
-                </button>
-                <input
-                  ref={fotoRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file || !user?.uid) return;
-                    e.target.value = '';
-                    setSubiendoFoto(true);
-                    const storage = getFirebaseStorage();
-                    const storageRef = ref(storage, `users/${user.uid}/avatar`);
-                    try {
-                      const compressed = await compressImage(file, 'avatar');
-                      await uploadBytes(storageRef, compressed);
-                      const url = await getDownloadURL(storageRef);
-                      const db = getFirestoreDb();
-                      await setDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: serverTimestamp() }, { merge: true });
-                      const auth = getFirebaseAuth();
-                      if (auth.currentUser) await updateProfile(auth.currentUser, { photoURL: url });
-                    } catch {
-                      showGlobalToast({ type: 'error', message: 'Error al subir la foto. Intentá de nuevo.' });
-                    } finally {
-                      setSubiendoFoto(false);
-                    }
-                  }}
-                />
-              </div>
-              <div>
-                <h1 className="font-black text-xl">
-                  {user
-                    ? (() => {
-                        const dn = (user.displayName ?? '').trim();
-                        if (dn) return dn.split(/\s+/)[0] || dn;
-                        if (user.email) return user.email.split('@')[0] || 'Usuario';
-                        return 'Rider';
-                      })()
-                    : 'Rider'}
-                </h1>
-                <p className="text-blue-100 text-sm">Rider · Cía. Virgen de la Merced</p>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <Star className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
-                  <span className="text-sm font-bold text-yellow-300">
-                    {user?.ratingPromedio != null && user.ratingPromedio > 0 ? user.ratingPromedio.toFixed(1) : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {/* stats rápidas */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <KpiCard
                 icon={<Bike className="w-4 h-4 text-white/80" />}
                 label="Carreras hoy"
@@ -712,35 +738,38 @@ export default function PanelRiderPage() {
                 value={activasCount.toString()}
                 tone="rider"
               />
-              <KpiCard
-                icon={<Wallet className="w-4 h-4 text-white/80" />}
-                label="Ganancias"
-                value={`$${gananciasHoy.toFixed(2)}`}
-                tone="rider"
-              />
+              <div className="col-span-2 md:col-span-1">
+                <KpiCard
+                  icon={<Wallet className="w-4 h-4 text-white/80" />}
+                  label="Ganancias"
+                  value={`$${gananciasHoy.toFixed(2)}`}
+                  tone="rider"
+                />
+              </div>
             </div>
           </div>
         </header>
 
         {/* ── tabs ── */}
         <div className="max-w-lg mx-auto px-4 -mt-1">
-          <div className="bg-white/95 border border-rider-100 rounded-2xl p-1 flex shadow-soft mb-4 mt-4">
+          <div className="bg-white/95 border border-rider-100 rounded-2xl p-1 flex shadow-soft mb-4 mt-4 overflow-x-auto scrollbar-hide">
             {([
-              { id: 'activas', label: `Carreras activas (${activasCount})`, icon: Bike },
-              { id: 'historial', label: 'Historial de hoy', icon: History },
+              { id: 'activas', label: `Carreras activas (${activasCount})`, mobileLabel: `Activas (${activasCount})`, icon: Bike },
+              { id: 'historial', label: 'Historial de hoy', mobileLabel: 'Historial', icon: History },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setTab(id)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                className={`flex-1 min-w-[140px] sm:min-w-0 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
                   tab === id
                     ? 'bg-rider-700 text-white shadow-sm'
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                {label}
+                <span className="sm:hidden">{id === 'activas' ? `Activas (${activasCount})` : 'Historial'}</span>
+                <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
@@ -1111,7 +1140,7 @@ export default function PanelRiderPage() {
       {/* ── toast ── */}
       {toast && (
         <div
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-2xl"
+          className="fixed safe-bottom-fixed left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-2xl"
           style={{ animation: 'fadeSlideIn 0.3s ease forwards' }}
         >
           {toast}

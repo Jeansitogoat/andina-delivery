@@ -196,7 +196,7 @@ export default function CarritoPage() {
       <main className="min-h-screen bg-surface flex flex-col items-center justify-center safe-x">
         <Package className="w-16 h-16 text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-800 mb-2">Tu carrito está vacío</h2>
-        <p className="text-gray-500 text-center mb-6">Agregá productos desde un restaurante para hacer tu pedido.</p>
+        <p className="text-gray-500 text-center mb-6">Agrega productos desde un restaurante para hacer tu pedido.</p>
         <button
           type="button"
           onClick={() => router.push('/')}

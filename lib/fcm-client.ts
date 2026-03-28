@@ -6,6 +6,41 @@
 import { getFirebaseApp } from '@/lib/firebase/client';
 
 const MESSAGING_SW_URL = '/firebase-messaging-sw.js';
+const FOREGROUND_DEDUP_TTL_MS = 5000;
+const recentForegroundMessageIds = new Map<string, number>();
+let foregroundListenerUnsubscribe: (() => void) | null = null;
+let foregroundListenerInitPromise: Promise<void> | null = null;
+let foregroundListenerConsumers = 0;
+
+function pruneRecentForegroundIds(now: number): void {
+  for (const [id, ts] of recentForegroundMessageIds.entries()) {
+    if (now - ts > FOREGROUND_DEDUP_TTL_MS) {
+      recentForegroundMessageIds.delete(id);
+    }
+  }
+}
+
+function extractPayloadMessageId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const p = payload as { messageId?: unknown; data?: Record<string, unknown> };
+  if (typeof p.messageId === 'string' && p.messageId.trim()) return p.messageId.trim();
+  const dataMessageId = p.data?.messageId;
+  if (typeof dataMessageId === 'string' && dataMessageId.trim()) return dataMessageId.trim();
+  return null;
+}
+
+function shouldProcessForegroundPayload(payload: unknown): boolean {
+  const messageId = extractPayloadMessageId(payload);
+  if (!messageId) return true;
+  const now = Date.now();
+  pruneRecentForegroundIds(now);
+  const prev = recentForegroundMessageIds.get(messageId);
+  if (typeof prev === 'number' && now - prev <= FOREGROUND_DEDUP_TTL_MS) {
+    return false;
+  }
+  recentForegroundMessageIds.set(messageId, now);
+  return true;
+}
 
 export function isIOS(): boolean {
   if (typeof window === 'undefined') return false;
@@ -177,18 +212,46 @@ export async function setupFCMForegroundListener(): Promise<() => void> {
   if (typeof window === 'undefined') return () => {};
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
   if (!vapidKey) return () => {};
+  foregroundListenerConsumers += 1;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    foregroundListenerConsumers = Math.max(0, foregroundListenerConsumers - 1);
+    if (foregroundListenerConsumers === 0 && foregroundListenerUnsubscribe) {
+      foregroundListenerUnsubscribe();
+      foregroundListenerUnsubscribe = null;
+      foregroundListenerInitPromise = null;
+      recentForegroundMessageIds.clear();
+    }
+  };
+  if (foregroundListenerUnsubscribe) return release;
+  if (foregroundListenerInitPromise) {
+    await foregroundListenerInitPromise;
+    return release;
+  }
   try {
-    const { getMessaging, onMessage } = await import('firebase/messaging');
-    const { showLocalNotification } = await import('@/lib/notifications');
-    const app = getFirebaseApp();
-    const messaging = getMessaging(app);
-    const unsubscribe = onMessage(messaging, (payload) => {
-      const title = payload.notification?.title ?? (payload.data as Record<string, string> | undefined)?.title ?? 'Andina Delivery';
-      const body = payload.notification?.body ?? (payload.data as Record<string, string> | undefined)?.body ?? '';
-      showLocalNotification(title, body);
-    });
-    return () => unsubscribe();
+    foregroundListenerInitPromise = (async () => {
+      const { getMessaging, onMessage } = await import('firebase/messaging');
+      const { showLocalNotification } = await import('@/lib/notifications');
+      const app = getFirebaseApp();
+      const messaging = getMessaging(app);
+      const unsubscribe = onMessage(messaging, (payload) => {
+        if (!shouldProcessForegroundPayload(payload)) return;
+        const title = payload.notification?.title ?? (payload.data as Record<string, string> | undefined)?.title ?? 'Andina Delivery';
+        const body = payload.notification?.body ?? (payload.data as Record<string, string> | undefined)?.body ?? '';
+        showLocalNotification(title, body);
+      });
+      foregroundListenerUnsubscribe = () => {
+        unsubscribe();
+      };
+    })();
+    await foregroundListenerInitPromise;
+    foregroundListenerInitPromise = null;
+    return release;
   } catch {
+    foregroundListenerInitPromise = null;
+    release();
     return () => {};
   }
 }

@@ -3,6 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { batchAsignarPatchSchema } from '@/lib/schemas/batchAsignar';
+import { getRiderDisplayNameForPedido } from '@/lib/rider-profile-admin';
 
 /** PATCH /api/pedidos/batch/[batchId]/asignar → asigna un rider a todos los pedidos del batch (panel central). */
 export async function PATCH(
@@ -36,6 +37,7 @@ export async function PATCH(
     }
 
     const db = getAdminFirestore();
+    const riderNombre = await getRiderDisplayNameForPedido(db, riderId);
     const batchIdTrim = batchId.trim();
 
     const snap = await db
@@ -55,6 +57,7 @@ export async function PATCH(
       writer.update(d.ref, {
         estado: 'asignado',
         riderId,
+        riderNombre,
         updatedAt: FieldValue.serverTimestamp(),
       });
     }

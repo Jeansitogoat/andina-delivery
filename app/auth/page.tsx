@@ -582,7 +582,7 @@ export default function AuthPage() {
             La Central validará tus datos. Cuando te aprueben, podrás iniciar sesión y acceder al panel de riders.
           </p>
           <p className="text-sm text-gray-500 mb-6">
-            Si entrás antes, verás que tu cuenta está pendiente de aprobación.
+            Si entras antes, verás que tu cuenta está pendiente de aprobación.
           </p>
           <button
             type="button"

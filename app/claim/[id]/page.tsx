@@ -170,7 +170,7 @@ export default function ClaimPage({ params }: PageProps) {
       <main className="min-h-screen flex items-center justify-center bg-gray-50">
         <EmptyState
           title="No se pudo reclamar la carrera"
-          description="Intentá de nuevo desde tu panel del rider o verifica tu conexión."
+          description="Intenta de nuevo desde tu panel del rider o verifica tu conexión."
           icon={<Package className="w-7 h-7" />}
           actionLabel="Ir al panel del rider"
           onAction={() => router.push('/panel/rider')}

@@ -17,8 +17,6 @@ import {
   X,
   LogOut,
   Trash2,
-  Phone,
-  MessageCircle,
 } from 'lucide-react';
 import NavPanel from '@/components/panel/NavPanel';
 import BotonPedirRider from '@/components/panel/BotonPedirRider';
@@ -40,7 +38,7 @@ type PendingTransferOrder = {
 import { useAuth } from '@/lib/useAuth';
 import { getIdToken } from '@/lib/authToken';
 import type { Local } from '@/lib/data';
-import type { EstadoPedido } from '@/lib/types';
+import type { EstadoPedido, EstadoTransportePedido } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 import { isNightMode } from '@/lib/time';
@@ -50,8 +48,6 @@ import { startOfDayGuayaquil } from '@/lib/guayaquil-time';
 import { getFirestoreDb } from '@/lib/firebase/client';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { getOrderMoney } from '@/lib/order-money';
-import { formatWhatsAppLink } from '@/lib/utils/phone';
-import { CENTRAL_LOGISTICA_PHONE } from '@/lib/constants/centralLogistics';
 
 const MOTIVOS_RAPIDOS_CANCEL_LOCAL = [
   'Sin stock / ingrediente',
@@ -73,6 +69,9 @@ interface Order {
   direccion: string;
   /** Estado en Firestore para saber si ya se solicitó rider */
   estadoFirestore: EstadoPedido;
+  transporte: EstadoTransportePedido;
+  riderId?: string | null;
+  riderNombre?: string | null;
   batchId?: string | null;
   batchLeaderLocalId?: string | null;
   deliveryType?: 'delivery' | 'pickup';
@@ -93,6 +92,12 @@ function tiempoTranscurrido(ts: number): string {
   if (mins < 1) return 'ahora';
   if (mins < 60) return `hace ${mins} min`;
   return `hace ${Math.floor(mins / 60)}h`;
+}
+
+function riderEstadoRepartoSublabel(estado: EstadoPedido): string {
+  if (estado === 'en_camino') return 'El repartidor va en camino al cliente.';
+  if (estado === 'asignado') return 'Asignado — en breve recoge o sale hacia la entrega.';
+  return 'Rider asignado a tu pedido.';
 }
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string; next?: OrderStatus; nextEstado?: EstadoPedido; nextLabel?: string }> = {
@@ -140,11 +145,24 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
   const { showToast } = useToast();
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
   const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
-  function playNewOrderSound() {
+  /** Alerta solo para pedidos sin aceptar (confirmado): dos reproducciones seguidas. */
+  function playNewOrderAlertTwice() {
     try {
-      if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/local-new-order.mp3');
-      newOrderSoundRef.current.volume = 1.0;
-      newOrderSoundRef.current.play().catch(() => {});
+      const a = newOrderSoundRef.current ?? new Audio('/sounds/local-new-order.mp3');
+      newOrderSoundRef.current = a;
+      a.volume = 1.0;
+      let playsLeft = 2;
+      a.onended = () => {
+        playsLeft -= 1;
+        if (playsLeft <= 0) {
+          a.onended = null;
+          return;
+        }
+        a.currentTime = 0;
+        void a.play().catch(() => {});
+      };
+      a.currentTime = 0;
+      void a.play().catch(() => {});
     } catch {
       // ignorar
     }
@@ -164,6 +182,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
       limit(50)
     );
 
+    let seededFromServer = false;
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -191,6 +210,8 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
           }
           if (ESTADOS_ACTIVOS_SNAP.includes(estado) && !isPendingTransfer) {
             newIds.add(d.id);
+            const transporte: EstadoTransportePedido =
+              data.transporte === 'buscando_rider' ? 'buscando_rider' : 'pendiente';
             activos.push({
               id: d.id,
               cliente: String(data.clienteNombre || 'Cliente'),
@@ -201,6 +222,12 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               status: estadoToStatus(estado),
               direccion: String(data.clienteDireccion || '—'),
               estadoFirestore: estado,
+              transporte,
+              riderId: typeof data.riderId === 'string' ? data.riderId : null,
+              riderNombre:
+                typeof data.riderNombre === 'string' && data.riderNombre.trim()
+                  ? data.riderNombre.trim()
+                  : null,
               batchId: (data.batchId as string) ?? null,
               batchLeaderLocalId: (data.batchLeaderLocalId as string) ?? null,
               deliveryType: data.deliveryType === 'pickup' ? 'pickup' : 'delivery',
@@ -209,17 +236,28 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             });
           }
         }
-        if (activos.some((o) => !prevOrderIdsRef.current.has(o.id))) {
-          playNewOrderSound();
-        }
-        prevOrderIdsRef.current = newIds;
         setOrders(activos);
         setPendingTransfer(pend);
         setOrdersLoading(false);
+
+        if (!seededFromServer) {
+          if (snap.metadata.fromCache) return;
+          seededFromServer = true;
+          prevOrderIdsRef.current = newIds;
+          return;
+        }
+
+        const nuevosSinAceptar = activos.filter(
+          (o) => !prevOrderIdsRef.current.has(o.id) && o.estadoFirestore === 'confirmado'
+        );
+        if (nuevosSinAceptar.length > 0) {
+          playNewOrderAlertTwice();
+        }
+        prevOrderIdsRef.current = newIds;
       },
       () => {
         setOrdersLoading(false);
-        showToast({ type: 'error', message: 'Error al sincronizar pedidos. Recargá la página.' });
+        showToast({ type: 'error', message: 'Error al sincronizar pedidos. Recarga la página.' });
       }
     );
     return () => unsub();
@@ -262,6 +300,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         status: 'entregado' as OrderStatus,
         direccion: p.clienteDireccion || '—',
         estadoFirestore: 'entregado' as EstadoPedido,
+        transporte: 'pendiente',
+        riderId: null,
+        riderNombre: null,
         batchId: null,
         batchLeaderLocalId: null,
         deliveryType: 'delivery',
@@ -302,6 +343,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         status: 'entregado' as OrderStatus,
         direccion: p.clienteDireccion || '—',
         estadoFirestore: 'entregado' as EstadoPedido,
+        transporte: 'pendiente',
+        riderId: null,
+        riderNombre: null,
         batchId: null,
         batchLeaderLocalId: null,
         deliveryType: 'delivery',
@@ -413,7 +457,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
           })
         );
       } else {
-        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        if (res.status === 403) showToast({ type: 'error', message: 'No tienes permiso para esta acción.' });
         else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
@@ -443,7 +487,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
           ]);
         }
       } else {
-        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        if (res.status === 403) showToast({ type: 'error', message: 'No tienes permiso para esta acción.' });
         else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
@@ -455,7 +499,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
 
   function onRiderSolicitado(orderId: string) {
     setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, estadoFirestore: 'esperando_rider' as const } : o))
+      prev.map((o) => (o.id === orderId ? { ...o, transporte: 'buscando_rider' as const } : o))
     );
   }
 
@@ -471,7 +515,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
       });
       if (res.ok) refreshPendingTransfer();
       else {
-        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        if (res.status === 403) showToast({ type: 'error', message: 'No tienes permiso para esta acción.' });
         else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
@@ -512,7 +556,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         setPendingTransfer(prevPending);
         setCancelOrderId(idToCancel);
         setCancelMotivo(motivo);
-        if (res.status === 403) showToast({ type: 'error', message: 'No tenés permiso para esta acción.' });
+        if (res.status === 403) showToast({ type: 'error', message: 'No tienes permiso para esta acción.' });
         else showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
       }
     } catch {
@@ -640,11 +684,11 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               No recibir pedidos
             </h3>
             <p className="text-sm text-gray-500 mb-2 ml-10">
-              Si estás saturado o tenés un inconveniente, puedes pausar los pedidos. Los clientes verán &quot;Ocupado&quot; y no podrán agregar al carrito.
+              Si estás saturado o tienes un inconveniente, puedes pausar los pedidos. Los clientes verán &quot;Ocupado&quot; y no podrán agregar al carrito.
             </p>
             {tienePendientesNocturnos && (
               <p className="text-xs font-semibold text-red-600 mb-2 ml-10">
-                Tenés pedidos nocturnos pendientes {idsPendientesNocturnos ? `(${idsPendientesNocturnos})` : ''}. Marcá como entregados antes de volver a aceptar nuevos pedidos.
+                Tienes pedidos nocturnos pendientes {idsPendientesNocturnos ? `(${idsPendientesNocturnos})` : ''}. Marca como entregados antes de volver a aceptar nuevos pedidos.
               </p>
             )}
             {local.cerradoHasta && new Date(local.cerradoHasta).getTime() > Date.now() ? (
@@ -676,12 +720,12 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                       });
                       if (!res.ok) {
                         setLocal(prevLocal);
-                        setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
-                        showToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+                        setOcupadoToast('No se pudo actualizar. Revisa la conexión.');
+                        showToast({ type: 'error', message: res.status === 403 ? 'No tienes permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                       }
                     } catch {
                       setLocal(prevLocal);
-                      setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                      setOcupadoToast('No se pudo actualizar. Revisa la conexión.');
                       showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                     } finally {
                       setOcupadoSaving(false);
@@ -721,12 +765,12 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                         });
                         if (!res.ok) {
                           setLocal(prevLocal);
-                          setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
-                          showToast({ type: 'error', message: res.status === 403 ? 'No tenés permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
+                          setOcupadoToast('No se pudo actualizar. Revisa la conexión.');
+                          showToast({ type: 'error', message: res.status === 403 ? 'No tienes permiso para esta acción.' : '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                         }
                       } catch {
                         setLocal(prevLocal);
-                        setOcupadoToast('No se pudo actualizar. Revisá la conexión.');
+                        setOcupadoToast('No se pudo actualizar. Revisa la conexión.');
                         showToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
                       } finally {
                         setOcupadoSaving(false);
@@ -942,6 +986,14 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                   <div className="space-y-3">
                     {list.map((order) => {
                       const orderCfg = STATUS_CONFIG[order.status];
+                      const esLiderBatch = !order.batchId || order.batchLeaderLocalId === id;
+                      const centralAvisadaSinRider =
+                        order.deliveryType !== 'pickup' &&
+                        !order.riderId &&
+                        (order.transporte === 'buscando_rider' ||
+                          order.estadoFirestore === 'esperando_rider');
+                      const todosRiderEnListo =
+                        !order.batchId || batchTodosListos[order.batchId] !== false;
                       return (
                         <div
                           key={order.id}
@@ -989,24 +1041,6 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                     Marcar como retirado
                                   </LoadingButton>
                                 )}
-                                {order.deliveryType !== 'pickup' && order.status === 'listo' && order.estadoFirestore === 'esperando_rider' && (
-                                  <span className="text-xs font-semibold px-3 py-2 rounded-xl bg-amber-100 text-amber-800">
-                                    Esperando confirmación
-                                  </span>
-                                )}
-                                {order.deliveryType !== 'pickup' && order.status === 'listo' && order.estadoFirestore !== 'esperando_rider' && (!order.batchId || order.batchLeaderLocalId === id) && (
-                                  <BotonPedirRider
-                                    orderId={order.id}
-                                    direccion={order.direccion}
-                                    restaurante={local.name}
-                                    metodoPago={order.paymentMethod}
-                                    total={order.total}
-                                    costoEnvio={order.serviceCost}
-                                    onSolicitado={() => onRiderSolicitado(order.id)}
-                                    esBatchLeader={!order.batchId || order.batchLeaderLocalId === id}
-                                    todosListosEnBatch={!order.batchId || batchTodosListos[order.batchId] !== false}
-                                  />
-                                )}
                                 {orderCfg.next && (
                                   <LoadingButton
                                     type="button"
@@ -1044,34 +1078,64 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                 </button>
                               </div>
                             </div>
-                            {(order.status === 'preparando' || order.status === 'listo') && (
-                              <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
-                                <p className="text-xs font-bold text-gray-700 mb-1">Central / Logística</p>
-                                <p className="text-xs text-gray-500 mb-2">
-                                  Coordiná tiempos de cocción o al rider con anticipación.
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                  <a
-                                    href={`tel:+${CENTRAL_LOGISTICA_PHONE}`}
-                                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                                  >
-                                    <Phone className="w-3.5 h-3.5" />
-                                    Llamar a Central
-                                  </a>
-                                  <a
-                                    href={`${formatWhatsAppLink(CENTRAL_LOGISTICA_PHONE)}?text=${encodeURIComponent(
-                                      `Hola, soy ${local.name} · Pedido #${order.id} · necesito coordinar tiempos o rider.`
-                                    )}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 transition-colors"
-                                  >
-                                    <MessageCircle className="w-3.5 h-3.5" />
-                                    WhatsApp Central
-                                  </a>
+                            {(order.status === 'preparando' || order.status === 'listo') &&
+                              order.deliveryType !== 'pickup' &&
+                              esLiderBatch && (
+                                <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+                                  <p className="text-xs font-bold text-gray-700 mb-1">Rider / entrega</p>
+                                  {order.riderId ? (
+                                    <div className="rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2.5">
+                                      <p className="text-xs font-black text-blue-900">
+                                        Rider asignado: {order.riderNombre?.trim() || 'Repartidor'}
+                                      </p>
+                                      <p className="text-xs text-blue-800/90 mt-1">
+                                        {riderEstadoRepartoSublabel(order.estadoFirestore)}
+                                      </p>
+                                    </div>
+                                  ) : centralAvisadaSinRider ? (
+                                    <div className="space-y-2">
+                                      <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2">
+                                        <p className="text-xs font-bold text-amber-900">Buscando repartidor</p>
+                                        <p className="text-xs text-amber-900/85 mt-0.5">
+                                          Central ya recibió el aviso.
+                                        </p>
+                                      </div>
+                                      <BotonPedirRider
+                                        orderId={order.id}
+                                        direccion={order.direccion}
+                                        restaurante={local.name}
+                                        metodoPago={order.paymentMethod}
+                                        total={order.total}
+                                        costoEnvio={order.serviceCost}
+                                        riderId={order.riderId ?? null}
+                                        yaSolicitadoCentral
+                                        onSolicitado={() => onRiderSolicitado(order.id)}
+                                        esBatchLeader
+                                        todosListosEnBatch={order.status === 'listo' ? todosRiderEnListo : true}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      <p className="text-xs text-gray-500">
+                                        Puedes pedir rider con anticipación; la cocina sigue en preparación hasta que marques listo.
+                                      </p>
+                                      <BotonPedirRider
+                                        orderId={order.id}
+                                        direccion={order.direccion}
+                                        restaurante={local.name}
+                                        metodoPago={order.paymentMethod}
+                                        total={order.total}
+                                        costoEnvio={order.serviceCost}
+                                        riderId={order.riderId ?? null}
+                                        yaSolicitadoCentral={false}
+                                        onSolicitado={() => onRiderSolicitado(order.id)}
+                                        esBatchLeader
+                                        todosListosEnBatch={order.status === 'listo' ? todosRiderEnListo : true}
+                                      />
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            )}
+                              )}
                           </div>
                         </div>
                       );

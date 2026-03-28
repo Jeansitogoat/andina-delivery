@@ -61,14 +61,30 @@ export async function POST(request: Request) {
     }
 
     const docId = `${auth.uid}_${roleStr}`;
-    const docData: Record<string, unknown> = {
-      token: trimmedToken,
-      role: roleStr,       // campo 'role' para compatibilidad con queries existentes
-      uid: auth.uid,
-      lastUpdated: FieldValue.serverTimestamp(),
-    };
-    if (roleStr === 'local' && localId) docData.localId = localId;
-    await db.collection(FCM_TOKENS_COLLECTION).doc(docId).set(sanitizeForFirestore(docData), { merge: true });
+    const ref = db.collection(FCM_TOKENS_COLLECTION).doc(docId);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const prev = snap.data() as { tokens?: unknown; token?: unknown } | undefined;
+      const previousTokens = Array.isArray(prev?.tokens)
+        ? (prev?.tokens as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+        : [];
+      // Compat legacy: si todavía existe `token` en docs viejos, lo absorbemos al array.
+      const legacyToken = typeof prev?.token === 'string' && prev.token.trim() ? prev.token.trim() : null;
+      const base = legacyToken ? [...previousTokens, legacyToken] : previousTokens;
+      // Token actual al final para mantener los más recientes.
+      const dedup = base.filter((t) => t !== trimmedToken);
+      const nextTokens = [...dedup, trimmedToken].slice(-10);
+
+      const docData: Record<string, unknown> = {
+        tokens: nextTokens,
+        role: roleStr,
+        uid: auth.uid,
+        updatedAt: FieldValue.serverTimestamp(),
+        token: FieldValue.delete(),
+      };
+      if (roleStr === 'local' && localId) docData.localId = localId;
+      tx.set(ref, sanitizeForFirestore(docData), { merge: true });
+    });
     console.log('[FCM] Token registered', docId, roleStr === 'local' && localId ? `localId=${localId}` : '');
     return NextResponse.json({ ok: true });
   } catch (e) {

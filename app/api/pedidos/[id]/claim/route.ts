@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { isRateLimited } from '@/lib/rateLimit';
+import { getRiderDisplayNameForPedido } from '@/lib/rider-profile-admin';
 
 /** POST /api/pedidos/[id]/claim → rider reclama un pedido nocturno si no tiene riderId asignado. */
 export async function POST(
@@ -10,7 +12,7 @@ export async function POST(
 ) {
   if (isRateLimited(request)) {
     return NextResponse.json(
-      { error: 'Demasiadas solicitudes. Esperá un momento.' },
+      { error: 'Demasiadas solicitudes. Espera un momento.' },
       { status: 429 }
     );
   }
@@ -27,6 +29,7 @@ export async function POST(
     const { id } = await params;
     const db = getAdminFirestore();
     const ref = db.collection('pedidos').doc(id);
+    const riderNombre = await getRiderDisplayNameForPedido(db, auth.uid);
 
     const result = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -42,7 +45,12 @@ export async function POST(
         // Ya asignado a este rider: idempotente
         return { status: 200 as const, body: { ok: true, alreadyAssigned: true } };
       }
-      tx.update(ref, { riderId: auth.uid, estado: 'asignado' });
+      tx.update(ref, {
+        riderId: auth.uid,
+        estado: 'asignado',
+        riderNombre,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
       return { status: 200 as const, body: { ok: true } };
     });
 

@@ -18,6 +18,8 @@ import {
   mapFirebasePasswordError,
 } from '@/lib/passwordChangeHelpers';
 import { LoadingButton } from '@/components/LoadingButton';
+import { useNotifications } from '@/lib/useNotifications';
+import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 
 const GOOGLE_LINK_MESSAGE =
   'Tu cuenta está vinculada a Google. Puedes gestionar tu seguridad directamente desde tu perfil de Google.';
@@ -26,6 +28,7 @@ type ProfileSettingsFormProps = {
   /** Tono visual del panel */
   variant?: 'rider' | 'central' | 'default';
   className?: string;
+  notificationRole?: 'rider' | 'central' | 'user';
 };
 
 const variantTitle: Record<NonNullable<ProfileSettingsFormProps['variant']>, string> = {
@@ -34,8 +37,19 @@ const variantTitle: Record<NonNullable<ProfileSettingsFormProps['variant']>, str
   default: 'Tu perfil',
 };
 
-export default function ProfileSettingsForm({ variant = 'default', className = '' }: ProfileSettingsFormProps) {
+export default function ProfileSettingsForm({
+  variant = 'default',
+  className = '',
+  notificationRole = 'user',
+}: ProfileSettingsFormProps) {
   const { user: andinaUser, refreshUser } = useAuth();
+  const {
+    permission,
+    requestPermission,
+    reintentarRegistro,
+    loading: notifLoading,
+    isSupported,
+  } = useNotifications(notificationRole);
   const [displayName, setDisplayName] = useState('');
   const [telefono, setTelefono] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -47,6 +61,8 @@ export default function ProfileSettingsForm({ variant = 'default', className = '
   const [cambiandoPassword, setCambiandoPassword] = useState(false);
   const [mensajePassword, setMensajePassword] = useState<{ tipo: 'ok' | 'error'; text: string } | null>(null);
   const [fbUserState, setFbUserState] = useState<FirebaseUser | null>(null);
+  const [tokenActivo, setTokenActivo] = useState<boolean | null>(null);
+  const [syncingDevice, setSyncingDevice] = useState(false);
 
   useEffect(() => {
     const auth = getFirebaseAuth();
@@ -60,11 +76,45 @@ export default function ProfileSettingsForm({ variant = 'default', className = '
     setTelefono(andinaUser.telefono?.trim() ?? '');
   }, [andinaUser]);
 
+  useEffect(() => {
+    if (notificationRole === 'user' || permission !== 'granted') {
+      setTokenActivo(null);
+      return;
+    }
+    let cancelled = false;
+    const loadStatus = async () => {
+      const tok = await getIdToken();
+      if (!tok || cancelled) return;
+      const stored =
+        typeof window !== 'undefined'
+          ? localStorage.getItem(`andina_fcm_token_${notificationRole}`) ?? ''
+          : '';
+      const res = await fetch(`/api/fcm/status?role=${notificationRole}`, {
+        headers: {
+          Authorization: `Bearer ${tok}`,
+          ...(stored ? { 'x-fcm-token': stored } : {}),
+        },
+      }).catch(() => null);
+      if (!res || !res.ok || cancelled) {
+        if (!cancelled) setTokenActivo(false);
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean };
+      if (!cancelled) {
+        setTokenActivo(Boolean(data.hasCurrentToken));
+      }
+    };
+    loadStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [notificationRole, permission, notifLoading]);
+
   const saveProfile = useCallback(async () => {
     setProfileMessage(null);
     const tok = await getIdToken();
     if (!tok) {
-      setProfileMessage({ tipo: 'error', text: 'Sesión no válida. Volvé a iniciar sesión.' });
+      setProfileMessage({ tipo: 'error', text: 'Sesión no válida. Vuelve a iniciar sesión.' });
       return;
     }
     setSavingProfile(true);
@@ -137,6 +187,34 @@ export default function ProfileSettingsForm({ variant = 'default', className = '
   const showPasswordForm = hasEmailPasswordProvider(fbUserState);
   const showGoogleMessage = fbUserState && !showPasswordForm;
 
+  const syncCurrentDevice = useCallback(async () => {
+    setSyncingDevice(true);
+    try {
+      if (permission !== 'granted') {
+        await requestPermission();
+      } else {
+        await reintentarRegistro();
+      }
+      const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 1500 });
+      if (token && typeof window !== 'undefined') {
+        localStorage.setItem(`andina_fcm_token_${notificationRole}`, token);
+      }
+      const tok = await getIdToken();
+      if (tok) {
+        const res = await fetch(`/api/fcm/status?role=${notificationRole}`, {
+          headers: {
+            Authorization: `Bearer ${tok}`,
+            ...(token ? { 'x-fcm-token': token } : {}),
+          },
+        }).catch(() => null);
+        const data = res && res.ok ? ((await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean }) : null;
+        setTokenActivo(Boolean(data?.hasCurrentToken));
+      }
+    } finally {
+      setSyncingDevice(false);
+    }
+  }, [notificationRole, permission, requestPermission, reintentarRegistro]);
+
   const ring =
     variant === 'rider'
       ? 'border-rider-200 focus:ring-rider-500/30'
@@ -197,6 +275,34 @@ export default function ProfileSettingsForm({ variant = 'default', className = '
         </div>
       </section>
 
+      {notificationRole !== 'user' && (
+        <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 p-4 pb-2">
+            <Phone className="w-4 h-4 text-rojo-andino" />
+            <span className="font-semibold text-gray-900">Estado del dispositivo</span>
+          </div>
+          <div className="px-4 pb-4 space-y-3">
+            <p className="text-sm text-gray-600">
+              Permiso: <strong>{permission === 'granted' ? 'Activo' : permission === 'denied' ? 'Bloqueado' : 'Pendiente'}</strong>
+            </p>
+            <p className="text-sm text-gray-600">
+              Token actual: <strong>{permission !== 'granted' ? 'Sin permiso' : tokenActivo ? 'Activo' : 'No sincronizado'}</strong>
+            </p>
+            {!isSupported && (
+              <p className="text-sm text-amber-700">Este navegador no soporta notificaciones push.</p>
+            )}
+            <button
+              type="button"
+              disabled={syncingDevice || notifLoading}
+              onClick={() => void syncCurrentDevice()}
+              className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-70"
+            >
+              {syncingDevice ? 'Sincronizando...' : 'Sincronizar dispositivo'}
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
         <div className="flex items-center gap-2 p-4 pb-2">
           <Lock className="w-4 h-4 text-rojo-andino" />
@@ -213,7 +319,7 @@ export default function ProfileSettingsForm({ variant = 'default', className = '
         {fbUserState !== null && showPasswordForm && (
           <>
             <p className="text-xs text-gray-500 px-4 pb-3">
-              Por seguridad, ingresá tu contraseña actual antes de cambiarla.
+              Por seguridad, ingresa tu contraseña actual antes de cambiarla.
             </p>
             <form onSubmit={handleCambiarPassword} className="px-4 pb-4 space-y-3">
               <div>

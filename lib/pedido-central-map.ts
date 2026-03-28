@@ -1,4 +1,4 @@
-﻿import type { EstadoPedido, PedidoCentral } from '@/lib/types';
+import type { EstadoPedido, EstadoTransportePedido, PedidoCentral } from '@/lib/types';
 
 /** Mapea un documento Firestore `pedidos/{id}` al tipo usado por el panel central (cliente). */
 export function docToPedidoCentral(id: string, data: Record<string, unknown>): PedidoCentral {
@@ -18,7 +18,17 @@ export function docToPedidoCentral(id: string, data: Record<string, unknown>): P
     subtotal: typeof data.subtotal === 'number' ? data.subtotal : undefined,
     subtotalBase: typeof data.subtotalBase === 'number' ? data.subtotalBase : undefined,
     estado: (data.estado || 'esperando_rider') as EstadoPedido,
+    transporte:
+      data.transporte === 'buscando_rider' ? 'buscando_rider' : ('pendiente' as EstadoTransportePedido),
     riderId: (data.riderId as string | null) ?? null,
+    riderNombre:
+      typeof data.riderNombre === 'string' && data.riderNombre.trim()
+        ? data.riderNombre.trim()
+        : null,
+    logisticaBumpAt:
+      typeof data.logisticaBumpAt === 'number' && !Number.isNaN(data.logisticaBumpAt)
+        ? data.logisticaBumpAt
+        : undefined,
     hora: String(data.hora || ''),
     timestamp: Number(data.timestamp ?? 0),
     distancia: String(data.distancia || '—'),

@@ -149,7 +149,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           error:
-            'El IVA no está autorizado para tu negocio. Solicitá la habilitación al administrador de Andina.',
+            'El IVA no está autorizado para tu negocio. Solicita la habilitación al administrador de Andina.',
         },
         { status: 403 }
       );

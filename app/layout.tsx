@@ -14,6 +14,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import FCMAutoRegister from '@/components/FCMAutoRegister';
 import PWAInstallBanner from '@/components/PWAInstallBanner';
 import NotificationPromptBanner from '@/components/NotificationPromptBanner';
+import NotificationShield from '@/components/NotificationShield';
 
 export const metadata: Metadata = {
   title: 'Andina Delivery - Piñas',
@@ -58,6 +59,7 @@ export default function RootLayout({
                     <FCMAutoRegister />
                     <PWAInstallBanner />
                     <NotificationPromptBanner />
+                    <NotificationShield />
                   </FullScreenModalProvider>
                 </CartProvider>
               </AddressesProvider>

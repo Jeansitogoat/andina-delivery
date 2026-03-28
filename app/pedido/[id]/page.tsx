@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useRef, useCallback } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   CheckCircle2,
@@ -60,6 +60,14 @@ const ESTADOS: EstadoPedido[] = [
     bgColor: 'bg-dorado-oro',
   },
   {
+    id: 'listo',
+    label: 'Pedido listo en cocina',
+    sublabel: 'El local marcó tu pedido como listo. Te avisamos cuando el rider vaya en camino.',
+    icono: <PackageCheck className="w-5 h-5" />,
+    color: 'text-green-600',
+    bgColor: 'bg-green-500',
+  },
+  {
     id: 'en_camino',
     label: 'Rider en camino',
     sublabel: 'Tu pedido está siendo entregado',
@@ -105,10 +113,11 @@ const ESTADOS_PICKUP: EstadoPedido[] = [
 const INDICE_ESTADO: Record<string, number> = {
   confirmado: 0,
   preparando: 1,
-  en_camino: 2,
-  entregado: 3,
-  cancelado_local: 4,
-  cancelado_cliente: 5,
+  listo: 2,
+  en_camino: 3,
+  entregado: 4,
+  cancelado_local: 5,
+  cancelado_cliente: 6,
 };
 
 const INDICE_ESTADO_PICKUP: Record<string, number> = {
@@ -128,14 +137,6 @@ export default function SeguimientoPedidoPage({
   const router = useRouter();
   const { id } = use(params);
   const { permission, requestPermission, loading: notifLoading, isSupported } = useNotifications('user');
-  const autoPromptedRef = useRef(false);
-
-  /* Auto-pedir permiso de notificaciones una vez al ver seguimiento del pedido */
-  useEffect(() => {
-    if (permission !== 'default' || !isSupported || autoPromptedRef.current) return;
-    autoPromptedRef.current = true;
-    requestPermission();
-  }, [permission, isSupported, requestPermission]);
 
   /* ── estado desde API (tiempo real) ── */
   const [loading, setLoading] = useState(true);
@@ -164,7 +165,9 @@ export default function SeguimientoPedidoPage({
       return 'confirmado';
     }
     if (estado === 'confirmado') return 'confirmado';
-    if (estado === 'preparando' || estado === 'listo' || estado === 'esperando_rider' || estado === 'asignado') return 'preparando';
+    if (estado === 'preparando') return 'preparando';
+    if (estado === 'listo') return 'listo';
+    if (estado === 'esperando_rider' || estado === 'asignado') return 'listo';
     if (estado === 'en_camino') return 'en_camino';
     return 'confirmado';
   }
@@ -181,6 +184,7 @@ export default function SeguimientoPedidoPage({
   const [pedidoTotalRef, setPedidoTotalRef] = useState(0);
   const [telefonoLocalRef, setTelefonoLocalRef] = useState<string | null>(null);
   const [motivoCancelacionApi, setMotivoCancelacionApi] = useState<string | null>(null);
+  const [transporteCoordinaCentral, setTransporteCoordinaCentral] = useState(false);
 
   const { showToast } = useToast();
 
@@ -213,6 +217,7 @@ export default function SeguimientoPedidoPage({
       }
       const data = await res.json() as {
         estado?: string;
+        transporte?: 'pendiente' | 'buscando_rider';
         riderNombre?: string;
         riderRating?: number;
         codigoVerificacion?: string;
@@ -227,10 +232,16 @@ export default function SeguimientoPedidoPage({
         motivoCancelacion?: string | null;
       };
       const isPickup = data.deliveryType === 'pickup';
-      const uiEstado = mapApiEstadoToUI(data.estado || 'confirmado', isPickup);
+      const rawEstado = data.estado || 'confirmado';
+      const uiEstado = mapApiEstadoToUI(rawEstado, isPickup);
       setLoading(false);
       setFetchError(null);
       setEstadoActual(uiEstado);
+      setTransporteCoordinaCentral(
+        !isPickup &&
+          data.transporte === 'buscando_rider' &&
+          (rawEstado === 'preparando' || rawEstado === 'listo')
+      );
       if (data.deliveryType) setDeliveryType(data.deliveryType);
       if (data.restaurante) setRestauranteNombre(data.restaurante);
       if (data.restauranteDireccion) setRestauranteDireccion(data.restauranteDireccion);
@@ -403,8 +414,10 @@ export default function SeguimientoPedidoPage({
                 ? 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)'
                 : estadoActual === 'entregado'
                 ? 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)'
-                : estadoActual === 'en_camino' || estadoActual === 'listo'
+                : estadoActual === 'en_camino'
                 ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+                : estadoActual === 'listo'
+                ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
                 : estadoActual === 'preparando'
                 ? 'linear-gradient(135deg, #c9960d 0%, #a67a08 100%)'
                 : 'linear-gradient(135deg, #b45309 0%, #92400e 100%)',
@@ -447,6 +460,15 @@ export default function SeguimientoPedidoPage({
             </button>
           )}
         </div>
+
+        {transporteCoordinaCentral && !estadoCancelado && (
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/90 px-4 py-3 text-left">
+            <p className="text-xs font-semibold text-blue-900">Coordinando reparto</p>
+            <p className="text-xs text-blue-800/90 mt-1 leading-snug">
+              El local ya avisó a central para buscar rider. Eso no sustituye el paso &quot;listo en cocina&quot;: puedes seguir viendo el estado real de preparación arriba.
+            </p>
+          </div>
+        )}
 
         {/* ── barra de progreso ── */}
         <div className="bg-white rounded-3xl p-5 shadow-sm">
@@ -516,7 +538,7 @@ export default function SeguimientoPedidoPage({
               </a>
             ) : (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                No encontramos el WhatsApp del local en este pedido. Escribinos a soporte Andina o al restaurante por el canal que usaste al pedir.
+                No encontramos el WhatsApp del local en este pedido. Escríbenos a soporte Andina o al restaurante por el canal que usaste al pedir.
               </p>
             )}
           </div>

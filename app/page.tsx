@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -9,7 +9,16 @@ import {
   UtensilsCrossed,
   ShoppingBag,
   Pill,
-  Zap,
+  Package,
+  Coffee,
+  Fish,
+  IceCreamCone,
+  Flame,
+  Pizza,
+  Soup,
+  Sandwich,
+  Drumstick,
+  Vegan,
   MapPin,
   Star,
   Clock,
@@ -17,9 +26,9 @@ import {
   Phone,
   User,
   Store,
-  Package,
   RefreshCw,
   WifiOff,
+  type LucideIcon,
 } from 'lucide-react';
 import AddressSelector from '@/components/AddressSelector';
 import SkeletonLocales from '@/components/SkeletonLocales';
@@ -35,14 +44,55 @@ import { haversineKm, formatDistanceKm } from '@/lib/geo';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { usePublicConfig } from '@/lib/PublicConfigContext';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
+import {
+  DISCOVERY_CATEGORIES,
+  type DiscoveryCategoryKey,
+  isDiscoveryCategoryKey,
+  mapLegacyTypeToDiscoveryCategory,
+} from '@/lib/discovery-categorias';
 
-type CategoryKey = 'all' | 'Restaurantes' | 'Market' | 'Farmacias';
+type CategoryKey = 'all' | DiscoveryCategoryKey;
 
-const categories: { key: CategoryKey; name: string; icon: typeof UtensilsCrossed }[] = [
-  { key: 'Restaurantes', name: 'Restaurantes + Cafés', icon: UtensilsCrossed },
-  { key: 'Market', name: 'Comisariatos', icon: ShoppingBag },
-  { key: 'Farmacias', name: 'Farmacias', icon: Pill },
-];
+const categoryIcons: Record<DiscoveryCategoryKey, LucideIcon> = {
+  cafes: Coffee,
+  marisquerias: Fish,
+  heladerias_postres: IceCreamCone,
+  comida_rapida: Sandwich,
+  parrillas: Flame,
+  pizzas: Pizza,
+  pastas: Soup,
+  sushi: Fish,
+  mexicana: Drumstick,
+  china: Vegan,
+  market: ShoppingBag,
+  farmacias: Pill,
+};
+
+const categories = DISCOVERY_CATEGORIES.map((cat) => ({
+  key: cat.key,
+  name: cat.label,
+  icon: categoryIcons[cat.key] ?? UtensilsCrossed,
+}));
+
+const CATEGORY_CHIPS_VISIBLE_LIMIT = 6;
+
+function getDiscoveryKeysFromLocales(
+  locales: Array<{ categorias?: string[]; type: string[] }>
+): DiscoveryCategoryKey[] {
+  const keys = new Set<DiscoveryCategoryKey>();
+  for (const loc of locales) {
+    const source = Array.isArray(loc.categorias) && loc.categorias.length > 0 ? loc.categorias : loc.type;
+    for (const raw of source) {
+      if (isDiscoveryCategoryKey(raw)) {
+        keys.add(raw);
+        continue;
+      }
+      const mapped = mapLegacyTypeToDiscoveryCategory(raw);
+      if (mapped) keys.add(mapped);
+    }
+  }
+  return [...keys];
+}
 
 
 export default function Home() {
@@ -55,6 +105,14 @@ export default function Home() {
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
   const [seguimientoOrderId, setSeguimientoOrderId] = useState<string | null>(null);
   const [bannerErrors, setBannerErrors] = useState<Set<string>>(() => new Set());
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [availableCategoryKeys, setAvailableCategoryKeys] = useState<Set<DiscoveryCategoryKey>>(
+    () => new Set()
+  );
+  const [allLocalesCategorySource, setAllLocalesCategorySource] = useState<
+    Array<{ categorias?: string[]; type: string[] }>
+  >([]);
+  const categoryButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const {
     localesLight: localesList,
@@ -72,6 +130,49 @@ export default function Home() {
   useEffect(() => {
     setLocalesCategoryFilter(category === 'all' ? null : category);
   }, [category, setLocalesCategoryFilter]);
+
+  useEffect(() => {
+    if (category === 'all' && localesList.length > 0) {
+      const normalized = localesList.map((loc) => ({
+        categorias: Array.isArray(loc.categorias) ? loc.categorias : [],
+        type: Array.isArray(loc.type) ? loc.type : [],
+      }));
+      setAllLocalesCategorySource(normalized);
+      setAvailableCategoryKeys(new Set(getDiscoveryKeysFromLocales(normalized)));
+    }
+  }, [category, localesList]);
+
+  useEffect(() => {
+    if (allLocalesCategorySource.length === 0) return;
+    setAvailableCategoryKeys(new Set(getDiscoveryKeysFromLocales(allLocalesCategorySource)));
+  }, [allLocalesCategorySource]);
+
+  const sortedVisibleCategories = useMemo(() => {
+    return categories
+      .filter((cat) => availableCategoryKeys.has(cat.key))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [availableCategoryKeys]);
+
+  useEffect(() => {
+    if (category === 'all') return;
+    const visibleWhenCollapsed = sortedVisibleCategories.slice(0, CATEGORY_CHIPS_VISIBLE_LIMIT);
+    const selectedVisible = visibleWhenCollapsed.some((c) => c.key === category);
+    if (!selectedVisible) setShowAllCategories(true);
+  }, [category, sortedVisibleCategories]);
+
+  const categoryChips = showAllCategories
+    ? sortedVisibleCategories
+    : sortedVisibleCategories.slice(0, CATEGORY_CHIPS_VISIBLE_LIMIT);
+
+  useEffect(() => {
+    const target = categoryButtonRefs.current[category];
+    if (!target) return;
+    target.scrollIntoView({
+      behavior: 'smooth',
+      inline: 'center',
+      block: 'nearest',
+    });
+  }, [category, showAllCategories]);
 
   // Primera visita: redirigir a login si nunca ha visitado (opcional; checkout exige sesión igualmente)
   useEffect(() => {
@@ -175,13 +276,23 @@ export default function Home() {
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((l) => {
-        const types = l.categorias?.length ? l.categorias : l.type;
+        const types = l.categorias?.length
+          ? l.categorias
+          : (l.type ?? [])
+              .map((t) => t.toLowerCase())
+              .map((t) => {
+                if (t === 'cafes') return 'cafes';
+                if (t === 'market') return 'market';
+                if (t === 'farmacias') return 'farmacias';
+                return '';
+              })
+              .filter(Boolean);
         return (
           l.name.toLowerCase().includes(q) ||
           types.some((t) => t.toLowerCase().includes(q)) ||
-          (q.includes('cafe') && (types.includes('Cafes') || types.includes('Restaurantes'))) ||
-          (q.includes('farmacia') && types.includes('Farmacias')) ||
-          ((q.includes('super') || q.includes('market')) && types.includes('Market'))
+          (q.includes('cafe') && types.includes('cafes')) ||
+          (q.includes('farmacia') && types.includes('farmacias')) ||
+          ((q.includes('super') || q.includes('market')) && types.includes('market'))
         );
       });
     }
@@ -295,51 +406,66 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col safe-x pb-10">
         {/* Categorías */}
-        <section className="py-4 -mt-1 bg-white rounded-t-[2rem] shadow-soft border-t border-gray-100">
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        <section className="py-3 sm:py-4 -mt-1 bg-white rounded-t-[2rem] shadow-soft border-t border-gray-100">
+          <div className="flex gap-2.5 sm:gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-px-1">
             <button
+              ref={(el) => {
+                categoryButtonRefs.current.all = el;
+              }}
               onClick={() => setCategory('all')}
-              className={`flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 rounded-3xl transition-colors min-w-[90px] ${
+              className={`snap-start flex-shrink-0 flex flex-col items-center justify-center gap-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-3xl transition-all duration-200 min-w-[82px] sm:min-w-[96px] h-[72px] sm:h-[88px] ${
                 category === 'all'
-                  ? 'bg-rojo-andino text-white'
+                  ? 'bg-rojo-andino text-white shadow-md scale-[1.02]'
                   : 'bg-gray-100 hover:bg-rojo-andino/10 text-gray-700 hover:text-rojo-andino'
               }`}
             >
-              <span className="text-sm font-medium">Todos</span>
+              <span className="text-xs sm:text-sm font-semibold leading-tight">Todos</span>
             </button>
-            {categories.map((cat) => (
+            <button
+              onClick={() => router.push('/express')}
+              className="snap-start flex-shrink-0 flex flex-col items-center justify-center gap-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-3xl transition-all min-w-[104px] sm:min-w-[120px] h-[72px] sm:h-[88px] shadow-lg border-2 font-semibold bg-gradient-to-br from-dorado-oro to-amber-500 border-dorado-oro/50 text-gray-900 hover:from-amber-500 hover:to-dorado-oro hover:shadow-xl active:scale-95"
+            >
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-white/30 flex items-center justify-center">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-rojo-andino" />
+              </div>
+              <span className="text-xs sm:text-sm font-bold leading-tight">Mandados</span>
+            </button>
+            {categoryChips.map((cat) => (
               <button
                 key={cat.key}
+                ref={(el) => {
+                  categoryButtonRefs.current[cat.key] = el;
+                }}
                 onClick={() => setCategory(cat.key)}
-                className={`flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 rounded-3xl transition-colors min-w-[90px] ${
+                className={`snap-start flex-shrink-0 flex flex-col items-center justify-center gap-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-3xl transition-all duration-200 min-w-[82px] sm:min-w-[96px] h-[72px] sm:h-[88px] ${
                   category === cat.key
-                    ? 'bg-rojo-andino text-white'
+                    ? 'bg-rojo-andino text-white shadow-md scale-[1.02]'
                     : 'bg-gray-100 hover:bg-rojo-andino/10 text-gray-700 hover:text-rojo-andino'
                 }`}
               >
                 <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center ${
                     category === cat.key ? 'bg-white/20' : 'bg-rojo-andino/10'
                   }`}
                 >
                   <cat.icon
-                    className={`w-6 h-6 ${category === cat.key ? 'text-white' : 'text-rojo-andino'}`}
+                    className={`w-5 h-5 sm:w-6 sm:h-6 ${category === cat.key ? 'text-white' : 'text-rojo-andino'}`}
                   />
                 </div>
-                <span className="text-sm font-medium">{cat.name}</span>
+                <span className="text-[11px] sm:text-sm font-medium leading-tight text-center max-w-[90px] sm:max-w-[104px]">
+                  {cat.name}
+                </span>
               </button>
             ))}
-
-            {/* Botón Mandados → navega a /express */}
-            <button
-              onClick={() => router.push('/express')}
-              className="flex-shrink-0 flex flex-col items-center gap-1 px-5 py-3 rounded-3xl transition-all min-w-[120px] shadow-lg border-2 font-semibold bg-gradient-to-br from-dorado-oro to-amber-500 border-dorado-oro/50 text-gray-900 hover:from-amber-500 hover:to-dorado-oro hover:shadow-xl active:scale-95"
-            >
-              <div className="w-12 h-12 rounded-full bg-white/30 flex items-center justify-center">
-                <Zap className="w-6 h-6 text-rojo-andino" />
-              </div>
-              <span className="text-sm font-bold">Mandados</span>
-            </button>
+            {sortedVisibleCategories.length > CATEGORY_CHIPS_VISIBLE_LIMIT && (
+              <button
+                type="button"
+                onClick={() => setShowAllCategories((v) => !v)}
+                className="snap-start flex-shrink-0 flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-3 rounded-3xl min-w-[98px] sm:min-w-[110px] h-[72px] sm:h-[88px] bg-gray-100 hover:bg-rojo-andino/10 text-gray-700 hover:text-rojo-andino font-semibold text-xs sm:text-sm transition-colors"
+              >
+                {showAllCategories ? 'Ver menos' : 'Ver más'}
+              </button>
+            )}
           </div>
         </section>
 
@@ -604,26 +730,13 @@ export default function Home() {
                 Top categorías
               </h3>
               <ul className="space-y-3 text-sm text-white/85">
-                <li>
-                  <button type="button" onClick={() => setCategory('Restaurantes')} className="hover:text-white transition-colors text-left py-1">
-                    Restaurantes
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => setCategory('Restaurantes')} className="hover:text-white transition-colors text-left py-1">
-                    Cafés
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => setCategory('Market')} className="hover:text-white transition-colors text-left py-1">
-                    Market
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => setCategory('Farmacias')} className="hover:text-white transition-colors text-left py-1">
-                    Farmacias
-                  </button>
-                </li>
+                {sortedVisibleCategories.slice(0, 4).map((cat) => (
+                  <li key={cat.key}>
+                    <button type="button" onClick={() => setCategory(cat.key)} className="hover:text-white transition-colors text-left py-1">
+                      {cat.name}
+                    </button>
+                  </li>
+                ))}
                 <li>
                   <button
                     type="button"

@@ -2,6 +2,7 @@
  * Helpers de servidor para enviar notificaciones FCM (sin pasar por HTTP).
  * Usado por API de pedidos y por /api/fcm/send.
  */
+import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore, getAdminMessaging } from '@/lib/firebase-admin';
 
 const FCM_TOKENS_COLLECTION = 'fcm_tokens';
@@ -12,6 +13,39 @@ const ROLES: FCMRole[] = ['central', 'rider', 'local', 'user'];
 
 function isValidRole(r: string): r is FCMRole {
   return ROLES.includes(r as FCMRole);
+}
+
+type TokenDocData = { tokens?: unknown; token?: unknown };
+
+function extractTokens(data: TokenDocData | undefined): string[] {
+  const arr = Array.isArray(data?.tokens)
+    ? (data.tokens as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    : [];
+  const legacy = typeof data?.token === 'string' && data.token.trim() ? data.token.trim() : null;
+  return legacy ? Array.from(new Set([...arr, legacy])) : Array.from(new Set(arr));
+}
+
+async function removeDeadToken(ref: FirebaseFirestore.DocumentReference, token: string): Promise<void> {
+  try {
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    const tokens = extractTokens(snap.data() as TokenDocData);
+    const next = tokens.filter((t) => t !== token);
+    if (next.length === 0) {
+      await ref.delete();
+      return;
+    }
+    await ref.set(
+      {
+        tokens: next,
+        token: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // silencioso
+  }
 }
 
 /**
@@ -33,35 +67,37 @@ export async function sendFCMToRole(
     query = query.where('localId', '==', options.localId.trim());
   }
   const snap = await query.limit(maxTokens).get();
-  const tokens = snap.docs.map((d) => d.data().token as string).filter(Boolean);
-  if (tokens.length === 0) return 0;
+  const docsWithTokens = snap.docs.map((d) => ({ ref: d.ref, tokens: extractTokens(d.data() as TokenDocData) }));
+  const totalTokens = docsWithTokens.reduce((acc, x) => acc + x.tokens.length, 0);
+  if (totalTokens === 0) return 0;
   const messaging = getAdminMessaging();
   const dataPayload = data && typeof data === 'object'
     ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
     : {};
   const fullData = { title, body, ...dataPayload };
   let sent = 0;
-  for (const doc of snap.docs) {
-    const token = doc.data().token as string;
-    if (!token?.trim()) continue;
-    try {
-      await messaging.send({
-        token: token.trim(),
-        notification: { title, body },
-        data: fullData,
-        android: { priority: 'high' },
-        apns: {
-          headers: { 'apns-priority': '10' },
-          payload: { aps: { sound: 'default' } },
-        },
-      });
-      sent++;
-    } catch (e) {
-      const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-      const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-      if (isUnregistered) {
-        await doc.ref.delete();
-        console.log('[FCM] Token eliminado (inválido o no registrado):', doc.id);
+  for (const entry of docsWithTokens) {
+    for (const token of entry.tokens) {
+      if (!token.trim()) continue;
+      try {
+        await messaging.send({
+          token: token.trim(),
+          notification: { title, body },
+          data: fullData,
+          android: { priority: 'high' },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: { aps: { sound: 'default' } },
+          },
+        });
+        sent++;
+      } catch (e) {
+        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+        if (isUnregistered) {
+          await removeDeadToken(entry.ref, token);
+          console.log('[FCM] Token eliminado (inválido o no registrado):', entry.ref.id);
+        }
       }
     }
   }
@@ -94,26 +130,28 @@ export async function sendFCMToRestaurantByLocalId(
   const fullData = { title, body, ...dataPayload };
   let sent = 0;
   for (const doc of snap.docs) {
-    const token = doc.data().token as string;
-    if (!token?.trim()) continue;
-    try {
-      await messaging.send({
-        token: token.trim(),
-        notification: { title, body },
-        data: fullData,
-        android: { priority: 'high' },
-        apns: {
-          headers: { 'apns-priority': '10' },
-          payload: { aps: { sound: 'default' } },
-        },
-      });
-      sent++;
-    } catch (e) {
-      const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-      const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-      if (isUnregistered) {
-        await doc.ref.delete();
-        console.log('[FCM] Token eliminado (inválido o no registrado):', doc.id);
+    const tokens = extractTokens(doc.data() as TokenDocData);
+    for (const token of tokens) {
+      if (!token?.trim()) continue;
+      try {
+        await messaging.send({
+          token: token.trim(),
+          notification: { title, body },
+          data: fullData,
+          android: { priority: 'high' },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: { aps: { sound: 'default' } },
+          },
+        });
+        sent++;
+      } catch (e) {
+        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+        if (isUnregistered) {
+          await removeDeadToken(doc.ref, token);
+          console.log('[FCM] Token eliminado (inválido o no registrado):', doc.id);
+        }
       }
     }
   }
@@ -135,8 +173,8 @@ export async function sendFCMToUser(
   const db = getAdminFirestore();
   const docRef = db.collection(FCM_TOKENS_COLLECTION).doc(`${uid.trim()}_user`);
   const snap = await docRef.get();
-  const token = snap.exists ? (snap.data()?.token as string) : null;
-  if (!token?.trim()) {
+  const tokens = snap.exists ? extractTokens(snap.data() as TokenDocData) : [];
+  if (tokens.length === 0) {
     console.warn('[FCM] No token for user', uid, '- fcm_tokens/', `${uid}_user`);
     return false;
   }
@@ -146,27 +184,35 @@ export async function sendFCMToUser(
     : {};
   const fullData = { title, body, ...dataPayload };
   try {
-    await messaging.send({
-      token: token.trim(),
-      notification: { title, body },
-      data: fullData,
-      android: { priority: 'high' },
-      apns: {
-        headers: { 'apns-priority': '10' },
-        payload: { aps: { sound: 'default' } },
-      },
-    });
-    console.log('[FCM] Sent to user', uid);
-    return true;
-  } catch (e) {
-    const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-    const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-    if (isUnregistered) {
-      await docRef.delete();
-      console.log('[FCM] Token eliminado para usuario (inválido o no registrado):', docRef.id);
-    } else {
-      console.error('[FCM] sendFCMToUser failed for', uid, e);
+    let sentOne = false;
+    for (const token of tokens) {
+      try {
+        await messaging.send({
+          token: token.trim(),
+          notification: { title, body },
+          data: fullData,
+          android: { priority: 'high' },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: { aps: { sound: 'default' } },
+          },
+        });
+        sentOne = true;
+      } catch (e) {
+        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+        if (isUnregistered) {
+          await removeDeadToken(docRef, token);
+          console.log('[FCM] Token eliminado para usuario (inválido o no registrado):', docRef.id);
+        } else {
+          console.error('[FCM] sendFCMToUser failed for', uid, e);
+        }
+      }
     }
+    if (sentOne) console.log('[FCM] Sent to user', uid);
+    return sentOne;
+  } catch (e) {
+    console.error('[FCM] sendFCMToUser failed for', uid, e);
     return false;
   }
 }
@@ -186,8 +232,8 @@ export async function sendFCMToRider(
   const db = getAdminFirestore();
   const docRef = db.collection(FCM_TOKENS_COLLECTION).doc(`${uid.trim()}_rider`);
   const snap = await docRef.get();
-  const token = snap.exists ? (snap.data()?.token as string) : null;
-  if (!token?.trim()) {
+  const tokens = snap.exists ? extractTokens(snap.data() as TokenDocData) : [];
+  if (tokens.length === 0) {
     console.warn('[FCM] No token for rider', uid, '- fcm_tokens/', `${uid}_rider`);
     return false;
   }
@@ -197,27 +243,35 @@ export async function sendFCMToRider(
     : {};
   const fullData = { title, body, ...dataPayload };
   try {
-    await messaging.send({
-      token: token.trim(),
-      notification: { title, body },
-      data: fullData,
-      android: { priority: 'high' },
-      apns: {
-        headers: { 'apns-priority': '10' },
-        payload: { aps: { sound: 'default' } },
-      },
-    });
-    console.log('[FCM] Sent to rider', uid);
-    return true;
-  } catch (e) {
-    const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-    const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-    if (isUnregistered) {
-      await docRef.delete();
-      console.log('[FCM] Token eliminado para rider (inválido o no registrado):', docRef.id);
-    } else {
-      console.error('[FCM] sendFCMToRider failed for', uid, e);
+    let sentOne = false;
+    for (const token of tokens) {
+      try {
+        await messaging.send({
+          token: token.trim(),
+          notification: { title, body },
+          data: fullData,
+          android: { priority: 'high' },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: { aps: { sound: 'default' } },
+          },
+        });
+        sentOne = true;
+      } catch (e) {
+        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+        if (isUnregistered) {
+          await removeDeadToken(docRef, token);
+          console.log('[FCM] Token eliminado para rider (inválido o no registrado):', docRef.id);
+        } else {
+          console.error('[FCM] sendFCMToRider failed for', uid, e);
+        }
+      }
     }
+    if (sentOne) console.log('[FCM] Sent to rider', uid);
+    return sentOne;
+  } catch (e) {
+    console.error('[FCM] sendFCMToRider failed for', uid, e);
     return false;
   }
 }

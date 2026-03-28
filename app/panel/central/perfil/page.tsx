@@ -51,7 +51,7 @@ export default function CentralPerfilPage() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 mt-6">
-        <ProfileSettingsForm variant="central" />
+        <ProfileSettingsForm variant="central" notificationRole="central" />
       </div>
     </main>
   );

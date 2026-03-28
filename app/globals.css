@@ -9,6 +9,8 @@
   --rider-700: #1D4ED8;
   --rider-100: #DBEAFE;
   --safe-x: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 body {
@@ -23,6 +25,18 @@ body {
 .safe-x {
   padding-left: var(--safe-x);
   padding-right: var(--safe-x);
+}
+
+.safe-top {
+  padding-top: var(--safe-top);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+
+.safe-bottom-fixed {
+  bottom: calc(1rem + var(--safe-bottom));
 }
 
 .card-elevated {

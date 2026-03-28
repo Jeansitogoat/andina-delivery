@@ -14,7 +14,7 @@ const ESTADOS_PEDIDO = [
   'cancelado_central',
 ] as const;
 
-const ACCIONES_PEDIDO = ['cancelar', 'rechazar_carrera', 'avanzar_estado'] as const;
+const ACCIONES_PEDIDO = ['cancelar', 'rechazar_carrera', 'avanzar_estado', 'solicitar_rider'] as const;
 
 const pedidoPatchBaseSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, { error: 'Estado de pedido no válido' }).optional(),
@@ -26,6 +26,7 @@ const pedidoPatchBaseSchema = z.object({
   comprobanteBase64: z.string().max(500_000, 'El comprobante es demasiado grande').nullable().optional(),
   comprobanteFileName: z.string().max(200).nullable().optional(),
   comprobanteMimeType: z.string().max(100).nullable().optional(),
+  isRetry: z.boolean().optional(),
 });
 
 /** Si `accion` es cancelar, `motivo` (→ motivoCancelacion en Firestore) es obligatorio. */
@@ -39,6 +40,13 @@ export const pedidoPatchSchema = pedidoPatchBaseSchema.superRefine((data, ctx) =
         path: ['motivo'],
       });
     }
+  }
+  if (data.isRetry === true && data.accion !== 'solicitar_rider') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'isRetry solo aplica con acción solicitar_rider',
+      path: ['isRetry'],
+    });
   }
 });
 
