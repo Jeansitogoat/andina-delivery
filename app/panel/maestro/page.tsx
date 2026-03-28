@@ -31,7 +31,7 @@ import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
 import PasswordInput from '@/components/PasswordInput';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 import { useAndinaConfig } from '@/lib/AndinaContext';
@@ -71,6 +71,7 @@ function LocaleLogoWithFallback({ logo }: { logo: string | undefined }) {
         width={56}
         height={56}
         className="w-full h-full object-cover"
+        unoptimized={shouldBypassImageOptimizer(safeSrc)}
         onError={() => setLoadError(true)}
       />
     </div>
@@ -2049,6 +2050,7 @@ export default function PanelMaestroPage() {
                         fill
                         sizes="(max-width: 768px) 100vw, 640px"
                         className="object-cover"
+                        unoptimized={shouldBypassImageOptimizer(bannerForm.imageUrl)}
                       />
                     ) : (
                       <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-sm">Imagen no válida</div>
@@ -2179,6 +2181,7 @@ export default function PanelMaestroPage() {
                           fill
                           sizes="96px"
                           className="object-cover"
+                          unoptimized={shouldBypassImageOptimizer(b.imageUrl)}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Sin imagen</div>

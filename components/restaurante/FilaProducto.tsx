@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { Flame, Plus, Minus, ShoppingBag } from 'lucide-react';
 import type { MenuItem } from '@/lib/data';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 
 interface Props {
   item: MenuItem;
@@ -41,7 +41,7 @@ export default function FilaProducto({ item, inCart, isLast, onOpen, onAdd, onRe
       <div className="relative flex-shrink-0">
         <div className="relative w-24 h-24 rounded-2xl overflow-hidden bg-gray-100 shadow-sm">
           {getSafeImageSrc(item.image) ? (
-            <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes="96px" unoptimized={item.image?.startsWith('data:')} />
+            <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes="96px" unoptimized={shouldBypassImageOptimizer(item.image)} />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <ShoppingBag className="w-8 h-8 text-gray-300" />

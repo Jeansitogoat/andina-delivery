@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { UtensilsCrossed } from 'lucide-react';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 
 interface LocalLogoProps {
   src: string | null | undefined;
@@ -50,7 +50,7 @@ export default function LocalLogo({
       fill={fill}
       className={className}
       sizes={sizes}
-      unoptimized={unoptimized}
+      unoptimized={unoptimized ?? shouldBypassImageOptimizer(safeSrc)}
       priority={priority}
       onError={() => setError(true)}
     />

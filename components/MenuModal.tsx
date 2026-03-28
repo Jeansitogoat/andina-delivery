@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { X, Plus, Minus, ShoppingBag, Star, Clock, Truck, Flame } from 'lucide-react';
 import LocalLogo from '@/components/LocalLogo';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 
 export interface MenuItem {
   id: string;
@@ -60,7 +60,7 @@ function ItemCard({
     <div className={`flex items-center gap-4 bg-white ${compact ? 'rounded-2xl border border-gray-100 p-3 w-52 flex-shrink-0 flex-col items-start' : 'px-5 py-4 border-b border-gray-50 hover:bg-gray-50/50 transition-colors'}`}>
       {getSafeImageSrc(item.image) ? (
         <div className={`relative rounded-2xl overflow-hidden bg-gray-100 shadow-sm flex-shrink-0 ${compact ? 'w-full h-32' : 'w-24 h-24'}`}>
-          <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes={compact ? '208px' : '96px'} unoptimized={item.image?.startsWith('data:')} />
+          <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes={compact ? '208px' : '96px'} unoptimized={shouldBypassImageOptimizer(item.image)} />
           {item.bestseller && (
             <span className="absolute top-2 left-2 flex items-center gap-1 bg-rojo-andino text-white text-[10px] font-bold px-1.5 py-0.5 rounded-lg">
               <Flame className="w-2.5 h-2.5" /> Más pedido
@@ -153,7 +153,7 @@ export default function MenuModal({
           <div className={`h-28 relative overflow-hidden ${getSafeImageSrc(local.cover) ? '' : 'bg-gradient-to-r from-rojo-andino to-rojo-andino/80'}`}>
             {getSafeImageSrc(local.cover) ? (
               <>
-                <Image src={getSafeImageSrc(local.cover)!} alt={local.name} fill className="object-cover" sizes="100vw" priority unoptimized={local.cover?.startsWith('data:')} />
+                <Image src={getSafeImageSrc(local.cover)!} alt={local.name} fill className="object-cover" sizes="100vw" priority unoptimized={shouldBypassImageOptimizer(local.cover)} />
                 <div className="absolute inset-0 bg-black/40" />
               </>
             ) : null}

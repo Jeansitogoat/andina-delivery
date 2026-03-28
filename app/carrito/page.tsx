@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Trash2, Plus, Minus, Truck, Clock, Package, Loader2 } from 'lucide-react';
 import type { Local, MenuItem } from '@/lib/data';
 import LocalLogo from '@/components/LocalLogo';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { useCart } from '@/lib/useCart';
 import type { CartItem } from '@/lib/cartContext';
 import { useAuth } from '@/lib/useAuth';
@@ -317,7 +317,7 @@ export default function CarritoPage() {
                   <div key={lineKey} className="px-4 py-4 flex items-center gap-3">
                     {getSafeImageSrc(item.image) && (
                       <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-                        <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes="56px" unoptimized={item.image?.startsWith('data:')} />
+                        <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes="56px" unoptimized={shouldBypassImageOptimizer(item.image)} />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">

@@ -14,7 +14,7 @@ import {
 import NavPanel from '@/components/panel/NavPanel';
 import LocalLogo from '@/components/LocalLogo';
 import { compressImage } from '@/lib/compressImage';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 
 const HORARIOS_DEFAULT = [
   { dia: 'Lunes', abierto: true, desde: '09:00', hasta: '22:00' },
@@ -108,7 +108,15 @@ export default function PanelPerfilRestaurantePage() {
           <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
             <div className="relative h-36 bg-gray-200">
               {getSafeImageSrc(cover) ? (
-                <Image src={getSafeImageSrc(cover)!} alt="Portada" fill className="object-cover" sizes="100vw" priority unoptimized={cover?.startsWith('data:')} />
+                <Image
+                  src={getSafeImageSrc(cover)!}
+                  alt="Portada"
+                  fill
+                  className="object-cover"
+                  sizes="100vw"
+                  priority
+                  unoptimized={shouldBypassImageOptimizer(cover)}
+                />
               ) : null}
               <input
                 ref={coverRef}

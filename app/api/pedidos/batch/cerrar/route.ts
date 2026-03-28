@@ -107,7 +107,7 @@ export async function POST(request: Request) {
 
         const money = getOrderMoney(data);
         const subtotalBase = money.subtotalBase;
-        const montoComision = calcularComision(money.totalCliente, subtotalBase);
+        const montoComision = calcularComision(money.totalCliente, subtotalBase, money.serviceFee);
         const netoLocal = calcularNetoLocal(subtotalBase, montoComision);
         // Idempotencia: docId = pedidoId evita comisiones duplicadas en reenvíos
         const comisionRef = db.collection('comisiones').doc(id);

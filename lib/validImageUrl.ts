@@ -94,3 +94,21 @@ export function getSafeImageSrc(url: string | undefined | null): string | undefi
   const s = url!.trim();
   return s.startsWith('data:') ? normalizeDataUrl(s) : s;
 }
+
+/**
+ * Evita el optimizador de Next.js en Vercel (cuota / error 402): Firebase Storage,
+ * data/blob URLs y avatares de Google (mismas lecturas remotas que suelen agotar créditos).
+ */
+export function shouldBypassImageOptimizer(src: string | null | undefined): boolean {
+  if (!src || typeof src !== 'string') return false;
+  const s = src.trim();
+  if (s.startsWith('data:') || s.startsWith('blob:')) return true;
+  try {
+    const u = new URL(s);
+    if (u.hostname.includes('firebasestorage.googleapis.com')) return true;
+    if (u.hostname.endsWith('googleusercontent.com')) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}

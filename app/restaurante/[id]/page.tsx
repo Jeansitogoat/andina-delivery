@@ -31,7 +31,7 @@ import ProductDetailSheet from '@/components/ProductDetailSheet';
 import SkeletonRestaurante from '@/components/SkeletonRestaurante';
 import LocalLogo from '@/components/LocalLogo';
 import { getEstadoAbierto } from '@/lib/abiertoAhora';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { resolveIvaConfig } from '@/lib/order-money';
 
 export default function RestaurantePage({ params }: { params: Promise<{ id: string }> }) {
@@ -187,7 +187,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
                 className="object-cover"
                 sizes="100vw"
                 priority
-                unoptimized={local.cover?.startsWith('data:')}
+                unoptimized={shouldBypassImageOptimizer(local.cover)}
               />
             ) : null}
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-transparent" />
@@ -560,7 +560,7 @@ function ProductRow({
               fill
               className="object-cover"
               sizes="96px"
-              unoptimized={item.image?.startsWith('data:')}
+              unoptimized={shouldBypassImageOptimizer(item.image)}
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">

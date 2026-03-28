@@ -43,7 +43,7 @@ import { getEstadoAbierto } from '@/lib/abiertoAhora';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { usePublicConfig } from '@/lib/PublicConfigContext';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import {
   DISCOVERY_CATEGORIES,
   type DiscoveryCategoryKey,
@@ -503,7 +503,7 @@ export default function Home() {
                   className="object-cover"
                   sizes="100vw"
                   priority={i === 0}
-                  unoptimized={banner.imageUrl.startsWith('http') || banner.imageUrl.startsWith('data:')}
+                  unoptimized={shouldBypassImageOptimizer(banner.imageUrl)}
                   onError={() => setBannerErrors((prev) => new Set(prev).add(banner.id))}
                 />
               )}

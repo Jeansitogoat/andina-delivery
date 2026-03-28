@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { ArrowLeft } from 'lucide-react';
 import type { Local } from '@/lib/data';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 
 interface Props {
   local: Local;
@@ -23,7 +23,7 @@ export default function PortadaLocal({ local, onVolver }: Props) {
             className="object-cover"
             sizes="100vw"
             priority
-            unoptimized={local.cover?.startsWith('data:')}
+            unoptimized={shouldBypassImageOptimizer(local.cover)}
           />
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-transparent" />

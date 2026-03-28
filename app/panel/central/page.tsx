@@ -35,7 +35,7 @@ import { sendNotification } from '@/lib/notifications';
 import { useAuth } from '@/lib/useAuth';
 import type { EstadoPedido, EstadoRider, PedidoCentral, RiderCentral } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
@@ -833,6 +833,7 @@ export default function PanelCentralPage() {
                               fill
                               sizes="48px"
                               className="object-cover"
+                              unoptimized={shouldBypassImageOptimizer(rider.photoURL)}
                             />
                           </div>
                         ) : (
@@ -1187,6 +1188,7 @@ export default function PanelCentralPage() {
                             fill
                             sizes="40px"
                             className="object-cover"
+                            unoptimized={shouldBypassImageOptimizer(rider.photoURL)}
                           />
                         </div>
                       ) : (
@@ -1288,6 +1290,7 @@ export default function PanelCentralPage() {
                               fill
                               sizes="44px"
                               className="object-cover"
+                              unoptimized={shouldBypassImageOptimizer(rider.photoURL)}
                             />
                           </div>
                         ) : (
@@ -1423,6 +1426,7 @@ const TarjetaPedidoCentral = memo(function TarjetaPedidoCentral({
                   fill
                   sizes="24px"
                   className="object-cover"
+                  unoptimized={shouldBypassImageOptimizer(rider.photoURL)}
                 />
               </div>
             ) : (

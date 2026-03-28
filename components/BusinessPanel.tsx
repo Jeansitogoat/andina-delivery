@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { X, ShoppingBag, CheckCircle, Truck, Star, TrendingUp, Phone, ChevronRight, Bell } from 'lucide-react';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
 
@@ -148,7 +148,7 @@ export default function BusinessPanel({ isOpen, onClose, localName = 'Tu negocio
             <div className="flex items-center gap-3">
               {getSafeImageSrc(localLogo) ? (
                 <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white flex-shrink-0">
-                  <Image src={getSafeImageSrc(localLogo)!} alt={localName} fill className="object-contain" sizes="48px" unoptimized={localLogo?.startsWith('data:')} />
+                  <Image src={getSafeImageSrc(localLogo)!} alt={localName} fill className="object-contain" sizes="48px" unoptimized={shouldBypassImageOptimizer(localLogo)} />
                 </div>
               ) : null}
               <div>

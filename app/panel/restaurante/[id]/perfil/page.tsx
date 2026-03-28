@@ -33,7 +33,7 @@ import { useNotifications } from '@/lib/useNotifications';
 import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
-import { getSafeImageSrc, normalizeDataUrl } from '@/lib/validImageUrl';
+import { getSafeImageSrc, normalizeDataUrl, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { uploadLocalQr } from '@/lib/storageUpload';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 import {
@@ -461,7 +461,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                   fill
                   className="object-cover"
                   sizes="100vw"
-                  unoptimized={cover?.startsWith('data:')}
+                  unoptimized={shouldBypassImageOptimizer(cover)}
                 />
               ) : null}
               <input
@@ -489,7 +489,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                     fill
                     className="object-contain"
                     sizes="80px"
-                    unoptimized={logo?.startsWith('data:')}
+                    unoptimized={shouldBypassImageOptimizer(logo)}
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
@@ -817,7 +817,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                   <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
                     <div>
                       <p className="text-sm font-semibold text-gray-900">Cobrar IVA al cliente</p>
-                      <p className="text-xs text-gray-500">La comisión seguirá siendo solo sobre el subtotal base.</p>
+                      <p className="text-xs text-gray-500">La comisión Andina (8%) sigue según los términos vigentes; el envío no entra en esa base.</p>
                     </div>
                     <button
                       type="button"

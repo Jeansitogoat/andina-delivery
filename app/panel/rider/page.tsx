@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getIdToken } from '@/lib/authToken';
 import { getFirestoreDb } from '@/lib/firebase/client';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import {
   Bike,
@@ -526,6 +526,7 @@ export default function PanelRiderPage() {
                           fill
                           sizes="56px"
                           className="object-cover"
+                          unoptimized={shouldBypassImageOptimizer(user?.photoURL)}
                         />
                       </div>
                     ) : (

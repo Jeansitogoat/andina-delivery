@@ -443,7 +443,7 @@ export async function PATCH(
       }
     }
 
-    // Al marcar como entregado: comisión idempotente del 8% sobre subtotalBase.
+    // Al marcar como entregado: comisión idempotente del 8% sobre (subtotalBase + serviceFee al cliente).
     if (body.estado === 'entregado' && prevEstado !== 'entregado') {
       if (pedidoLocalId) {
         const riderId = body.riderId ?? data.riderId ?? null;
@@ -466,7 +466,7 @@ export async function PATCH(
         const commissionStartDate = (typeof localData.commissionStartDate === 'string' ? localData.commissionStartDate : null) ?? programStartDate;
         const commissionStartTime = commissionStartDate ? new Date(commissionStartDate).getTime() : 0;
         if ((programStartTime <= 0 || pedidoTimestamp >= programStartTime) && (commissionStartTime <= 0 || pedidoTimestamp >= commissionStartTime)) {
-          const montoComision = calcularComision(money.totalCliente, subtotalBase);
+          const montoComision = calcularComision(money.totalCliente, subtotalBase, money.serviceFee);
           const netoLocal = calcularNetoLocal(subtotalBase, montoComision);
           await db.collection('comisiones').doc(id).set({
             localId: pedidoLocalId,

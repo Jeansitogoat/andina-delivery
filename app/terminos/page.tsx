@@ -57,7 +57,7 @@ export default function TerminosPage() {
             <h2 className="text-gray-900 font-bold text-base mb-2">4. Tarifas y costos</h2>
             <ul className="list-disc pl-5 space-y-1 mb-4">
               <li>Tarifas de envío: 1 parada $1.50, 2 paradas $1.75, 3 paradas $2.00, mandado +$1.00.</li>
-              <li>Coste de servicio: 2% del subtotal, mínimo $0.10.</li>
+              <li>Coste de servicio: 1,5% del subtotal, con mínimo $0,10 y máximo $0,30 por pedido.</li>
             </ul>
           </section>
 

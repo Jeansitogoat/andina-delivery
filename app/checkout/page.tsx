@@ -34,7 +34,7 @@ import dynamic from 'next/dynamic';
 const AgregarDireccionModal = dynamic(() => import('@/components/usuario/AgregarDireccionModal'), { ssr: false });
 import LocalLogo from '@/components/LocalLogo';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import {
   generateVerificationCode,
   savePedido,
@@ -54,9 +54,10 @@ const TIP_OPTIONS = [
   { label: '$2.00', value: 2.0 },
 ];
 
-/** Coste de servicio: 2% del subtotal, mínimo $0.10 (pago del cliente). */
+/** Coste de servicio: 1,5% del subtotal, mín. $0.10, máx. $0.30 (pago del cliente). */
 function getServiceCost(subtotal: number): number {
-  return Math.max(0.10, Math.round(subtotal * 0.02 * 100) / 100);
+  const raw = Math.round(subtotal * 0.015 * 100) / 100;
+  return Math.min(0.3, Math.max(0.1, raw));
 }
 
 
@@ -70,7 +71,14 @@ function ComprobantePreview({ file }: { file: File }) {
   if (!url) return null;
   return (
     <div className="w-12 h-12 rounded-lg bg-gray-200 overflow-hidden flex-shrink-0">
-      <Image src={url} alt="Vista previa" width={48} height={48} className="w-full h-full object-cover" />
+      <Image
+        src={url}
+        alt="Vista previa"
+        width={48}
+        height={48}
+        className="w-full h-full object-cover"
+        unoptimized={shouldBypassImageOptimizer(url)}
+      />
     </div>
   );
 }
@@ -1314,7 +1322,10 @@ export default function CheckoutPage() {
                 </>
               )}
               <div className="flex justify-between text-sm text-gray-600">
-                <span>Coste de servicio</span>
+                <span className="text-left">
+                  Coste de servicio
+                  <span className="block text-[11px] font-normal text-gray-400">1,5% del subtotal (mín. $0,10 · máx. $0,30)</span>
+                </span>
                 <span className="font-semibold text-gray-900">${serviceCost.toFixed(2)}</span>
               </div>
               {!isPickup && tip > 0 && (

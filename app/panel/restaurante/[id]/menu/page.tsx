@@ -8,7 +8,7 @@ import NavPanel from '@/components/panel/NavPanel';
 import type { MenuItem, MenuItemVariation, MenuItemComplementGroup } from '@/lib/data';
 import { getIdToken } from '@/lib/authToken';
 import { compressImage } from '@/lib/compressImage';
-import { getSafeImageSrc, normalizeDataUrl } from '@/lib/validImageUrl';
+import { getSafeImageSrc, normalizeDataUrl, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { uploadMenuItemImage } from '@/lib/storageUpload';
 
 const DEFAULT_CATEGORIES = ['Más pedidos', 'Pollos', 'Combos', 'Bebidas'];
@@ -149,6 +149,7 @@ function MenuForm({
                 fill
                 sizes="80px"
                 className="object-cover"
+                unoptimized={shouldBypassImageOptimizer(image)}
               />
               <button
                 type="button"
@@ -739,7 +740,14 @@ export default function PanelMenuIdPage({ params }: { params: Promise<{ id: stri
                   <div key={item.id} className="flex items-center gap-4 px-4 py-3.5 hover:bg-gray-50/50 transition-colors">
                     <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                       {getSafeImageSrc(item.image) ? (
-                        <Image src={getSafeImageSrc(item.image)!} alt={item.name} fill className="object-cover" sizes="64px" unoptimized={item.image?.startsWith('data:')} />
+                        <Image
+                          src={getSafeImageSrc(item.image)!}
+                          alt={item.name}
+                          fill
+                          className="object-cover"
+                          sizes="64px"
+                          unoptimized={shouldBypassImageOptimizer(item.image)}
+                        />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center">
                           <ShoppingBag className="w-7 h-7 text-gray-300" />

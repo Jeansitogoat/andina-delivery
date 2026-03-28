@@ -22,7 +22,7 @@ import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirestoreDb } from '@/lib/firebase/client';
 import { getFirebaseAuth } from '@/lib/firebase/client';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { useToast } from '@/lib/ToastContext';
 
 type TabPerfil = 'historial' | 'direcciones' | 'cuenta';
@@ -326,6 +326,7 @@ export default function PerfilPage() {
                   fill
                   sizes="80px"
                   className="object-cover"
+                  unoptimized={shouldBypassImageOptimizer(user?.photoURL)}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-white/10">

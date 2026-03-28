@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { X, Plus, Minus, Flame, ShoppingBag } from 'lucide-react';
 import type { MenuItem } from '@/lib/data';
-import { getSafeImageSrc } from '@/lib/validImageUrl';
+import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import type { AddItemOptions } from '@/lib/cartContext';
 
 interface ProductDetailSheetProps {
@@ -135,7 +135,7 @@ export default function ProductDetailSheet({
                 className="object-cover"
                 sizes="(max-width: 600px) 100vw, 600px"
                 priority
-                unoptimized={item.image?.startsWith('data:')}
+                unoptimized={shouldBypassImageOptimizer(item.image)}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-100">

@@ -178,7 +178,7 @@ export default function PanelStatsIdPage({ params }: { params: Promise<{ id: str
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
             <h2 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
               <Percent className="w-4 h-4 text-amber-600" />
-              Comisión Andina (8% sobre subtotal)
+              Comisión Andina (8%)
             </h2>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-xl p-3 border border-amber-100">
@@ -195,7 +195,7 @@ export default function PanelStatsIdPage({ params }: { params: Promise<{ id: str
               </div>
             </div>
             <p className="text-xs text-gray-400 mt-2">
-              Se calcula solo sobre el subtotal de productos. Envío, IVA y cargos del cliente no entran en esta comisión.
+              El envío no forma parte de esta base. El detalle por pedido aparece en tus comisiones registradas.
             </p>
             <div className="mt-4 pt-3 border-t border-amber-200 space-y-3">
               <p className="text-sm font-semibold text-gray-700">Comisiones y administración</p>
