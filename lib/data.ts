@@ -80,6 +80,8 @@ export interface Local {
   ivaEnabled?: boolean;
   /** Tasa decimal, ej. 0.15 */
   ivaRate?: number;
+  /** Si el maestro autoriza que este local pueda activar IVA en su perfil (por defecto no). */
+  ivaPermitidoMaestro?: boolean;
   status?: 'active' | 'suspended';
   telefono?: string;
   horarios?: HorarioItem[];

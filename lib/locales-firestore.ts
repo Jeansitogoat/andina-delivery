@@ -63,6 +63,7 @@ function docToLocal(data: Record<string, unknown>, id: string): Local {
     transferencia: data.transferencia as Local['transferencia'],
     ivaEnabled: Boolean(data.ivaEnabled),
     ivaRate: typeof data.ivaRate === 'number' && !Number.isNaN(data.ivaRate) ? data.ivaRate : undefined,
+    ivaPermitidoMaestro: Boolean(data.ivaPermitidoMaestro),
     status: data.status as Local['status'],
     telefono: data.telefono != null ? String(data.telefono) : undefined,
     horarios,
@@ -259,6 +260,7 @@ export async function updateLocalInFirestore(
       | 'lng'
       | 'ivaEnabled'
       | 'ivaRate'
+      | 'ivaPermitidoMaestro'
     >
   > & { cerradoHasta?: string | null; horarios?: HorarioItem[]; categorias?: string[] }
 ): Promise<void> {
@@ -301,6 +303,7 @@ export async function updateLocalInFirestore(
   }
   if (updates.ivaEnabled !== undefined) obj.ivaEnabled = updates.ivaEnabled;
   if (updates.ivaRate !== undefined) obj.ivaRate = updates.ivaRate;
+  if (updates.ivaPermitidoMaestro !== undefined) obj.ivaPermitidoMaestro = updates.ivaPermitidoMaestro;
   if ((updates as { horarios?: HorarioItem[] }).horarios !== undefined) obj.horarios = (updates as { horarios?: HorarioItem[] }).horarios;
   if (updates.ownerName !== undefined) obj.ownerName = updates.ownerName;
   if (updates.ownerPhone !== undefined) obj.ownerPhone = updates.ownerPhone;

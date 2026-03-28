@@ -117,6 +117,7 @@ export async function PATCH(
     const lng = bodyData.lng;
     const ivaEnabled = bodyData.ivaEnabled;
     const ivaRate = bodyData.ivaRate;
+    const ivaPermitidoMaestro = bodyData.ivaPermitidoMaestro;
     const isFeatured = bodyData.isFeatured;
 
     // El rol 'local' no puede auto-asignarse como destacado ni cambiar su estado
@@ -127,11 +128,31 @@ export async function PATCH(
       if (status !== undefined) {
         return NextResponse.json({ error: 'Solo el maestro puede cambiar el estado del local' }, { status: 403 });
       }
+      if (ivaPermitidoMaestro !== undefined) {
+        return NextResponse.json(
+          { error: 'Solo el maestro puede autorizar el IVA para el local.' },
+          { status: 403 }
+        );
+      }
     }
 
     const fromFirestore = await getLocalFromFirestore(id);
     if (!fromFirestore) {
       return NextResponse.json({ error: 'Local no encontrado' }, { status: 404 });
+    }
+
+    if (
+      auth.rol === 'local' &&
+      (ivaEnabled !== undefined || ivaRate !== undefined) &&
+      !fromFirestore.local.ivaPermitidoMaestro
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'El IVA no está autorizado para tu negocio. Solicitá la habilitación al administrador de Andina.',
+        },
+        { status: 403 }
+      );
     }
     const updates: Parameters<typeof updateLocalInFirestore>[1] = {};
     if (name !== undefined) updates.name = name;
@@ -152,6 +173,9 @@ export async function PATCH(
     if (lng !== undefined) updates.lng = lng;
     if (ivaEnabled !== undefined) updates.ivaEnabled = ivaEnabled;
     if (ivaRate !== undefined) updates.ivaRate = ivaRate > 1 ? ivaRate / 100 : ivaRate;
+    if (ivaPermitidoMaestro !== undefined && auth.rol === 'maestro') {
+      updates.ivaPermitidoMaestro = ivaPermitidoMaestro;
+    }
     if (isFeatured !== undefined) (updates as any).isFeatured = Boolean(isFeatured);
     if (transferencia !== undefined) {
       if (transferencia === null) {

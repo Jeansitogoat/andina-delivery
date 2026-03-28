@@ -112,6 +112,8 @@ export default function PanelMaestroPage() {
     lat: null as number | null,
     lng: null as number | null,
     isFeatured: false,
+    /** Solo maestro: permite al local activar IVA en su perfil. */
+    ivaPermitidoMaestro: false,
   });
   const [guardandoLocal, setGuardandoLocal] = useState(false);
   const [borrandoId, setBorrandoId] = useState<string | null>(null);
@@ -694,6 +696,7 @@ export default function PanelMaestroPage() {
       lat: typeof loc.lat === 'number' ? loc.lat : null,
       lng: typeof loc.lng === 'number' ? loc.lng : null,
       isFeatured: Boolean((loc as { isFeatured?: boolean }).isFeatured ?? loc.destacado),
+      ivaPermitidoMaestro: Boolean(loc.ivaPermitidoMaestro),
     });
   };
 
@@ -753,6 +756,7 @@ export default function PanelMaestroPage() {
           lat: editLocalForm.lat != null ? editLocalForm.lat : undefined,
           lng: editLocalForm.lng != null ? editLocalForm.lng : undefined,
           isFeatured: editLocalForm.isFeatured,
+          ivaPermitidoMaestro: editLocalForm.ivaPermitidoMaestro,
         }),
       });
       if (res.ok) {
@@ -768,6 +772,7 @@ export default function PanelMaestroPage() {
                   logo: editLocalForm.logo || l.logo,
                   cover: editLocalForm.cover || l.cover,
                   isFeatured: editLocalForm.isFeatured,
+                  ivaPermitidoMaestro: editLocalForm.ivaPermitidoMaestro,
                 }
               : l
           )
@@ -2355,6 +2360,30 @@ export default function PanelMaestroPage() {
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
                       editLocalForm.isFeatured ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-start justify-between gap-3 pt-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-gray-700 uppercase">Permitir IVA en el panel del local</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+                    Solo los locales con esta opción podrán activar el cobro de IVA a clientes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditLocalForm((f) => ({ ...f, ivaPermitidoMaestro: !f.ivaPermitidoMaestro }))
+                  }
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors ${
+                    editLocalForm.ivaPermitidoMaestro ? 'bg-emerald-500 border-emerald-500' : 'bg-gray-200 border-gray-200'
+                  }`}
+                  aria-pressed={editLocalForm.ivaPermitidoMaestro}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      editLocalForm.ivaPermitidoMaestro ? 'translate-x-4' : 'translate-x-0'
                     }`}
                   />
                 </button>

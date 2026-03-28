@@ -5,6 +5,8 @@ type MoneyLike = number | string | null | undefined;
 type IvaConfigLike = {
   ivaEnabled?: unknown;
   ivaRate?: unknown;
+  /** Si no es true, el IVA no aplica aunque `ivaEnabled` esté en true (control maestro). */
+  ivaPermitidoMaestro?: unknown;
 } | null | undefined;
 
 type OrderMoneyLike = {
@@ -42,8 +44,9 @@ export function resolveIvaRate(raw: unknown): number {
 }
 
 export function resolveIvaConfig(config: IvaConfigLike): { ivaEnabled: boolean; ivaRate: number } {
+  const permitidoMaestro = Boolean(config?.ivaPermitidoMaestro);
   return {
-    ivaEnabled: Boolean(config?.ivaEnabled),
+    ivaEnabled: Boolean(config?.ivaEnabled) && permitidoMaestro,
     ivaRate: resolveIvaRate(config?.ivaRate),
   };
 }

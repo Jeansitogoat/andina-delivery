@@ -168,6 +168,8 @@ export async function POST(request: Request) {
       lng: typeof bodyData.lng === 'number' && !Number.isNaN(bodyData.lng) ? bodyData.lng : undefined,
       minOrder: 5,
       categories: ['Más pedidos'],
+      ivaPermitidoMaestro: false,
+      ivaEnabled: false,
       ownerName: typeof bodyData.ownerName === 'string' && bodyData.ownerName.trim() ? bodyData.ownerName.trim() : undefined,
       ownerPhone: typeof bodyData.ownerPhone === 'string' && bodyData.ownerPhone.trim() ? bodyData.ownerPhone.trim() : undefined,
       ownerEmail: typeof bodyData.ownerEmail === 'string' && bodyData.ownerEmail.trim() ? bodyData.ownerEmail.trim() : undefined,

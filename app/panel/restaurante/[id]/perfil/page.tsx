@@ -279,8 +279,12 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
           cover: coverPayload,
           horarios,
           transferencia: transferenciaPayload,
-          ivaEnabled,
-          ivaRate: ivaEnabled ? Number(ivaRate) || 15 : 0,
+          ...(local?.ivaPermitidoMaestro
+            ? {
+                ivaEnabled,
+                ivaRate: ivaEnabled ? Number(ivaRate) || 15 : 0,
+              }
+            : {}),
           categorias: categoriasDiscovery,
         }),
       });
@@ -738,33 +742,44 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               <span className="font-semibold text-gray-900">IVA del local</span>
             </div>
             <div className="px-4 pb-4 space-y-3">
-              <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Cobrar IVA al cliente</p>
-                  <p className="text-xs text-gray-500">La comisión seguirá siendo solo sobre el subtotal base.</p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={ivaEnabled}
-                  onClick={() => setIvaEnabled((prev) => !prev)}
-                  className={`relative h-6 w-11 rounded-full transition-colors ${ivaEnabled ? 'bg-rojo-andino' : 'bg-gray-300'}`}
-                >
-                  <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${ivaEnabled ? 'translate-x-5' : ''}`} />
-                </button>
-              </div>
-              {ivaEnabled && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Tasa de IVA (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={ivaRate}
-                    onChange={(e) => setIvaRate(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
-                  />
-                </div>
+              {!local.ivaPermitidoMaestro ? (
+                <p className="text-sm text-gray-600 leading-relaxed rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  La opción de cobrar IVA solo está disponible si el administrador de Andina la habilita para tu
+                  negocio. Si necesitás facturar con IVA, contactá a soporte.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Cobrar IVA al cliente</p>
+                      <p className="text-xs text-gray-500">La comisión seguirá siendo solo sobre el subtotal base.</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={ivaEnabled}
+                      onClick={() => setIvaEnabled((prev) => !prev)}
+                      className={`relative h-6 w-11 rounded-full transition-colors ${ivaEnabled ? 'bg-rojo-andino' : 'bg-gray-300'}`}
+                    >
+                      <span
+                        className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${ivaEnabled ? 'translate-x-5' : ''}`}
+                      />
+                    </button>
+                  </div>
+                  {ivaEnabled && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Tasa de IVA (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={ivaRate}
+                        onChange={(e) => setIvaRate(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rojo-andino/30"
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </section>

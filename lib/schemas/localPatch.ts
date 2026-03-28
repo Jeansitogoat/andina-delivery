@@ -44,6 +44,8 @@ export const localPatchSchema = z
     transferencia: transferenciaSchema.optional(),
     ivaEnabled: z.boolean().optional(),
     ivaRate: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().optional()),
+    /** Solo el maestro puede enviar este campo. */
+    ivaPermitidoMaestro: z.boolean().optional(),
     isFeatured: z.boolean().optional(),
   });
 
