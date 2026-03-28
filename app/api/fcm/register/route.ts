@@ -7,6 +7,10 @@ import { fcmRegisterSchema } from '@/lib/schemas/fcmRegister';
 
 const FCM_TOKENS_COLLECTION = 'fcm_tokens';
 
+function stringArraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 export async function POST(request: Request) {
   let auth: { uid: string };
   try {
@@ -64,7 +68,9 @@ export async function POST(request: Request) {
     const ref = db.collection(FCM_TOKENS_COLLECTION).doc(docId);
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
-      const prev = snap.data() as { tokens?: unknown; token?: unknown } | undefined;
+      const prev = snap.data() as
+        | { tokens?: unknown; token?: unknown; localId?: unknown }
+        | undefined;
       const previousTokens = Array.isArray(prev?.tokens)
         ? (prev?.tokens as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
         : [];
@@ -74,6 +80,20 @@ export async function POST(request: Request) {
       // Token actual al final para mantener los más recientes.
       const dedup = base.filter((t) => t !== trimmedToken);
       const nextTokens = [...dedup, trimmedToken].slice(-10);
+
+      const prevLocalId = typeof prev?.localId === 'string' && prev.localId.trim() ? prev.localId.trim() : null;
+      const targetLocalId = roleStr === 'local' && localId ? localId.trim() : null;
+      const localIdSinCambio =
+        roleStr !== 'local' || (targetLocalId ?? null) === (prevLocalId ?? null);
+
+      if (
+        snap.exists &&
+        !legacyToken &&
+        stringArraysEqual(nextTokens, previousTokens) &&
+        localIdSinCambio
+      ) {
+        return;
+      }
 
       const docData: Record<string, unknown> = {
         tokens: nextTokens,

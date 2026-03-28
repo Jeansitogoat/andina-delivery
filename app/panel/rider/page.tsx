@@ -3,12 +3,8 @@
 import Image from 'next/image';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
 import { getIdToken } from '@/lib/authToken';
-import { getFirebaseStorage, getFirestoreDb, getFirebaseAuth } from '@/lib/firebase/client';
-import { compressImage } from '@/lib/compressImage';
+import { getFirestoreDb } from '@/lib/firebase/client';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import {
@@ -30,7 +26,6 @@ import {
   ShoppingBag,
   UserCircle,
   LogOut,
-  Camera,
   MessageCircle,
   CreditCard,
   ChevronDown,
@@ -129,8 +124,6 @@ export default function PanelRiderPage() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [miEstado, setMiEstado] = useState<EstadoRider>('disponible');
   const [sessionInvalid, setSessionInvalid] = useState(false);
-  const [subiendoFoto, setSubiendoFoto] = useState(false);
-  const fotoRef = useRef<HTMLInputElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [avanzandoKey, setAvanzandoKey] = useState<string | null>(null);
   const [rechazandoCarreraId, setRechazandoCarreraId] = useState<string | null>(null);
@@ -512,7 +505,7 @@ export default function PanelRiderPage() {
         }`}
       >
         {/* ── encabezado ── */}
-        <header className="text-white safe-x safe-top pt-6 pb-6 sm:pt-8 sm:pb-7 bg-gradient-to-br from-rider-900 via-rider-700 to-rider-600 shadow-softlg overflow-visible">
+        <header className="text-white safe-x safe-top-min pb-6 sm:pb-7 bg-gradient-to-br from-rider-900 via-rider-700 to-rider-600 shadow-softlg overflow-visible">
           <div className="max-w-lg mx-auto overflow-visible">
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-100/90">
@@ -524,7 +517,7 @@ export default function PanelRiderPage() {
             <div className="relative z-30 overflow-visible rounded-3xl border border-white/15 bg-white/[0.07] backdrop-blur-sm p-3 sm:p-4 mb-4 shadow-inner">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="relative flex-shrink-0">
+                  <div className="flex-shrink-0">
                     {getSafeImageSrc(user?.photoURL) ? (
                       <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-white/20 relative ring-2 ring-white/20">
                         <Image
@@ -548,46 +541,6 @@ export default function PanelRiderPage() {
                         ).toUpperCase()}
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => fotoRef.current?.click()}
-                      disabled={subiendoFoto}
-                      className="absolute -bottom-0.5 -right-0.5 w-7 h-7 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors disabled:opacity-70"
-                      title="Cambiar foto de perfil"
-                    >
-                      {subiendoFoto ? (
-                        <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin block" />
-                      ) : (
-                        <Camera className="w-3.5 h-3.5 text-blue-600" />
-                      )}
-                    </button>
-                    <input
-                      ref={fotoRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file || !user?.uid) return;
-                        e.target.value = '';
-                        setSubiendoFoto(true);
-                        const storage = getFirebaseStorage();
-                        const storageRef = ref(storage, `users/${user.uid}/avatar`);
-                        try {
-                          const compressed = await compressImage(file, 'avatar');
-                          await uploadBytes(storageRef, compressed);
-                          const url = await getDownloadURL(storageRef);
-                          const db = getFirestoreDb();
-                          await setDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: serverTimestamp() }, { merge: true });
-                          const auth = getFirebaseAuth();
-                          if (auth.currentUser) await updateProfile(auth.currentUser, { photoURL: url });
-                        } catch {
-                          showGlobalToast({ type: 'error', message: 'Error al subir la foto. Intenta de nuevo.' });
-                        } finally {
-                          setSubiendoFoto(false);
-                        }
-                      }}
-                    />
                   </div>
                   <div className="min-w-0">
                     <h1 className="font-black text-[clamp(1rem,4.2vw,1.35rem)] leading-tight truncate">

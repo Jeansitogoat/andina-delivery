@@ -29,6 +29,20 @@ function getCommissionStartDate(programStartDate: string): string {
 
 const CACHE_REVALIDATE = 60;
 
+/** En light=1 omitimos horarios si el payload sería grande (ahorro de ancho de banda en Home). */
+const LIGHT_HORARIOS_MAX_DIAS = 7;
+const LIGHT_HORARIOS_MAX_JSON_CHARS = 1200;
+
+function isHorariosHeavyForLight(horarios: unknown): boolean {
+  if (!Array.isArray(horarios)) return false;
+  if (horarios.length > LIGHT_HORARIOS_MAX_DIAS) return true;
+  try {
+    return JSON.stringify(horarios).length > LIGHT_HORARIOS_MAX_JSON_CHARS;
+  } catch {
+    return true;
+  }
+}
+
 async function fetchLocalesData(incluirSuspendidos: boolean, categoria: string | null) {
   // Fase 2: getLocalesFromFirestore() ya no descarga los menús (subcolección productos).
   // Con `categoria`: filtro en backend (array-contains + fallback legacy).
@@ -95,7 +109,8 @@ export async function GET(request: Request) {
         time: String(loc.time ?? '20-35 min'),
         rating: Number(loc.rating ?? 0),
         reviews: Number(loc.reviews ?? 0),
-        horarios: Array.isArray(loc.horarios) ? loc.horarios : undefined,
+        horarios:
+          Array.isArray(loc.horarios) && !isHorariosHeavyForLight(loc.horarios) ? loc.horarios : undefined,
         cerradoHasta: loc.cerradoHasta != null ? String(loc.cerradoHasta) : undefined,
       }));
       return NextResponse.json({ locales: localesLight }, { headers });

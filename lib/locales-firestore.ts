@@ -123,38 +123,18 @@ function matchesDiscoveryCategory(loc: Local, categoria: string): boolean {
 
 /**
  * Listado filtrado por categoría de discovery (Restaurantes | Market | Farmacias).
- * Usa consulta Firestore `categorias` array-contains y completa con legacy (`type` / categorías derivadas).
+ * Una sola lectura de la colección `locales` (vía getLocalesFromFirestore) y filtro en memoria:
+ * equivale a array-contains + merge legacy sin segunda query.
  */
 export async function getLocalesForHomeFilter(
   categoria: string,
   incluirSuspendidos: boolean
 ): Promise<{ locales: Local[] }> {
-  const db = getAdminFirestore();
-  const snap = await db
-    .collection(LOCALES_COLLECTION)
-    .where('categorias', 'array-contains', categoria)
-    .limit(200)
-    .get();
-
-  const fromQuery = new Map<string, Local>();
-  for (const d of snap.docs) {
-    fromQuery.set(d.id, docToLocal(d.data() as Record<string, unknown>, d.id));
-  }
-
   const { locales: all } = await getLocalesFromFirestore();
-  let list = all.slice();
-  if (!incluirSuspendidos) {
-    list = list.filter((loc) => loc.status !== 'suspended');
-  }
-
-  for (const loc of list) {
-    if (fromQuery.has(loc.id)) continue;
-    if (!loc.categoriasFromFirestore && matchesDiscoveryCategory(loc, categoria)) {
-      fromQuery.set(loc.id, loc);
-    }
-  }
-
-  const merged = Array.from(fromQuery.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  let list = incluirSuspendidos ? all.slice() : all.filter((loc) => loc.status !== 'suspended');
+  const merged = list
+    .filter((loc) => matchesDiscoveryCategory(loc, categoria))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
   return { locales: merged };
 }
 

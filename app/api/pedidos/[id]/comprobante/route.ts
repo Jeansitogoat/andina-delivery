@@ -11,7 +11,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth(request, ['cliente', 'maestro']);
+    await requireAuth(request, ['cliente', 'rider', 'maestro']);
   } catch (r) {
     if (r instanceof Response) return r;
     throw r;

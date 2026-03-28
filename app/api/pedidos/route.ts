@@ -291,7 +291,7 @@ export async function POST(request: Request) {
 
   let uid: string;
   try {
-    const auth = await requireAuth(request, ['cliente', 'maestro']);
+    const auth = await requireAuth(request, ['cliente', 'rider', 'maestro']);
     uid = auth.uid;
   } catch (r) {
     if (r instanceof Response) return r;

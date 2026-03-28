@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import {
-  ArrowLeft, Camera, LogOut, ChevronRight, ShoppingBag,
+  ArrowLeft, LogOut, ChevronRight, ShoppingBag,
   History, Settings, Phone, Check, AlertTriangle, Bell,
 } from 'lucide-react';
 import TarjetaPedidoHistorial, {
@@ -21,9 +20,8 @@ import { useAuth } from '@/lib/useAuth';
 import { useNotifications } from '@/lib/useNotifications';
 import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
-import { getFirebaseStorage, getFirestoreDb } from '@/lib/firebase/client';
+import { getFirestoreDb } from '@/lib/firebase/client';
 import { getFirebaseAuth } from '@/lib/firebase/client';
-import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc } from '@/lib/validImageUrl';
 import { useToast } from '@/lib/ToastContext';
 
@@ -100,8 +98,6 @@ export default function PerfilPage() {
   const { direcciones, updateDirecciones } = useAddresses();
   const { permission, requestPermission, reintentarRegistro, desactivar, loading: notifLoading, error: notifError, isSupported, optedOut } = useNotifications('user');
   const { showToast } = useToast();
-  const fotoRef = useRef<HTMLInputElement>(null);
-
   const [tab, setTab] = useState<TabPerfil>('historial');
   const [pageVisible, setPageVisible] = useState(false);
   const [historial, setHistorial] = useState<PedidoHistorial[]>([]);
@@ -116,7 +112,6 @@ export default function PerfilPage() {
   const [guardado, setGuardado] = useState(false);
   const [confirmarCierre, setConfirmarCierre] = useState(false);
   const [confirmarDesactivarNotif, setConfirmarDesactivarNotif] = useState(false);
-  const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [tokenRegistrado, setTokenRegistrado] = useState<boolean | null>(null);
   const [reintentandoNotif, setReintentandoNotif] = useState(false);
   const [refreshNotifStatus, setRefreshNotifStatus] = useState(0);
@@ -233,29 +228,6 @@ export default function PerfilPage() {
     }
   }
 
-  async function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !user?.uid) return;
-    const reader = new FileReader();
-    reader.onload = () => setFotoPreview(reader.result as string);
-    reader.readAsDataURL(file);
-
-    setSubiendoFoto(true);
-    const storage = getFirebaseStorage();
-    const storageRef = ref(storage, `users/${user.uid}/avatar`);
-    const compressed = await compressImage(file, 'avatar');
-    uploadBytes(storageRef, compressed)
-      .then(() => getDownloadURL(storageRef))
-      .then(async (url) => {
-        const db = getFirestoreDb();
-        await setDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: serverTimestamp() }, { merge: true });
-        const auth = getFirebaseAuth();
-        if (auth.currentUser) await updateProfile(auth.currentUser, { photoURL: url });
-      })
-      .catch(() => showToast({ type: 'error', message: 'No se pudo subir la foto. Revisa tu conexión e intenta de nuevo.' }))
-      .finally(() => setSubiendoFoto(false));
-  }
-
   function guardarCambios() {
     setEditandoNombre(false);
     setEditandoTelefono(false);
@@ -345,11 +317,9 @@ export default function PerfilPage() {
 
         {/* Avatar + info */}
         <div className="max-w-2xl mx-auto px-4 pb-6 flex items-center gap-4">
-          <div className="relative flex-shrink-0">
+          <div className="flex-shrink-0">
             <div className="w-20 h-20 rounded-full overflow-hidden bg-white/20 border-4 border-white/30 shadow-xl relative">
-              {fotoPreview ? (
-                <Image src={fotoPreview} alt={nombreParaMostrar} fill className="object-cover" sizes="80px" />
-              ) : getSafeImageSrc(user?.photoURL) ? (
+              {getSafeImageSrc(user?.photoURL) ? (
                 <Image
                   src={getSafeImageSrc(user?.photoURL)!}
                   alt={nombreParaMostrar}
@@ -363,19 +333,6 @@ export default function PerfilPage() {
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => fotoRef.current?.click()}
-              disabled={subiendoFoto}
-              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors disabled:opacity-70"
-            >
-              {subiendoFoto ? (
-                <span className="w-3.5 h-3.5 rounded-full border-2 border-rojo-andino border-t-transparent animate-spin block" />
-              ) : (
-                <Camera className="w-3.5 h-3.5 text-rojo-andino" />
-              )}
-            </button>
-            <input ref={fotoRef} type="file" accept="image/*" className="hidden" onChange={handleFoto} />
           </div>
 
           <div className="flex-1 min-w-0">
@@ -395,7 +352,6 @@ export default function PerfilPage() {
                 className="font-black text-xl text-white hover:text-white/80 transition-colors text-left flex items-center gap-2"
               >
                 {nombreParaMostrar}
-                <Camera className="w-3.5 h-3.5 opacity-60 hidden" />
               </button>
             )}
             <p className="text-white/70 text-sm mt-0.5">{telefono}</p>

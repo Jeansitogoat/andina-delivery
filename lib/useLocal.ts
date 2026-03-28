@@ -20,8 +20,8 @@ export function useLocal(localId: string | null | undefined) {
       // revalidateOnFocus=false evita una lectura Firestore cada vez que el usuario
       // vuelve a la pestaña del restaurante; el menú es suficientemente estable.
       revalidateOnFocus: false,
-      // 2 minutos: cualquier navegación de vuelta dentro de la ventana reutiliza la respuesta cacheada
-      dedupingInterval: 120_000,
+      // 3 minutos: cualquier navegación de vuelta dentro de la ventana reutiliza la respuesta cacheada
+      dedupingInterval: 180.000,
       keepPreviousData: true,
     }
   );

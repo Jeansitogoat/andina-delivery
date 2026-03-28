@@ -265,15 +265,18 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   useEffect(() => {
     if (typeof window === 'undefined' || permission !== 'granted' || optedOut) return;
     if (!isPWA()) return;
+    // Tras reload, el ref arranca en null y forzaba POST aunque localStorage ya tuviera el mismo token.
+    lastRegisteredTokenRef.current = readStoredToken();
     const syncToken = () => {
       getFCMToken().then((token) => {
         if (!token) return;
         const stored = readStoredToken();
         const hasPending = getPendingRegister();
-        if (hasPending || lastRegisteredTokenRef.current !== token || stored !== token) {
-          lastRegisteredTokenRef.current = null;
-          registerToken(token, true);
+        if (!hasPending && stored === token && lastRegisteredTokenRef.current === token) {
+          return;
         }
+        lastRegisteredTokenRef.current = null;
+        registerToken(token, true);
       });
     };
     const onVisibility = () => {

@@ -288,9 +288,9 @@ export async function PATCH(
             typeof data.logisticaBumpAt === 'number' && !Number.isNaN(data.logisticaBumpAt)
               ? data.logisticaBumpAt
               : 0;
-          if (lastBump > 0 && Date.now() - lastBump < 120_000) {
+          if (lastBump > 0 && Date.now() - lastBump < 180.000)  {
             return NextResponse.json(
-              { error: 'Espera al menos 2 minutos entre re-notificaciones' },
+              { error: 'Espera al menos 3 minutos entre re-notificaciones' },
               { status: 429 }
             );
           }

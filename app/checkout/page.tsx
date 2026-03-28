@@ -478,7 +478,7 @@ export default function CheckoutPage() {
     const any403 = results.some((r) => r.status === 403);
     if (any403) {
       setIsOrdering(false);
-      setAuthError('Solo las cuentas de cliente pueden realizar pedidos. Inicia sesión con tu cuenta de cliente.');
+      setAuthError('Tu cuenta no puede realizar pedidos en la tienda (p. ej. panel de local o central).');
       return;
     }
     const anyFailed = results.some((r) => !r.ok);
@@ -732,7 +732,7 @@ export default function CheckoutPage() {
         const any403 = results.some((r) => r.status === 403);
         if (any403) {
           setIsUploadingComprobante(false);
-          showToast({ type: 'error', message: 'Solo las cuentas de cliente pueden realizar pedidos.' });
+          showToast({ type: 'error', message: 'Tu cuenta no puede realizar pedidos en la tienda.' });
           return;
         }
         const anyFailed = results.some((r) => !r.ok);

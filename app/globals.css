@@ -31,6 +31,17 @@ body {
   padding-top: var(--safe-top);
 }
 
+/* Inset + margen mínimo bajo barra de estado (evita que badges/headers queden pegados al notch). */
+.safe-top-min {
+  padding-top: max(1.5rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));
+}
+
+@media (min-width: 640px) {
+  .safe-top-min {
+    padding-top: max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.75rem));
+  }
+}
+
 .safe-bottom {
   padding-bottom: var(--safe-bottom);
 }
