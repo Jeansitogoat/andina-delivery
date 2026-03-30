@@ -18,7 +18,7 @@ import {
   mapFirebasePasswordError,
 } from '@/lib/passwordChangeHelpers';
 import { LoadingButton } from '@/components/LoadingButton';
-import { useNotifications, isFCMPWA } from '@/lib/useNotifications';
+import { useNotifications, isWebPushEnvironment } from '@/lib/useNotifications';
 import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 
 const GOOGLE_LINK_MESSAGE =
@@ -52,6 +52,8 @@ export default function ProfileSettingsForm({
     error: notifError,
     pendingRegister: notifPendingRegister,
     resyncing: notifResyncing,
+    serverTokenRegistered,
+    refreshServerTokenStatus,
     isSupported,
   } = useNotifications(notificationRole);
   const [displayName, setDisplayName] = useState('');
@@ -65,7 +67,6 @@ export default function ProfileSettingsForm({
   const [cambiandoPassword, setCambiandoPassword] = useState(false);
   const [mensajePassword, setMensajePassword] = useState<{ tipo: 'ok' | 'error'; text: string } | null>(null);
   const [fbUserState, setFbUserState] = useState<FirebaseUser | null>(null);
-  const [tokenActivo, setTokenActivo] = useState<boolean | null>(null);
   const [syncingDevice, setSyncingDevice] = useState(false);
 
   useEffect(() => {
@@ -79,40 +80,6 @@ export default function ProfileSettingsForm({
     setDisplayName(andinaUser.displayName?.trim() ?? '');
     setTelefono(andinaUser.telefono?.trim() ?? '');
   }, [andinaUser]);
-
-  useEffect(() => {
-    if (notificationRole === 'user' || permission !== 'granted') {
-      setTokenActivo(null);
-      return;
-    }
-    let cancelled = false;
-    const loadStatus = async () => {
-      const tok = await getIdToken();
-      if (!tok || cancelled) return;
-      const stored =
-        typeof window !== 'undefined'
-          ? localStorage.getItem(`andina_fcm_token_${notificationRole}`) ?? ''
-          : '';
-      const res = await fetch(`/api/fcm/status?role=${notificationRole}`, {
-        headers: {
-          Authorization: `Bearer ${tok}`,
-          ...(stored ? { 'x-fcm-token': stored } : {}),
-        },
-      }).catch(() => null);
-      if (!res || !res.ok || cancelled) {
-        if (!cancelled) setTokenActivo(false);
-        return;
-      }
-      const data = (await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean };
-      if (!cancelled) {
-        setTokenActivo(Boolean(data.hasCurrentToken));
-      }
-    };
-    loadStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [notificationRole, permission, notifLoading]);
 
   const saveProfile = useCallback(async () => {
     setProfileMessage(null);
@@ -203,21 +170,11 @@ export default function ProfileSettingsForm({
       if (token && typeof window !== 'undefined') {
         localStorage.setItem(`andina_fcm_token_${notificationRole}`, token);
       }
-      const tok = await getIdToken();
-      if (tok) {
-        const res = await fetch(`/api/fcm/status?role=${notificationRole}`, {
-          headers: {
-            Authorization: `Bearer ${tok}`,
-            ...(token ? { 'x-fcm-token': token } : {}),
-          },
-        }).catch(() => null);
-        const data = res && res.ok ? ((await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean }) : null;
-        setTokenActivo(Boolean(data?.hasCurrentToken));
-      }
+      await refreshServerTokenStatus();
     } finally {
       setSyncingDevice(false);
     }
-  }, [notificationRole, permission, requestPermission, reintentarRegistro]);
+  }, [notificationRole, permission, requestPermission, reintentarRegistro, refreshServerTokenStatus]);
 
   const ring =
     variant === 'rider'
@@ -290,7 +247,19 @@ export default function ProfileSettingsForm({
               Permiso: <strong>{permission === 'granted' ? 'Activo' : permission === 'denied' ? 'Bloqueado' : 'Pendiente'}</strong>
             </p>
             <p className="text-sm text-gray-600">
-              Token actual: <strong>{permission !== 'granted' ? 'Sin permiso' : tokenActivo ? 'Activo' : 'No sincronizado'}</strong>
+              Token en servidor (este equipo):{' '}
+              <strong>
+                {permission !== 'granted'
+                  ? 'Sin permiso'
+                  : serverTokenRegistered === true
+                    ? 'Registrado'
+                    : serverTokenRegistered === false
+                      ? 'No coincide o no guardado'
+                      : 'Comprobando…'}
+              </strong>
+            </p>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              «Sincronizar dispositivo» pide permiso si falta, genera el token FCM y lo registra en Andina. Si algo falla, en Chrome abre consola (F12 → pestaña Consola) y vuelve a pulsar.
             </p>
             {(notifError || notifPendingRegister) && (
               <p className="text-sm text-red-600 font-medium">{notifError ?? 'Sincronización pendiente con el servidor.'}</p>
@@ -306,7 +275,7 @@ export default function ProfileSettingsForm({
             >
               {syncingDevice ? 'Sincronizando...' : 'Sincronizar dispositivo'}
             </button>
-            {(notifError || notifPendingRegister) && isFCMPWA() && (
+            {(notifError || notifPendingRegister) && isWebPushEnvironment() && (
               <button
                 type="button"
                 disabled={notifResyncing || notifLoading || syncingDevice}

@@ -9,14 +9,22 @@ import {
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 
-/** PWA instalada: ahí FCM y el rescate de token tienen sentido. */
+/** PWA instalada (atajo desde pantalla de inicio). */
 export function isFCMPWA(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(display-mode: standalone)').matches;
 }
 
-function isPWA(): boolean {
-  return isFCMPWA();
+/**
+ * Entorno donde FCM web puede funcionar: contexto seguro (HTTPS/localhost),
+ * API de notificaciones y Service Workers. Incluye Chrome/Edge en escritorio sin instalar PWA.
+ */
+export function isWebPushEnvironment(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!('Notification' in window)) return false;
+  if (!('serviceWorker' in navigator)) return false;
+  if (!window.isSecureContext) return false;
+  return true;
 }
 
 /**
@@ -57,7 +65,7 @@ const OPTED_OUT_KEY = 'andina_notifications_opted_out';
 const TOKEN_KEY_PREFIX = 'andina_fcm_token_';
 const PENDING_REGISTER_KEY = 'andina_fcm_pending_';
 const TOKEN_GET_TIMEOUT_MS = 10_000;
-const REGISTER_FETCH_TIMEOUT_MS = 12_000;
+const REGISTER_FETCH_TIMEOUT_MS = 20_000;
 
 /** getToken acotado en tiempo; evita tablets colgadas sin feedback. */
 function raceGetFCMToken(timeoutMs: number): Promise<{ token: string | null; timedOut: boolean }> {
@@ -119,6 +127,8 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const pendingRegisterRef = useRef<boolean>(false);
   const [pendingRegister, setPendingRegisterUi] = useState(false);
   const [resyncing, setResyncing] = useState(false);
+  /** null = sin comprobar; true/false según /api/fcm/status (y coincidencia con token local si existe). */
+  const [serverTokenRegistered, setServerTokenRegistered] = useState<boolean | null>(null);
 
   const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${role}` : TOKEN_KEY_PREFIX;
   const pendingKey = typeof window !== 'undefined' ? `${PENDING_REGISTER_KEY}${role}` : PENDING_REGISTER_KEY;
@@ -189,6 +199,42 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     }
   }, [pendingKey]);
 
+  const refreshServerTokenStatus = useCallback(async () => {
+    if (typeof window === 'undefined' || permission !== 'granted' || optedOut) {
+      setServerTokenRegistered(null);
+      return;
+    }
+    if (!isWebPushEnvironment()) {
+      setServerTokenRegistered(null);
+      return;
+    }
+    const idToken = await getIdToken();
+    if (!idToken) {
+      setServerTokenRegistered(null);
+      return;
+    }
+    const stored = readStoredToken() ?? '';
+    const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(role)}`, {
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        ...(stored ? { 'x-fcm-token': stored } : {}),
+      },
+    }).catch(() => null);
+    if (!res?.ok) {
+      setServerTokenRegistered(null);
+      return;
+    }
+    const data = (await res.json().catch(() => ({}))) as {
+      hasToken?: boolean;
+      hasCurrentToken?: boolean | null;
+    };
+    if (stored && typeof data.hasCurrentToken === 'boolean') {
+      setServerTokenRegistered(data.hasCurrentToken);
+    } else {
+      setServerTokenRegistered(Boolean(data.hasToken));
+    }
+  }, [permission, optedOut, role, readStoredToken]);
+
   const registerToken = useCallback(
     async (fcmToken: string | null, silent = false, extraPayloadOverride?: Record<string, string>): Promise<boolean> => {
       if (!fcmToken) return false;
@@ -245,6 +291,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
           setPendingRegister(false);
           setError(null);
           console.log('🔥 Token guardado en Firestore. Rol:', role, options?.localId ? `localId:${options.localId}` : '');
+          void refreshServerTokenStatus();
           return true;
         }
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -273,12 +320,12 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         return false;
       }
     },
-    [role, options?.localId, writeStoredToken, setPendingRegister]
+    [role, options?.localId, writeStoredToken, setPendingRegister, refreshServerTokenStatus]
   );
 
   /**
-   * Registra token con backoff exponencial silencioso: inmediato → 2s → 5s.
-   * No muestra errores rojos al usuario por fallos transitorios.
+   * Registra token con backoff: inmediato → 2s → 5s.
+   * El primer intento no es silencioso (el usuario ve el error real); 2.º y 3.º sí.
    */
   const registerWithBackoff = useCallback(
     async (fcmToken: string): Promise<boolean> => {
@@ -288,7 +335,8 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
           console.log(`[FCM] Backoff: esperando ${delays[i] / 1000}s antes del intento ${i + 1}/${delays.length}...`);
           await new Promise((r) => setTimeout(r, delays[i]));
         }
-        const ok = await registerToken(fcmToken, true);
+        const silent = i > 0;
+        const ok = await registerToken(fcmToken, silent);
         if (ok) return true;
       }
       console.warn('[FCM] Registro pendiente tras backoff 0/2s/5s. Se reintentará al recuperar conexión o foco.');
@@ -305,7 +353,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
 
   useEffect(() => {
     if (permission !== 'granted') return;
-    if (!isPWA()) return;
+    if (!isWebPushEnvironment()) return;
     let cleanup: (() => void) | undefined;
     setupFCMForegroundListener().then((c) => {
       cleanup = c;
@@ -319,11 +367,11 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   // Si hay un registro pendiente (red caída en arranque en frío), reintenta automáticamente.
   useEffect(() => {
     if (typeof window === 'undefined' || permission !== 'granted' || optedOut) return;
-    if (!isPWA()) return;
+    if (!isWebPushEnvironment()) return;
     // Tras reload, el ref arranca en null y forzaba POST aunque localStorage ya tuviera el mismo token.
     lastRegisteredTokenRef.current = readStoredToken();
     const syncToken = () => {
-      raceGetFCMToken(TOKEN_GET_TIMEOUT_MS).then((r) => {
+      raceGetFCMToken(TOKEN_GET_TIMEOUT_MS).then(async (r) => {
         if (r.timedOut) {
           console.warn('[FCM] Timeout obteniendo token en sync; marcando registro pendiente.');
           setPendingRegister(true);
@@ -333,8 +381,26 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         if (!token) return;
         const stored = readStoredToken();
         const hasPending = getPendingRegister();
-        if (!hasPending && stored === token && lastRegisteredTokenRef.current === token) {
-          return;
+        const looksSyncedLocally = !hasPending && stored === token && lastRegisteredTokenRef.current === token;
+        if (looksSyncedLocally) {
+          const idTok = await getIdToken();
+          if (idTok) {
+            const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(role)}`, {
+              headers: {
+                Authorization: `Bearer ${idTok}`,
+                'x-fcm-token': token,
+              },
+            }).catch(() => null);
+            if (res?.ok) {
+              const data = (await res.json().catch(() => ({}))) as {
+                hasCurrentToken?: boolean | null;
+                hasToken?: boolean;
+              };
+              if (data.hasCurrentToken === true) {
+                return;
+              }
+            }
+          }
         }
         lastRegisteredTokenRef.current = null;
         registerToken(token, true);
@@ -354,21 +420,37 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', onOnline);
     };
-  }, [permission, optedOut, registerToken, readStoredToken, getPendingRegister]);
+  }, [permission, optedOut, registerToken, readStoredToken, getPendingRegister, role]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (permission !== 'granted' || optedOut || !isWebPushEnvironment()) {
+      setServerTokenRegistered(null);
+      return;
+    }
+    if (loading || resyncing) return;
+    const t = window.setTimeout(() => {
+      void refreshServerTokenStatus();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [permission, optedOut, loading, resyncing, pendingRegister, refreshServerTokenStatus]);
 
   const requestPermission = useCallback(async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       setError('Tu navegador no soporta notificaciones');
       return;
     }
-    if (!isPWA()) {
-      // Fuera de PWA no pedimos nada: evita errores en navegadores móviles
+    if (!isWebPushEnvironment()) {
+      setError(
+        'Aquí no se pueden activar notificaciones push: hace falta HTTPS (o localhost), Service Workers y permisos del navegador. En iPhone suele hacer falta instalar la app a inicio.'
+      );
       return;
     }
     // Guardia de Auth: solo pedir permiso si hay usuario autenticado listo
     const uid = await waitForAuthCurrentUser(5000);
     if (!uid) {
       console.warn('[FCM] requestPermission: No hay usuario autenticado. Abortando solicitud de permiso.');
+      setError('Inicia sesión y vuelve a intentar activar notificaciones.');
       return;
     }
     try {
@@ -413,10 +495,17 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         if (token) {
           console.log('[FCM] Token generado:', token.slice(0, 20) + '...');
           const registered = await registerWithBackoff(token);
+          void refreshServerTokenStatus();
           if (registered) {
             console.log('[FCM] ÉXITO en Firestore.');
           } else {
             console.warn('[FCM] Registro pendiente. Se reintentará al recuperar foco o conexión.');
+            setError((prev) =>
+              prev?.trim()
+                ? prev
+                : 'El permiso está bien, pero el token no se guardó en el servidor. Pulsa «Re-sincronizar» o «Sincronizar dispositivo».'
+            );
+            setPendingRegister(true);
           }
         } else if (!sawTimeout) {
           console.warn('[FCM] No se obtuvo token FCM tras varios intentos.');
@@ -427,7 +516,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     } finally {
       setLoading(false);
     }
-  }, [registerWithBackoff]);
+  }, [registerWithBackoff, refreshServerTokenStatus, setPendingRegister]);
 
   /** Reintenta obtener el token FCM y registrarlo (sin pedir permiso). Para el botón "Reintentar" cuando permission ya es granted. */
   const reintentarRegistro = useCallback(async (): Promise<boolean> => {
@@ -438,11 +527,13 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       return false;
     }
     if (!r.token) return false;
-    return registerWithBackoff(r.token);
-  }, [permission, optedOut, registerWithBackoff]);
+    const ok = await registerWithBackoff(r.token);
+    void refreshServerTokenStatus();
+    return ok;
+  }, [permission, optedOut, registerWithBackoff, refreshServerTokenStatus]);
 
   const resincronizarNotificaciones = useCallback(async () => {
-    if (typeof window === 'undefined' || !isPWA()) return;
+    if (typeof window === 'undefined' || !isWebPushEnvironment()) return;
     if (permission !== 'granted' || optedOut) return;
     setResyncing(true);
     setError(null);
@@ -481,6 +572,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       }
       const ok = await registerWithBackoff(outcome.token);
       if (!ok) setPendingRegister(true);
+      void refreshServerTokenStatus();
     } finally {
       setResyncing(false);
     }
@@ -492,6 +584,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     pendingKey,
     storageKey,
     registerWithBackoff,
+    refreshServerTokenStatus,
   ]);
 
   const desactivar = useCallback(async () => {
@@ -536,6 +629,8 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     error,
     pendingRegister,
     resyncing,
+    serverTokenRegistered,
+    refreshServerTokenStatus,
     isSupported,
     optedOut,
     requestPermission,

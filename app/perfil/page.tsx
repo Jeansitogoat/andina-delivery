@@ -17,7 +17,7 @@ import SkeletonHistorial from '@/components/SkeletonHistorial';
 import { useCart } from '@/lib/useCart';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
-import { useNotifications, isFCMPWA } from '@/lib/useNotifications';
+import { useNotifications, isWebPushEnvironment } from '@/lib/useNotifications';
 import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirestoreDb } from '@/lib/firebase/client';
@@ -106,6 +106,8 @@ export default function PerfilPage() {
     error: notifError,
     pendingRegister: notifPendingRegister,
     resyncing: notifResyncing,
+    serverTokenRegistered,
+    refreshServerTokenStatus,
     isSupported,
     optedOut,
   } = useNotifications('user');
@@ -124,9 +126,7 @@ export default function PerfilPage() {
   const [guardado, setGuardado] = useState(false);
   const [confirmarCierre, setConfirmarCierre] = useState(false);
   const [confirmarDesactivarNotif, setConfirmarDesactivarNotif] = useState(false);
-  const [tokenRegistrado, setTokenRegistrado] = useState<boolean | null>(null);
   const [reintentandoNotif, setReintentandoNotif] = useState(false);
-  const [refreshNotifStatus, setRefreshNotifStatus] = useState(0);
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
@@ -136,30 +136,6 @@ export default function PerfilPage() {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
     ensureFCMServiceWorkerReady();
   }, []);
-
-  // Ver si el usuario tiene token FCM registrado (para mostrar "Token registrado" en notificaciones)
-  useEffect(() => {
-    if (!user || permission !== 'granted' || optedOut) {
-      setTokenRegistrado(null);
-      return;
-    }
-    let cancelled = false;
-    getIdToken()
-      .then((token) => {
-        if (!token || cancelled) return;
-        return fetch('/api/fcm/status', { headers: { Authorization: `Bearer ${token}` } });
-      })
-      .then((res) => {
-        if (!res || cancelled) return res?.json?.();
-        return res.json();
-      })
-      .then((data: { hasToken?: boolean } | undefined) => {
-        if (!cancelled && data && typeof data.hasToken === 'boolean') setTokenRegistrado(data.hasToken);
-      })
-      .catch(() => { if (!cancelled) setTokenRegistrado(false); });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, permission, optedOut, notifLoading, refreshNotifStatus]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -537,13 +513,18 @@ export default function PerfilPage() {
                   <Bell className="w-4 h-4 text-gray-500" />
                   Notificaciones
                 </p>
+                {permission !== 'granted' && !optedOut && isSupported && !isWebPushEnvironment() && (
+                  <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">
+                    Este navegador o página no permite push (falta HTTPS o Service Worker). En computadora usa Chrome o Edge con el sitio en HTTPS para poder activar y ver errores en la consola (F12).
+                  </p>
+                )}
                 <p className="text-xs text-gray-400 mt-0.5">
                   {permission === 'granted' && !optedOut
-                    ? tokenRegistrado === true
-                      ? 'Activadas · Token registrado (recibirás avisos de pedidos)'
-                      : tokenRegistrado === false
-                        ? 'Activadas · No se pudo completar el registro.'
-                        : 'Activadas · Te avisamos del estado de tus pedidos'
+                    ? serverTokenRegistered === true
+                      ? 'Activadas · Este dispositivo está registrado en el servidor (recibirás avisos).'
+                      : serverTokenRegistered === false
+                        ? 'Activadas · Permiso OK, pero este equipo no coincide con el token guardado o aún no se guardó.'
+                        : 'Activadas · Comprobando registro en servidor…'
                     : notifError
                       ? notifError
                       : notifPendingRegister
@@ -564,13 +545,13 @@ export default function PerfilPage() {
                       >
                         Desactivar
                       </button>
-                      {tokenRegistrado === false && (
+                      {serverTokenRegistered === false && (
                         <button
                           type="button"
                           onClick={async () => {
                             setReintentandoNotif(true);
                             await reintentarRegistro();
-                            setRefreshNotifStatus((n) => n + 1);
+                            await refreshServerTokenStatus();
                             setReintentandoNotif(false);
                           }}
                           disabled={reintentandoNotif}
@@ -579,10 +560,10 @@ export default function PerfilPage() {
                           {reintentandoNotif ? 'Reintentando…' : 'Reintentar'}
                         </button>
                       )}
-                      {(notifError || notifPendingRegister) && isFCMPWA() && (
+                      {(notifError || notifPendingRegister) && isWebPushEnvironment() && (
                         <button
                           type="button"
-                          onClick={() => void resincronizarNotificaciones().then(() => setRefreshNotifStatus((n) => n + 1))}
+                          onClick={() => void resincronizarNotificaciones().then(() => refreshServerTokenStatus())}
                           disabled={notifResyncing || notifLoading}
                           className="text-sm font-bold px-4 py-2 rounded-xl bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60 shadow-sm"
                         >

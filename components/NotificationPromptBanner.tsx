@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { Bell, X, Download } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
-import { useNotifications } from '@/lib/useNotifications';
+import { useNotifications, isWebPushEnvironment } from '@/lib/useNotifications';
 import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 import type { NotificationRole } from '@/lib/useNotifications';
 
@@ -113,8 +113,8 @@ export default function NotificationPromptBanner() {
 
   if (!show) return null;
 
-  // Si no es PWA instalada, mostrar banner de instalación (no pedimos permiso aún)
-  if (!pwa) {
+  // Sin PWA y sin entorno web push (p. ej. iPhone en Safari pestaña): solo guía de instalación
+  if (!pwa && !isWebPushEnvironment()) {
     return (
       <div className="fixed top-4 left-4 right-4 z-40 max-w-md mx-auto animate-fade-in">
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 flex items-center gap-3">
@@ -123,7 +123,9 @@ export default function NotificationPromptBanner() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-gray-900 text-sm">Instala la app para notificaciones</p>
-            <p className="text-xs text-gray-500">{getInstallInstructions()}</p>
+            <p className="text-xs text-gray-500">
+              {getInstallInstructions()} También puedes usar Chrome en escritorio con el sitio en HTTPS.
+            </p>
           </div>
           <button
             type="button"
@@ -147,7 +149,10 @@ export default function NotificationPromptBanner() {
         <div className="flex-1 min-w-0">
           <p className="font-bold text-gray-900 text-sm">Recibe notificaciones</p>
           <p className="text-xs text-gray-500">
-            {notifError ?? 'Te avisaremos al instante del estado de tus pedidos.'}
+            {notifError ??
+              (pwa
+                ? 'Te avisaremos al instante del estado de tus pedidos.'
+                : 'Puedes activar desde el navegador (Chrome o Edge en HTTPS). También puedes instalar la app para móvil.')}
           </p>
         </div>
         <div className="flex items-center gap-2">
