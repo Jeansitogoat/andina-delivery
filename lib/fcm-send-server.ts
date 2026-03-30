@@ -48,6 +48,97 @@ async function removeDeadToken(ref: FirebaseFirestore.DocumentReference, token: 
   }
 }
 
+type DocWithTokens = { ref: FirebaseFirestore.DocumentReference; tokens: string[] };
+
+function normalizeDataPayload(data?: Record<string, string>): Record<string, string> {
+  return data && typeof data === 'object'
+    ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
+    : {};
+}
+
+/**
+ * Solo payload `data` (sin `notification`): en primer plano el cliente muestra toast vía onMessage;
+ * en segundo plano firebase-messaging-sw.js arma la notificación desde data.title / data.body.
+ */
+function buildDataOnlyFcmMessage(token: string, fullData: Record<string, string>) {
+  return {
+    token,
+    data: fullData,
+    android: { priority: 'high' as const },
+    apns: {
+      headers: { 'apns-priority': '10' },
+      payload: {
+        aps: {
+          'content-available': 1,
+          sound: 'default',
+        },
+      },
+    },
+    webpush: {
+      headers: { Urgency: 'high' },
+    },
+  };
+}
+
+/**
+ * Un token = un envío: deduplica entre documentos y usa messaging.sendEach.
+ */
+async function sendDedupedToTokens(
+  docsWithTokens: DocWithTokens[],
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<number> {
+  const dataPayload = normalizeDataPayload(data);
+  const fullData: Record<string, string> = { title, body, ...dataPayload };
+
+  const tokenToRefs = new Map<string, Set<FirebaseFirestore.DocumentReference>>();
+  for (const entry of docsWithTokens) {
+    for (const raw of entry.tokens) {
+      const t = raw?.trim();
+      if (!t) continue;
+      let refs = tokenToRefs.get(t);
+      if (!refs) {
+        refs = new Set();
+        tokenToRefs.set(t, refs);
+      }
+      refs.add(entry.ref);
+    }
+  }
+
+  const uniqueTokens = [...tokenToRefs.keys()];
+  if (uniqueTokens.length === 0) return 0;
+
+  const messaging = getAdminMessaging();
+  const messages = uniqueTokens.map((tok) => buildDataOnlyFcmMessage(tok, fullData));
+  const batch = await messaging.sendEach(messages);
+
+  let sent = 0;
+  for (let i = 0; i < batch.responses.length; i++) {
+    const r = batch.responses[i];
+    const token = uniqueTokens[i];
+    if (r.success) {
+      sent++;
+      continue;
+    }
+    const err = r.error;
+    const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : '';
+    const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
+    if (isUnregistered) {
+      const refs = tokenToRefs.get(token);
+      if (refs) {
+        for (const ref of refs) {
+          await removeDeadToken(ref, token);
+          console.log('[FCM] Token eliminado (inválido o no registrado):', ref.id);
+        }
+      }
+    } else {
+      console.error('[FCM] sendEach falló para token (índice', i, '):', err);
+    }
+  }
+  return sent;
+}
+
 /**
  * Envía una notificación FCM a todos los tokens registrados con el rol dado.
  * No lanza; devuelve el número de envíos exitosos.
@@ -70,38 +161,7 @@ export async function sendFCMToRole(
   const docsWithTokens = snap.docs.map((d) => ({ ref: d.ref, tokens: extractTokens(d.data() as TokenDocData) }));
   const totalTokens = docsWithTokens.reduce((acc, x) => acc + x.tokens.length, 0);
   if (totalTokens === 0) return 0;
-  const messaging = getAdminMessaging();
-  const dataPayload = data && typeof data === 'object'
-    ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
-    : {};
-  const fullData = { title, body, ...dataPayload };
-  let sent = 0;
-  for (const entry of docsWithTokens) {
-    for (const token of entry.tokens) {
-      if (!token.trim()) continue;
-      try {
-        await messaging.send({
-          token: token.trim(),
-          notification: { title, body },
-          data: fullData,
-          android: { priority: 'high' },
-          apns: {
-            headers: { 'apns-priority': '10' },
-            payload: { aps: { sound: 'default' } },
-          },
-        });
-        sent++;
-      } catch (e) {
-        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-        if (isUnregistered) {
-          await removeDeadToken(entry.ref, token);
-          console.log('[FCM] Token eliminado (inválido o no registrado):', entry.ref.id);
-        }
-      }
-    }
-  }
-  return sent;
+  return sendDedupedToTokens(docsWithTokens, title, body, data);
 }
 
 /**
@@ -123,39 +183,11 @@ export async function sendFCMToRestaurantByLocalId(
     .where('role', '==', 'local')
     .where('localId', '==', localId.trim())
     .get();
-  const messaging = getAdminMessaging();
-  const dataPayload = data && typeof data === 'object'
-    ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
-    : {};
-  const fullData = { title, body, ...dataPayload };
-  let sent = 0;
-  for (const doc of snap.docs) {
-    const tokens = extractTokens(doc.data() as TokenDocData);
-    for (const token of tokens) {
-      if (!token?.trim()) continue;
-      try {
-        await messaging.send({
-          token: token.trim(),
-          notification: { title, body },
-          data: fullData,
-          android: { priority: 'high' },
-          apns: {
-            headers: { 'apns-priority': '10' },
-            payload: { aps: { sound: 'default' } },
-          },
-        });
-        sent++;
-      } catch (e) {
-        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-        if (isUnregistered) {
-          await removeDeadToken(doc.ref, token);
-          console.log('[FCM] Token eliminado (inválido o no registrado):', doc.id);
-        }
-      }
-    }
-  }
-  return sent;
+  const docsWithTokens = snap.docs.map((d) => ({
+    ref: d.ref,
+    tokens: extractTokens(d.data() as TokenDocData),
+  }));
+  return sendDedupedToTokens(docsWithTokens, title, body, data);
 }
 
 /**
@@ -178,39 +210,10 @@ export async function sendFCMToUser(
     console.warn('[FCM] No token for user', uid, '- fcm_tokens/', `${uid}_user`);
     return false;
   }
-  const messaging = getAdminMessaging();
-  const dataPayload = data && typeof data === 'object'
-    ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
-    : {};
-  const fullData = { title, body, ...dataPayload };
   try {
-    let sentOne = false;
-    for (const token of tokens) {
-      try {
-        await messaging.send({
-          token: token.trim(),
-          notification: { title, body },
-          data: fullData,
-          android: { priority: 'high' },
-          apns: {
-            headers: { 'apns-priority': '10' },
-            payload: { aps: { sound: 'default' } },
-          },
-        });
-        sentOne = true;
-      } catch (e) {
-        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-        if (isUnregistered) {
-          await removeDeadToken(docRef, token);
-          console.log('[FCM] Token eliminado para usuario (inválido o no registrado):', docRef.id);
-        } else {
-          console.error('[FCM] sendFCMToUser failed for', uid, e);
-        }
-      }
-    }
-    if (sentOne) console.log('[FCM] Sent to user', uid);
-    return sentOne;
+    const sent = await sendDedupedToTokens([{ ref: docRef, tokens }], title, body, data);
+    if (sent > 0) console.log('[FCM] Sent to user', uid);
+    return sent > 0;
   } catch (e) {
     console.error('[FCM] sendFCMToUser failed for', uid, e);
     return false;
@@ -237,39 +240,10 @@ export async function sendFCMToRider(
     console.warn('[FCM] No token for rider', uid, '- fcm_tokens/', `${uid}_rider`);
     return false;
   }
-  const messaging = getAdminMessaging();
-  const dataPayload = data && typeof data === 'object'
-    ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
-    : {};
-  const fullData = { title, body, ...dataPayload };
   try {
-    let sentOne = false;
-    for (const token of tokens) {
-      try {
-        await messaging.send({
-          token: token.trim(),
-          notification: { title, body },
-          data: fullData,
-          android: { priority: 'high' },
-          apns: {
-            headers: { 'apns-priority': '10' },
-            payload: { aps: { sound: 'default' } },
-          },
-        });
-        sentOne = true;
-      } catch (e) {
-        const code = e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
-        const isUnregistered = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code);
-        if (isUnregistered) {
-          await removeDeadToken(docRef, token);
-          console.log('[FCM] Token eliminado para rider (inválido o no registrado):', docRef.id);
-        } else {
-          console.error('[FCM] sendFCMToRider failed for', uid, e);
-        }
-      }
-    }
-    if (sentOne) console.log('[FCM] Sent to rider', uid);
-    return sentOne;
+    const sent = await sendDedupedToTokens([{ ref: docRef, tokens }], title, body, data);
+    if (sent > 0) console.log('[FCM] Sent to rider', uid);
+    return sent > 0;
   } catch (e) {
     console.error('[FCM] sendFCMToRider failed for', uid, e);
     return false;

@@ -32,6 +32,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
+import { useOrderSoundAutoplayUnlock } from '@/lib/useOrderSoundAutoplayUnlock';
 import { useAuth } from '@/lib/useAuth';
 import type { EstadoCarrera, EstadoRider, CarreraRider } from '@/lib/types';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
@@ -130,12 +131,13 @@ export default function PanelRiderPage() {
 
   const { showToast: showGlobalToast } = useToast();
   const prevCarreraIdsRef = useRef<Set<string>>(new Set());
-  const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
+  const newOrderSoundRef = useOrderSoundAutoplayUnlock('/sounds/rider-new-order.mp3');
   function playNewCarreraSound() {
     try {
-      if (!newOrderSoundRef.current) newOrderSoundRef.current = new Audio('/sounds/rider-new-order.mp3');
-      newOrderSoundRef.current.volume = 1.0;
-      newOrderSoundRef.current.play().catch(() => {});
+      const el = newOrderSoundRef.current;
+      if (!el) return;
+      el.volume = 1.0;
+      void el.play().catch(() => {});
     } catch {
       // ignorar
     }

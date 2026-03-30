@@ -17,7 +17,7 @@ import SkeletonHistorial from '@/components/SkeletonHistorial';
 import { useCart } from '@/lib/useCart';
 import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
-import { useNotifications } from '@/lib/useNotifications';
+import { useNotifications, isFCMPWA } from '@/lib/useNotifications';
 import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirestoreDb } from '@/lib/firebase/client';
@@ -96,7 +96,19 @@ export default function PerfilPage() {
   const { user, loading: authLoading, refreshUser, logout } = useAuth();
   const { clearCart, replaceCartAndSave } = useCart();
   const { direcciones, updateDirecciones } = useAddresses();
-  const { permission, requestPermission, reintentarRegistro, desactivar, loading: notifLoading, error: notifError, isSupported, optedOut } = useNotifications('user');
+  const {
+    permission,
+    requestPermission,
+    reintentarRegistro,
+    resincronizarNotificaciones,
+    desactivar,
+    loading: notifLoading,
+    error: notifError,
+    pendingRegister: notifPendingRegister,
+    resyncing: notifResyncing,
+    isSupported,
+    optedOut,
+  } = useNotifications('user');
   const { showToast } = useToast();
   const [tab, setTab] = useState<TabPerfil>('historial');
   const [pageVisible, setPageVisible] = useState(false);
@@ -534,7 +546,9 @@ export default function PerfilPage() {
                         : 'Activadas · Te avisamos del estado de tus pedidos'
                     : notifError
                       ? notifError
-                      : notifLoading
+                      : notifPendingRegister
+                        ? 'Sincronización pendiente con el servidor.'
+                        : notifLoading
                         ? 'Activando...'
                         : optedOut
                           ? 'Desactivadas · Toca abajo para volver a activar'
@@ -563,6 +577,16 @@ export default function PerfilPage() {
                           className="text-sm font-semibold text-rojo-andino hover:underline disabled:opacity-70"
                         >
                           {reintentandoNotif ? 'Reintentando…' : 'Reintentar'}
+                        </button>
+                      )}
+                      {(notifError || notifPendingRegister) && isFCMPWA() && (
+                        <button
+                          type="button"
+                          onClick={() => void resincronizarNotificaciones().then(() => setRefreshNotifStatus((n) => n + 1))}
+                          disabled={notifResyncing || notifLoading}
+                          className="text-sm font-bold px-4 py-2 rounded-xl bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60 shadow-sm"
+                        >
+                          {notifResyncing ? 'Re-sincronizando…' : 'Re-sincronizar notificaciones'}
                         </button>
                       )}
                     </>

@@ -23,6 +23,7 @@ import BotonPedirRider from '@/components/panel/BotonPedirRider';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import { getSafeImageSrc, getSafeDataUrl } from '@/lib/validImageUrl';
 import { useNotifications } from '@/lib/useNotifications';
+import { useOrderSoundAutoplayUnlock } from '@/lib/useOrderSoundAutoplayUnlock';
 type PendingTransferOrder = {
   orderId: string;
   orderNum: string;
@@ -144,12 +145,12 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
 
   const { showToast } = useToast();
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
-  const newOrderSoundRef = useRef<HTMLAudioElement | null>(null);
+  const newOrderSoundRef = useOrderSoundAutoplayUnlock('/sounds/local-new-order.mp3');
   /** Alerta solo para pedidos sin aceptar (confirmado): dos reproducciones seguidas. */
   function playNewOrderAlertTwice() {
     try {
-      const a = newOrderSoundRef.current ?? new Audio('/sounds/local-new-order.mp3');
-      newOrderSoundRef.current = a;
+      const a = newOrderSoundRef.current;
+      if (!a) return;
       a.volume = 1.0;
       let playsLeft = 2;
       a.onended = () => {

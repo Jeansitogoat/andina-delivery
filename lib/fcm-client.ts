@@ -119,6 +119,44 @@ export async function waitForServiceWorker(): Promise<void> {
   }
 }
 
+const SW_READY_RACE_MS = 15_000;
+const GET_TOKEN_ATTEMPT_MS = 10_000;
+
+/**
+ * Igual que waitForServiceWorker pero no bloquea la UI indefinidamente (p. ej. navigator.serviceWorker.ready colgado).
+ */
+export async function waitForServiceWorkerWithTimeout(
+  timeoutMs: number = SW_READY_RACE_MS
+): Promise<'ok' | 'timeout'> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return 'ok';
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs);
+  });
+  try {
+    return await Promise.race([waitForServiceWorker().then((): 'ok' => 'ok'), timeoutPromise]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function raceGetFCMTokenOnce(timeoutMs: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), timeoutMs);
+    getFCMToken()
+      .then((tok) => {
+        clearTimeout(t);
+        resolve(tok);
+      })
+      .catch(() => {
+        clearTimeout(t);
+        resolve(null);
+      });
+  });
+}
+
 export async function getFCMToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
@@ -165,6 +203,47 @@ export async function getFCMToken(): Promise<string | null> {
 }
 
 /**
+ * Invalida el token actual en FCM y obtiene uno nuevo (equivalente práctico a getToken con force).
+ * Útil cuando el dispositivo quedó “trabado” y hay que re-sincronizar con el backend.
+ */
+export async function forceRefreshFCMToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
+  if (!vapidKey) {
+    console.error('[FCM] forceRefreshFCMToken: VAPID Key faltante.');
+    return null;
+  }
+  try {
+    await navigator.serviceWorker.ready;
+    await waitForServiceWorker();
+    const swReg = await getMessagingSWRegistration();
+    if (!swReg) {
+      console.error('[FCM] forceRefreshFCMToken: Service Worker no disponible.');
+      return null;
+    }
+    const { getMessaging, deleteToken, getToken } = await import('firebase/messaging');
+    const app = getFirebaseApp();
+    const messaging = getMessaging(app);
+    try {
+      await deleteToken(messaging);
+    } catch {
+      // Sin token previo o ya revocado: continuar con getToken
+    }
+    const token = await getToken(messaging, {
+      vapidKey,
+      serviceWorkerRegistration: swReg,
+    });
+    if (token) {
+      console.log('[FCM] Token renovado tras deleteToken:', token.slice(0, 20) + '...');
+    }
+    return token ?? null;
+  } catch (e) {
+    console.error('[FCM] forceRefreshFCMToken failed', e);
+    return null;
+  }
+}
+
+/**
  * Obtiene el token FCM esperando primero al SW y reintentando silenciosamente (recomendado en móvil).
  * Por defecto: 5 intentos con 2s de espera entre cada uno + delay inicial adaptativo.
  * Los logs de progreso son visibles "por cable" pero no modifican el estado de la UI.
@@ -186,13 +265,16 @@ export async function getFCMTokenWithRetry(options?: {
     delayMs = 2000,
     initialDelayMs = ios ? 2500 : 800,
   } = options ?? {};
-  // Barrera doble: primero el SW global listo, luego el SW de FCM registrado
   await navigator.serviceWorker.ready;
-  await waitForServiceWorker();
+  const swOutcome = await waitForServiceWorkerWithTimeout(SW_READY_RACE_MS);
+  if (swOutcome === 'timeout') {
+    console.warn('[FCM] getFCMTokenWithRetry: timeout esperando SW');
+    return null;
+  }
   await getMessagingSWRegistration();
   await new Promise((r) => setTimeout(r, initialDelayMs));
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const token = await getFCMToken();
+    const token = await raceGetFCMTokenOnce(GET_TOKEN_ATTEMPT_MS);
     if (token) return token;
     if (attempt < maxAttempts) {
       console.log(`[FCM] Intento ${attempt}/${maxAttempts} fallido. Reintentando en ${delayMs / 1000}s...`);

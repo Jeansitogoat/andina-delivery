@@ -18,7 +18,7 @@ import {
   mapFirebasePasswordError,
 } from '@/lib/passwordChangeHelpers';
 import { LoadingButton } from '@/components/LoadingButton';
-import { useNotifications } from '@/lib/useNotifications';
+import { useNotifications, isFCMPWA } from '@/lib/useNotifications';
 import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 
 const GOOGLE_LINK_MESSAGE =
@@ -47,7 +47,11 @@ export default function ProfileSettingsForm({
     permission,
     requestPermission,
     reintentarRegistro,
+    resincronizarNotificaciones,
     loading: notifLoading,
+    error: notifError,
+    pendingRegister: notifPendingRegister,
+    resyncing: notifResyncing,
     isSupported,
   } = useNotifications(notificationRole);
   const [displayName, setDisplayName] = useState('');
@@ -288,6 +292,9 @@ export default function ProfileSettingsForm({
             <p className="text-sm text-gray-600">
               Token actual: <strong>{permission !== 'granted' ? 'Sin permiso' : tokenActivo ? 'Activo' : 'No sincronizado'}</strong>
             </p>
+            {(notifError || notifPendingRegister) && (
+              <p className="text-sm text-red-600 font-medium">{notifError ?? 'Sincronización pendiente con el servidor.'}</p>
+            )}
             {!isSupported && (
               <p className="text-sm text-amber-700">Este navegador no soporta notificaciones push.</p>
             )}
@@ -299,6 +306,16 @@ export default function ProfileSettingsForm({
             >
               {syncingDevice ? 'Sincronizando...' : 'Sincronizar dispositivo'}
             </button>
+            {(notifError || notifPendingRegister) && isFCMPWA() && (
+              <button
+                type="button"
+                disabled={notifResyncing || notifLoading || syncingDevice}
+                onClick={() => void resincronizarNotificaciones()}
+                className="w-full py-2.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 disabled:opacity-60 shadow-sm"
+              >
+                {notifResyncing ? 'Re-sincronizando…' : 'Re-sincronizar notificaciones'}
+              </button>
+            )}
           </div>
         </section>
       )}

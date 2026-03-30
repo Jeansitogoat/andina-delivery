@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useNotifications } from '@/lib/useNotifications';
+import { useOrderSoundAutoplayUnlock } from '@/lib/useOrderSoundAutoplayUnlock';
 import { sendNotification } from '@/lib/notifications';
 import { useAuth } from '@/lib/useAuth';
 import type { EstadoPedido, EstadoRider, PedidoCentral, RiderCentral } from '@/lib/types';
@@ -171,12 +172,13 @@ export default function PanelCentralPage() {
 
   const { showToast: showGlobalToast } = useToast();
   const { config: andinaConfig, refreshConfig } = useAndinaConfig();
-  const newOrderSound = useRef<HTMLAudioElement | null>(null);
+  const newOrderSound = useOrderSoundAutoplayUnlock('/sounds/central-new-order.mp3');
   function playNewOrderSound() {
     try {
-      if (!newOrderSound.current) newOrderSound.current = new Audio('/sounds/central-new-order.mp3');
-      newOrderSound.current.volume = 1.0;
-      newOrderSound.current.play().catch(() => {});
+      const el = newOrderSound.current;
+      if (!el) return;
+      el.volume = 1.0;
+      void el.play().catch(() => {});
     } catch {
       // ignorar
     }

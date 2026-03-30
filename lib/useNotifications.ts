@@ -1,13 +1,22 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { getFCMToken, getFCMTokenWithRetry, setupFCMForegroundListener, waitForServiceWorker } from '@/lib/fcm-client';
+import {
+  getFCMToken,
+  setupFCMForegroundListener,
+  waitForServiceWorkerWithTimeout,
+} from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 
-function isPWA(): boolean {
+/** PWA instalada: ahí FCM y el rescate de token tienen sentido. */
+export function isFCMPWA(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function isPWA(): boolean {
+  return isFCMPWA();
 }
 
 /**
@@ -47,6 +56,30 @@ export type NotificationPermission = 'granted' | 'denied' | 'default';
 const OPTED_OUT_KEY = 'andina_notifications_opted_out';
 const TOKEN_KEY_PREFIX = 'andina_fcm_token_';
 const PENDING_REGISTER_KEY = 'andina_fcm_pending_';
+const TOKEN_GET_TIMEOUT_MS = 10_000;
+const REGISTER_FETCH_TIMEOUT_MS = 12_000;
+
+/** getToken acotado en tiempo; evita tablets colgadas sin feedback. */
+function raceGetFCMToken(timeoutMs: number): Promise<{ token: string | null; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (token: string | null, timedOut: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve({ token, timedOut });
+    };
+    const timer = setTimeout(() => done(null, true), timeoutMs);
+    getFCMToken()
+      .then((token) => {
+        clearTimeout(timer);
+        done(token, false);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        done(null, false);
+      });
+  });
+}
 
 function getOptedOut(): boolean {
   if (typeof window === 'undefined') return false;
@@ -83,8 +116,9 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const [error, setError] = useState<string | null>(null);
   const [optedOut, setOptedOut] = useState(false);
   const lastRegisteredTokenRef = useRef<string | null>(null);
-  // pendingRegisterRef: true si el último intento de registro falló por error transitorio
   const pendingRegisterRef = useRef<boolean>(false);
+  const [pendingRegister, setPendingRegisterUi] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
 
   const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${role}` : TOKEN_KEY_PREFIX;
   const pendingKey = typeof window !== 'undefined' ? `${PENDING_REGISTER_KEY}${role}` : PENDING_REGISTER_KEY;
@@ -117,6 +151,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const setPendingRegister = useCallback(
     (pending: boolean) => {
       pendingRegisterRef.current = pending;
+      setPendingRegisterUi(pending);
       if (typeof window === 'undefined') return;
       try {
         if (pending) {
@@ -143,10 +178,11 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
 
   useEffect(() => {
     setOptedOut(getOptedOut());
-    // Restaurar bandera pendiente al montar (survive page refresh)
     if (typeof window !== 'undefined') {
       try {
-        pendingRegisterRef.current = localStorage.getItem(pendingKey) === '1';
+        const p = localStorage.getItem(pendingKey) === '1';
+        pendingRegisterRef.current = p;
+        setPendingRegisterUi(p);
       } catch {
         // silencioso
       }
@@ -175,14 +211,33 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         const body: Record<string, string> = { token: fcmToken, role, uid };
         const extra = extraPayloadOverride ?? (options?.localId ? { localId: options.localId } : undefined);
         if (extra) Object.assign(body, extra);
-        const res = await fetch('/api/fcm/register', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify(body),
-        });
+        const abortCtl = new AbortController();
+        const registerTimer = setTimeout(() => abortCtl.abort(), REGISTER_FETCH_TIMEOUT_MS);
+        let res: Response;
+        try {
+          res = await fetch('/api/fcm/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify(body),
+            signal: abortCtl.signal,
+          });
+        } catch (e) {
+          clearTimeout(registerTimer);
+          const aborted =
+            (e instanceof Error && e.name === 'AbortError') ||
+            (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'AbortError');
+          if (aborted) {
+            console.warn('[FCM] registerToken: timeout en /api/fcm/register');
+            setPendingRegister(true);
+            if (!silent) setError('Tiempo de espera agotado al registrar el dispositivo.');
+            return false;
+          }
+          throw e;
+        }
+        clearTimeout(registerTimer);
         if (res.ok) {
           lastRegisteredTokenRef.current = fcmToken;
           writeStoredToken(fcmToken);
@@ -268,7 +323,13 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     // Tras reload, el ref arranca en null y forzaba POST aunque localStorage ya tuviera el mismo token.
     lastRegisteredTokenRef.current = readStoredToken();
     const syncToken = () => {
-      getFCMToken().then((token) => {
+      raceGetFCMToken(TOKEN_GET_TIMEOUT_MS).then((r) => {
+        if (r.timedOut) {
+          console.warn('[FCM] Timeout obteniendo token en sync; marcando registro pendiente.');
+          setPendingRegister(true);
+          return;
+        }
+        const token = r.token;
         if (!token) return;
         const stored = readStoredToken();
         const hasPending = getPendingRegister();
@@ -329,10 +390,26 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         console.log('[FCM] Permiso concedido. Esperando sincronización...');
         // Delay táctico: da tiempo al navegador para propagar el permiso al SDK de Firebase
         await new Promise((resolve) => setTimeout(resolve, 800));
-        // Esperar a que el Service Worker FCM esté activo y validado
-        await waitForServiceWorker();
+        const swOutcome = await waitForServiceWorkerWithTimeout(15_000);
+        if (swOutcome === 'timeout') {
+          setError('Tiempo de espera agotado al preparar notificaciones');
+          return;
+        }
         console.log('[FCM] SW listo. Obteniendo token...');
-        const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 2000 });
+        let token: string | null = null;
+        let sawTimeout = false;
+        for (let attempt = 0; attempt < 3 && !token && !sawTimeout; attempt++) {
+          if (attempt > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+          const r = await raceGetFCMToken(TOKEN_GET_TIMEOUT_MS);
+          if (r.timedOut) {
+            sawTimeout = true;
+            setError('Tiempo de espera agotado');
+            break;
+          }
+          token = r.token;
+        }
         if (token) {
           console.log('[FCM] Token generado:', token.slice(0, 20) + '...');
           const registered = await registerWithBackoff(token);
@@ -341,8 +418,8 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
           } else {
             console.warn('[FCM] Registro pendiente. Se reintentará al recuperar foco o conexión.');
           }
-        } else {
-          console.warn('[FCM] No se obtuvo token FCM tras 3 intentos.');
+        } else if (!sawTimeout) {
+          console.warn('[FCM] No se obtuvo token FCM tras varios intentos.');
         }
       }
     } catch {
@@ -355,10 +432,67 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   /** Reintenta obtener el token FCM y registrarlo (sin pedir permiso). Para el botón "Reintentar" cuando permission ya es granted. */
   const reintentarRegistro = useCallback(async (): Promise<boolean> => {
     if (permission !== 'granted' || optedOut) return false;
-    const token = await getFCMTokenWithRetry();
-    if (!token) return false;
-    return registerWithBackoff(token);
+    const r = await raceGetFCMToken(TOKEN_GET_TIMEOUT_MS);
+    if (r.timedOut) {
+      setError('Tiempo de espera agotado');
+      return false;
+    }
+    if (!r.token) return false;
+    return registerWithBackoff(r.token);
   }, [permission, optedOut, registerWithBackoff]);
+
+  const resincronizarNotificaciones = useCallback(async () => {
+    if (typeof window === 'undefined' || !isPWA()) return;
+    if (permission !== 'granted' || optedOut) return;
+    setResyncing(true);
+    setError(null);
+    try {
+      lastRegisteredTokenRef.current = null;
+      writeStoredToken(null);
+      setPendingRegister(false);
+      try {
+        localStorage.removeItem(storageKey);
+        localStorage.removeItem(pendingKey);
+      } catch {
+        // silencioso
+      }
+      const { forceRefreshFCMToken } = await import('@/lib/fcm-client');
+      const outcome = await new Promise<{ token: string | null; timedOut: boolean }>((resolve) => {
+        const timer = setTimeout(() => resolve({ token: null, timedOut: true }), TOKEN_GET_TIMEOUT_MS);
+        forceRefreshFCMToken()
+          .then((token) => {
+            clearTimeout(timer);
+            resolve({ token, timedOut: false });
+          })
+          .catch(() => {
+            clearTimeout(timer);
+            resolve({ token: null, timedOut: false });
+          });
+      });
+      if (outcome.timedOut) {
+        setError('Tiempo de espera agotado');
+        setPendingRegister(true);
+        return;
+      }
+      if (!outcome.token) {
+        setError('No se pudo obtener un token nuevo. Intenta de nuevo.');
+        setPendingRegister(true);
+        return;
+      }
+      const ok = await registerWithBackoff(outcome.token);
+      if (!ok) setPendingRegister(true);
+    } finally {
+      setResyncing(false);
+    }
+  }, [
+    permission,
+    optedOut,
+    writeStoredToken,
+    setPendingRegister,
+    pendingKey,
+    storageKey,
+    registerWithBackoff,
+  ]);
 
   const desactivar = useCallback(async () => {
     try {
@@ -400,10 +534,13 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     permission,
     loading,
     error,
+    pendingRegister,
+    resyncing,
     isSupported,
     optedOut,
     requestPermission,
     reintentarRegistro,
+    resincronizarNotificaciones,
     desactivar,
     registerToken,
   };
