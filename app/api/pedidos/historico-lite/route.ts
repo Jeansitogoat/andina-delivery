@@ -11,6 +11,12 @@ type LitePedido = {
   timestamp: number;
   subtotalBase: number;
   totalCliente: number;
+  subtotalConIva: number;
+  costoEnvio: number;
+  serviceFee: number;
+  propina: number;
+  deliveryType: 'delivery' | 'pickup';
+  ivaEnabled: boolean;
 };
 
 function toLitePedido(id: string, data: Record<string, unknown>): LitePedido {
@@ -23,6 +29,12 @@ function toLitePedido(id: string, data: Record<string, unknown>): LitePedido {
     timestamp: Number(data.timestamp ?? 0),
     subtotalBase: money.subtotalBase,
     totalCliente: money.totalCliente,
+    subtotalConIva: money.subtotalConIva,
+    costoEnvio: money.costoEnvio,
+    serviceFee: money.serviceFee,
+    propina: money.propina,
+    deliveryType: data.deliveryType === 'pickup' ? 'pickup' : 'delivery',
+    ivaEnabled: money.ivaEnabled,
   };
 }
 

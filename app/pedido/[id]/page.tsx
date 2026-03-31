@@ -19,6 +19,7 @@ import {
   XCircle,
   RefreshCw,
   MessageCircle,
+  Receipt,
 } from 'lucide-react';
 
 const MOTIVOS_RAPIDOS_CANCEL_CLIENTE = [
@@ -185,6 +186,17 @@ export default function SeguimientoPedidoPage({
   const [telefonoLocalRef, setTelefonoLocalRef] = useState<string | null>(null);
   const [motivoCancelacionApi, setMotivoCancelacionApi] = useState<string | null>(null);
   const [transporteCoordinaCentral, setTransporteCoordinaCentral] = useState(false);
+  /** Desglose para mostrar total a pagar (productos, IVA, envío, costo servicio, propina). */
+  const [pagoDetalle, setPagoDetalle] = useState<{
+    subtotalBase: number;
+    ivaAmount: number;
+    ivaEnabled: boolean;
+    subtotalConIva: number;
+    costoEnvio: number;
+    serviceFee: number;
+    propina: number;
+    totalCliente: number;
+  } | null>(null);
 
   const { showToast } = useToast();
 
@@ -228,6 +240,14 @@ export default function SeguimientoPedidoPage({
         restauranteDireccion?: string;
         total?: number;
         totalCliente?: number;
+        subtotalBase?: number;
+        subtotalConIva?: number;
+        ivaAmount?: number;
+        ivaEnabled?: boolean;
+        costoEnvio?: number;
+        serviceCost?: number;
+        serviceFee?: number;
+        propina?: number;
         telefonoLocal?: string | null;
         motivoCancelacion?: string | null;
       };
@@ -257,6 +277,33 @@ export default function SeguimientoPedidoPage({
             ? data.total
             : 0;
       setPedidoTotalRef(t);
+      const subB =
+        typeof data.subtotalBase === 'number' && !Number.isNaN(data.subtotalBase) ? data.subtotalBase : 0;
+      const subIva =
+        typeof data.subtotalConIva === 'number' && !Number.isNaN(data.subtotalConIva)
+          ? data.subtotalConIva
+          : subB;
+      const ivaAmt =
+        typeof data.ivaAmount === 'number' && !Number.isNaN(data.ivaAmount) ? data.ivaAmount : 0;
+      const envio =
+        typeof data.costoEnvio === 'number' && !Number.isNaN(data.costoEnvio)
+          ? data.costoEnvio
+          : typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost)
+            ? data.serviceCost
+            : 0;
+      const fee =
+        typeof data.serviceFee === 'number' && !Number.isNaN(data.serviceFee) ? data.serviceFee : 0;
+      const tip = typeof data.propina === 'number' && !Number.isNaN(data.propina) ? data.propina : 0;
+      setPagoDetalle({
+        subtotalBase: subB,
+        ivaAmount: ivaAmt,
+        ivaEnabled: Boolean(data.ivaEnabled),
+        subtotalConIva: subIva,
+        costoEnvio: envio,
+        serviceFee: fee,
+        propina: tip,
+        totalCliente: t,
+      });
       setTelefonoLocalRef(
         typeof data.telefonoLocal === 'string' && data.telefonoLocal.trim()
           ? data.telefonoLocal.trim()
@@ -383,6 +430,60 @@ export default function SeguimientoPedidoPage({
             >
               {notifLoading ? '...' : 'Activar'}
             </button>
+          </div>
+        )}
+
+        {pagoDetalle && (pagoDetalle.totalCliente > 0 || pagoDetalle.subtotalBase > 0) && !estadoCancelado && (
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <Receipt className="w-5 h-5 text-rojo-andino flex-shrink-0" />
+              <h3 className="font-bold text-gray-900 text-sm">Total a pagar</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-3 leading-snug">
+              {deliveryType === 'pickup'
+                ? 'Retiro en local: sin envío a domicilio. Incluye menú, IVA si aplica y costo de servicio de la plataforma.'
+                : 'Incluye productos, envío, IVA si aplica y costo de servicio de la plataforma (1,5% del subtotal, máx. $0,30).'}
+            </p>
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-600">Productos (menú)</dt>
+                <dd className="font-medium text-gray-900 tabular-nums">${pagoDetalle.subtotalBase.toFixed(2)}</dd>
+              </div>
+              {pagoDetalle.ivaEnabled && pagoDetalle.ivaAmount > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">IVA</dt>
+                  <dd className="font-medium text-gray-900 tabular-nums">${pagoDetalle.ivaAmount.toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {pagoDetalle.ivaEnabled && pagoDetalle.subtotalConIva > pagoDetalle.subtotalBase + 0.001 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Subtotal con IVA</dt>
+                  <dd className="font-medium text-gray-900 tabular-nums">${pagoDetalle.subtotalConIva.toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {deliveryType !== 'pickup' && pagoDetalle.costoEnvio > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Envío</dt>
+                  <dd className="font-medium text-gray-900 tabular-nums">${pagoDetalle.costoEnvio.toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {pagoDetalle.serviceFee > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Costo de servicio Andina</dt>
+                  <dd className="font-medium text-gray-900 tabular-nums">${pagoDetalle.serviceFee.toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {pagoDetalle.propina > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Propina</dt>
+                  <dd className="font-medium text-gray-900 tabular-nums">${pagoDetalle.propina.toFixed(2)}</dd>
+                </div>
+              ) : null}
+              <div className="flex justify-between gap-2 pt-2 border-t border-gray-100">
+                <dt className="font-bold text-gray-900">Total</dt>
+                <dd className="font-black text-rojo-andino text-lg tabular-nums">${pagoDetalle.totalCliente.toFixed(2)}</dd>
+              </div>
+            </dl>
           </div>
         )}
 

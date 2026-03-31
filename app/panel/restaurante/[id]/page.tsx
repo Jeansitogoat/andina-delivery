@@ -29,6 +29,9 @@ type PendingTransferOrder = {
   orderNum: string;
   total: number;
   subtotalBase: number;
+  serviceFee: number;
+  costoEnvio: number;
+  deliveryType: 'delivery' | 'pickup';
   direccion: string;
   items: string[];
   createdAt: number;
@@ -49,6 +52,8 @@ import { startOfDayGuayaquil } from '@/lib/guayaquil-time';
 import { getFirestoreDb } from '@/lib/firebase/client';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { getOrderMoney } from '@/lib/order-money';
+import { calcularComision, calcularNetoLocal } from '@/lib/commissions';
+import type { PedidoCentral } from '@/lib/types';
 
 const MOTIVOS_RAPIDOS_CANCEL_LOCAL = [
   'Sin stock / ingrediente',
@@ -63,8 +68,16 @@ interface Order {
   id: string;
   cliente: string;
   items: string[];
+  /** Total que paga el cliente (incl. envío, costo servicio Andina, etc.). */
   total: number;
+  /** Venta de menú sin IVA (base comisión). */
   subtotalBase: number;
+  subtotalConIva?: number;
+  costoEnvio?: number;
+  /** Costo de servicio Andina que paga el cliente (no es ingreso del local). */
+  serviceFee?: number;
+  propina?: number;
+  ivaEnabled?: boolean;
   tiempo: string;
   status: OrderStatus;
   direccion: string;
@@ -77,7 +90,13 @@ interface Order {
   batchLeaderLocalId?: string | null;
   deliveryType?: 'delivery' | 'pickup';
   paymentMethod?: 'efectivo' | 'transferencia';
-  serviceCost?: number;
+}
+
+function panelOrderNetoEstimado(o: Pick<Order, 'total' | 'subtotalBase' | 'serviceFee'>) {
+  const fee = o.serviceFee ?? 0;
+  const comisionEst = calcularComision(o.total, o.subtotalBase, fee);
+  const netoEst = calcularNetoLocal(o.subtotalBase, comisionEst);
+  return { comisionEst, netoEst };
 }
 
 function estadoToStatus(estado: EstadoPedido): OrderStatus {
@@ -201,6 +220,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               orderNum: `#${d.id}`,
               total: money.totalCliente,
               subtotalBase: money.subtotalBase,
+              serviceFee: money.serviceFee,
+              costoEnvio: money.costoEnvio,
+              deliveryType: data.deliveryType === 'pickup' ? 'pickup' : 'delivery',
               direccion: (data.clienteDireccion as string) || '—',
               items: Array.isArray(data.items) ? (data.items as string[]) : [],
               createdAt: Number(data.timestamp ?? 0),
@@ -219,6 +241,11 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               items: Array.isArray(data.items) ? (data.items as string[]) : [],
               total: money.totalCliente,
               subtotalBase: money.subtotalBase,
+              subtotalConIva: money.subtotalConIva,
+              costoEnvio: money.costoEnvio,
+              serviceFee: money.serviceFee,
+              propina: money.propina,
+              ivaEnabled: money.ivaEnabled,
               tiempo: tiempoTranscurrido(Number(data.timestamp ?? 0)),
               status: estadoToStatus(estado),
               direccion: String(data.clienteDireccion || '—'),
@@ -233,7 +260,6 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               batchLeaderLocalId: (data.batchLeaderLocalId as string) ?? null,
               deliveryType: data.deliveryType === 'pickup' ? 'pickup' : 'delivery',
               paymentMethod: data.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo',
-              serviceCost: typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost as number) ? (data.serviceCost as number) : undefined,
             });
           }
         }
@@ -290,13 +316,18 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) return;
-      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; total: number; subtotalBase?: number; timestamp: number; estado: EstadoPedido; clienteDireccion: string }>; nextCursor: string | null };
+      const data = await res.json() as { pedidos: PedidoCentral[]; nextCursor: string | null };
       const list: Order[] = (data.pedidos || []).map((p) => ({
         id: p.id,
         cliente: p.clienteNombre || 'Cliente',
         items: p.items || [],
-        total: p.total || 0,
-        subtotalBase: typeof p.subtotalBase === 'number' && !Number.isNaN(p.subtotalBase) ? p.subtotalBase : p.total || 0,
+        total: p.totalCliente ?? p.total ?? 0,
+        subtotalBase: typeof p.subtotalBase === 'number' && !Number.isNaN(p.subtotalBase) ? p.subtotalBase : 0,
+        subtotalConIva: p.subtotalConIva,
+        costoEnvio: p.costoEnvio ?? p.serviceCost,
+        serviceFee: p.serviceFee,
+        propina: p.propina,
+        ivaEnabled: p.ivaEnabled,
         tiempo: tiempoTranscurrido(p.timestamp || 0),
         status: 'entregado' as OrderStatus,
         direccion: p.clienteDireccion || '—',
@@ -306,7 +337,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         riderNombre: null,
         batchId: null,
         batchLeaderLocalId: null,
-        deliveryType: 'delivery',
+        deliveryType: p.deliveryType === 'pickup' ? 'pickup' : 'delivery',
       }));
       if (cursor) {
         setDeliveredList((prev) => [...prev, ...list]);
@@ -333,13 +364,35 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) return;
-      const data = await res.json() as { pedidos: Array<{ id: string; clienteNombre: string; items: string[]; totalCliente?: number; subtotalBase?: number; timestamp: number; clienteDireccion: string }>; nextCursor: string | null };
+      const data = await res.json() as {
+        pedidos: Array<{
+          id: string;
+          clienteNombre: string;
+          items: string[];
+          totalCliente: number;
+          subtotalBase: number;
+          subtotalConIva?: number;
+          costoEnvio?: number;
+          serviceFee?: number;
+          propina?: number;
+          deliveryType?: 'delivery' | 'pickup';
+          ivaEnabled?: boolean;
+          timestamp: number;
+          clienteDireccion: string;
+        }>;
+        nextCursor: string | null;
+      };
       const list: Order[] = (data.pedidos || []).map((p) => ({
         id: p.id,
         cliente: p.clienteNombre || 'Cliente',
         items: p.items || [],
-        total: p.totalCliente || 0,
+        total: typeof p.totalCliente === 'number' && !Number.isNaN(p.totalCliente) ? p.totalCliente : 0,
         subtotalBase: typeof p.subtotalBase === 'number' && !Number.isNaN(p.subtotalBase) ? p.subtotalBase : 0,
+        subtotalConIva: p.subtotalConIva,
+        costoEnvio: p.costoEnvio,
+        serviceFee: p.serviceFee,
+        propina: p.propina,
+        ivaEnabled: p.ivaEnabled,
         tiempo: tiempoTranscurrido(p.timestamp || 0),
         status: 'entregado' as OrderStatus,
         direccion: p.clienteDireccion || '—',
@@ -349,7 +402,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
         riderNombre: null,
         batchId: null,
         batchLeaderLocalId: null,
-        deliveryType: 'delivery',
+        deliveryType: p.deliveryType === 'pickup' ? 'pickup' : 'delivery',
       }));
       if (cursor) setHistoricalList((prev) => [...prev, ...list]);
       else setHistoricalList(list);
@@ -661,17 +714,30 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {[
-              { icon: ShoppingBag, label: 'Pedidos hoy', value: String(activeOrders.length) },
-              { icon: CheckCircle, label: 'Entregados', value: deliveredNextCursor ? `${delivered.length}+` : String(delivered.length) },
-              { icon: TrendingUp, label: 'Ganado hoy', value: `$${todayEarnings.toFixed(2)}` },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="bg-white/20 backdrop-blur rounded-2xl p-3.5 text-center border border-white/10">
-                <Icon className="w-5 h-5 text-dorado-oro mx-auto mb-1.5" />
-                <p className="font-bold text-base">{value}</p>
-                <p className="text-white/80 text-[11px]">{label}</p>
-              </div>
-            ))}
+            {(
+              [
+                { icon: ShoppingBag, label: 'Pedidos hoy', value: String(activeOrders.length) },
+                { icon: CheckCircle, label: 'Entregados', value: deliveredNextCursor ? `${delivered.length}+` : String(delivered.length) },
+                {
+                  icon: TrendingUp,
+                  label: 'Venta menú',
+                  hint: 'Suma menú; el cliente paga más (servicio, envío). Neto en cada pedido.',
+                  value: `$${todayEarnings.toFixed(2)}`,
+                },
+              ] as const
+            ).map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="bg-white/20 backdrop-blur rounded-2xl p-3.5 text-center border border-white/10">
+                  <Icon className="w-5 h-5 text-dorado-oro mx-auto mb-1.5" />
+                  <p className="font-bold text-base tabular-nums">{item.value}</p>
+                  <p className="text-white/80 text-[11px] leading-tight">{item.label}</p>
+                  {'hint' in item && item.hint ? (
+                    <p className="text-white/55 text-[9px] leading-tight mt-1 px-0.5">{item.hint}</p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </header>
 
@@ -817,7 +883,13 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
                       <span className="font-bold text-gray-900 text-sm">{order.orderNum}</span>
-                      <p className="text-xs text-gray-500 mt-0.5">Venta ${order.subtotalBase.toFixed(2)} · {formatDireccionCorta(order.direccion)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Cliente paga ${order.total.toFixed(2)} · Menú ${order.subtotalBase.toFixed(2)}
+                        {order.deliveryType === 'pickup' ? ' · Retiro' : order.costoEnvio ? ` · Envío $${order.costoEnvio.toFixed(2)}` : ''}
+                        {order.serviceFee ? ` · Serv. Andina (cliente) $${order.serviceFee.toFixed(2)}` : ''}
+                        {' · '}
+                        {formatDireccionCorta(order.direccion)}
+                      </p>
                     </div>
                     <LoadingButton
                       type="button"
@@ -1016,7 +1088,36 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                 </div>
                                 <p className="text-sm text-gray-500 mt-1.5">{order.cliente} · {order.tiempo}</p>
                               </div>
-                              <span className="font-black text-rojo-andino text-lg flex-shrink-0">${order.subtotalBase.toFixed(2)}</span>
+                              <div className="text-right flex-shrink-0 max-w-[148px] space-y-0.5">
+                                {(() => {
+                                  const { comisionEst, netoEst } = panelOrderNetoEstimado(order);
+                                  return (
+                                    <>
+                                      <p className="font-black text-rojo-andino text-lg leading-tight tabular-nums">
+                                        ${order.total.toFixed(2)}
+                                      </p>
+                                      <p className="text-[10px] text-gray-500 font-medium leading-tight">Paga el cliente</p>
+                                      <p className="text-[11px] text-gray-600 tabular-nums">
+                                        Menú ${order.subtotalBase.toFixed(2)}
+                                        {order.serviceFee ? (
+                                          <span className="block text-amber-800/90">
+                                            + Serv. Andina (no es tuyo) ${order.serviceFee.toFixed(2)}
+                                          </span>
+                                        ) : null}
+                                        {order.deliveryType !== 'pickup' && (order.costoEnvio ?? 0) > 0 ? (
+                                          <span className="block text-gray-500">Envío ${(order.costoEnvio ?? 0).toFixed(2)}</span>
+                                        ) : null}
+                                      </p>
+                                      <p className="text-xs font-bold text-emerald-800 pt-0.5 border-t border-gray-100 mt-1 tabular-nums">
+                                        ~Recibes {netoEst.toFixed(2)}
+                                      </p>
+                                      <p className="text-[10px] text-gray-400 leading-tight">
+                                        Comisión est. 8% · {comisionEst.toFixed(2)}
+                                      </p>
+                                    </>
+                                  );
+                                })()}
+                              </div>
                             </div>
                             <ul className="text-sm text-gray-600 mb-4 space-y-1.5">
                               {order.items.map((item) => (
@@ -1107,7 +1208,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                         restaurante={local.name}
                                         metodoPago={order.paymentMethod}
                                         total={order.total}
-                                        costoEnvio={order.serviceCost}
+                                        costoEnvio={order.costoEnvio ?? 0}
                                         riderId={order.riderId ?? null}
                                         yaSolicitadoCentral
                                         onSolicitado={() => onRiderSolicitado(order.id)}
@@ -1126,7 +1227,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                         restaurante={local.name}
                                         metodoPago={order.paymentMethod}
                                         total={order.total}
-                                        costoEnvio={order.serviceCost}
+                                        costoEnvio={order.costoEnvio ?? 0}
                                         riderId={order.riderId ?? null}
                                         yaSolicitadoCentral={false}
                                         onSolicitado={() => onRiderSolicitado(order.id)}
@@ -1163,10 +1264,17 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                 <>
                   <div className="space-y-2">
                     {delivered.map((order) => (
-                      <div key={order.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between shadow-sm hover:border-gray-200 transition-colors">
-                        <div>
+                      <div key={order.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between shadow-sm hover:border-gray-200 transition-colors gap-3">
+                        <div className="min-w-0">
                           <span className="font-semibold text-gray-900">{order.id}</span>
-                                  <p className="text-sm text-gray-500 mt-0.5">{order.cliente} · ${order.subtotalBase.toFixed(2)}</p>
+                          <p className="text-sm text-gray-500 mt-0.5 truncate">{order.cliente}</p>
+                          <p className="text-xs text-gray-600 mt-1 tabular-nums">
+                            Cliente ${order.total.toFixed(2)} · Menú ${order.subtotalBase.toFixed(2)}
+                            {order.serviceFee ? ` · Serv. Andina $${order.serviceFee.toFixed(2)}` : ''}
+                          </p>
+                          <p className="text-xs font-semibold text-emerald-800 mt-0.5 tabular-nums">
+                            ~Recibes {panelOrderNetoEstimado(order).netoEst.toFixed(2)}
+                          </p>
                         </div>
                         <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0">
                           <CheckCircle className="w-4 h-4 text-green-600" />
@@ -1207,10 +1315,17 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               <>
                 <div className="space-y-2">
                   {historicalList.map((order) => (
-                    <div key={order.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between shadow-sm hover:border-gray-200 transition-colors">
-                      <div>
+                    <div key={order.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between shadow-sm hover:border-gray-200 transition-colors gap-3">
+                      <div className="min-w-0">
                         <span className="font-semibold text-gray-900">{order.id}</span>
-                        <p className="text-sm text-gray-500 mt-0.5">{order.cliente} · ${order.subtotalBase.toFixed(2)}</p>
+                        <p className="text-sm text-gray-500 mt-0.5 truncate">{order.cliente}</p>
+                        <p className="text-xs text-gray-600 mt-1 tabular-nums">
+                          Cliente ${order.total.toFixed(2)} · Menú ${order.subtotalBase.toFixed(2)}
+                          {order.serviceFee ? ` · Serv. Andina $${order.serviceFee.toFixed(2)}` : ''}
+                        </p>
+                        <p className="text-xs font-semibold text-emerald-800 mt-0.5 tabular-nums">
+                          ~Recibes {panelOrderNetoEstimado(order).netoEst.toFixed(2)}
+                        </p>
                       </div>
                       <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center flex-shrink-0">
                         <CheckCircle className="w-4 h-4 text-gray-500" />
