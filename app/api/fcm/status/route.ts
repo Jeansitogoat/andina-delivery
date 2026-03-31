@@ -14,16 +14,18 @@ export async function GET(request: Request) {
     if (err instanceof Response) return err;
     throw err;
   }
+
+  const { searchParams } = new URL(request.url);
+  const roleQuery = searchParams.get('role');
+  const defaultRole =
+    auth.rol === 'cliente'
+      ? 'user'
+      : auth.rol === 'maestro'
+        ? 'central'
+        : (auth.rol as 'central' | 'rider' | 'local');
+  const role = roleQuery && ALLOWED_ROLES.has(roleQuery) ? roleQuery : defaultRole;
+
   try {
-    const { searchParams } = new URL(request.url);
-    const roleQuery = searchParams.get('role');
-    const defaultRole =
-      auth.rol === 'cliente'
-        ? 'user'
-        : auth.rol === 'maestro'
-          ? 'central'
-          : (auth.rol as 'central' | 'rider' | 'local');
-    const role = roleQuery && ALLOWED_ROLES.has(roleQuery) ? roleQuery : defaultRole;
     const currentToken = request.headers.get('x-fcm-token')?.trim() ?? '';
 
     const db = getAdminFirestore();
@@ -40,6 +42,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ hasToken, hasCurrentToken, tokensCount: merged.length, role });
   } catch (e) {
     console.error('GET /api/fcm/status', e);
-    return NextResponse.json({ error: 'Bad request' }, { status: 400 });
+    return NextResponse.json({
+      hasToken: false,
+      hasCurrentToken: null as boolean | null,
+      tokensCount: 0,
+      role,
+    });
   }
 }

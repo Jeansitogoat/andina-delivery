@@ -397,6 +397,9 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
                 hasToken?: boolean;
               };
               if (data.hasCurrentToken === true) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[FCM] Skip register: token already in server.');
+                }
                 return;
               }
             }

@@ -2,7 +2,7 @@
 
 import { BellRing, ShieldAlert } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '@/lib/useAuth';
+import { useAuth, type AndinaUser } from '@/lib/useAuth';
 import { useNotifications } from '@/lib/useNotifications';
 
 const OPERATIONAL_ROLES = new Set(['local', 'rider', 'central', 'maestro']);
@@ -20,16 +20,16 @@ function detectLikelyDesktop(): boolean {
   }
 }
 
-export default function NotificationShield() {
-  const { user, loading: authLoading } = useAuth();
-  const role =
-    user?.rol === 'local'
-      ? 'local'
-      : user?.rol === 'rider'
-        ? 'rider'
-        : user?.rol === 'central' || user?.rol === 'maestro'
-          ? 'central'
-          : 'user';
+function roleForNotifications(user: AndinaUser): 'local' | 'rider' | 'central' | 'user' {
+  if (user.rol === 'local') return 'local';
+  if (user.rol === 'rider') return 'rider';
+  if (user.rol === 'central' || user.rol === 'maestro') return 'central';
+  return 'user';
+}
+
+/** Solo se monta con usuario operativo ya resuelto: aquí sí corre useNotifications / FCM. */
+function NotificationShieldWithHooks({ user }: { user: AndinaUser }) {
+  const role = roleForNotifications(user);
   const { permission, requestPermission, loading, isSupported } = useNotifications(role);
 
   const [skipped, setSkipped] = useState(false);
@@ -53,8 +53,6 @@ export default function NotificationShield() {
     setSkipped(true);
   }, []);
 
-  if (authLoading || !user) return null;
-  if (!OPERATIONAL_ROLES.has(user.rol)) return null;
   if (permission === 'granted') return null;
   if (skipped) return null;
 
@@ -138,4 +136,13 @@ export default function NotificationShield() {
       </div>
     </div>
   );
+}
+
+export default function NotificationShield() {
+  const { user, loading: authLoading } = useAuth();
+
+  if (authLoading || !user) return null;
+  if (!OPERATIONAL_ROLES.has(user.rol)) return null;
+
+  return <NotificationShieldWithHooks user={user} />;
 }
