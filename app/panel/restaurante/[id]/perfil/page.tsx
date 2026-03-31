@@ -29,6 +29,7 @@ import {
   validatePasswordChangeFields,
   mapFirebasePasswordError,
 } from '@/lib/passwordChangeHelpers';
+import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { useNotifications } from '@/lib/useNotifications';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
@@ -115,6 +116,11 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     const auth = getFirebaseAuth();
     setFbUserState(auth.currentUser);
     return auth.onAuthStateChanged((u) => setFbUserState(u));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    ensureFCMServiceWorkerReady();
   }, []);
 
   useEffect(() => {

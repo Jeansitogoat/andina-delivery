@@ -636,7 +636,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         return;
       }
       if (result === 'granted') {
-        console.log('[FCM] Permiso concedido. Esperando sincronización...');
+        console.log('[FCM] Permiso concedido. Preparando Service Worker....');
         // Delay táctico: da tiempo al navegador para propagar el permiso al SDK de Firebase
         await new Promise((resolve) => setTimeout(resolve, 800));
         const swOutcome = await waitForServiceWorkerWithTimeout(15_000);

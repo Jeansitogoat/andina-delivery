@@ -94,6 +94,26 @@ export async function ensureFCMServiceWorkerReady(): Promise<ServiceWorkerRegist
   return getMessagingSWRegistration();
 }
 
+function registrationHasActiveFcmMessaging(
+  registration: ServiceWorkerRegistration | undefined | null
+): boolean {
+  return Boolean(registration?.active?.scriptURL.includes('firebase-messaging-sw'));
+}
+
+/**
+ * Registro con worker FCM ya en estado active, o null.
+ * No usa navigator.serviceWorker.ready (puede no resolver si aún no hay registro).
+ */
+async function getActiveFcmServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+  const atRoot = await navigator.serviceWorker.getRegistration('/');
+  if (atRoot && registrationHasActiveFcmMessaging(atRoot)) return atRoot;
+  const all = await navigator.serviceWorker.getRegistrations();
+  for (const reg of all) {
+    if (registrationHasActiveFcmMessaging(reg)) return reg;
+  }
+  return null;
+}
+
 /**
  * Espera a que el Service Worker de FCM (firebase-messaging-sw.js) esté activo.
  * Si el SW activo no es el de FCM, intenta registrarlo proactivamente.
@@ -103,17 +123,12 @@ export async function waitForServiceWorker(): Promise<void> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return;
   }
-  // Esperar a que haya cualquier SW ready (prerequisito del navegador)
-  await navigator.serviceWorker.ready;
-  // Verificar que el SW activo sea el de FCM
-  const existing = await navigator.serviceWorker.getRegistration('/');
-  if (existing?.active?.scriptURL.includes('firebase-messaging-sw')) {
-    return; // FCM SW ya está activo y controlando la página
+  const existing = await getActiveFcmServiceWorkerRegistration();
+  if (existing) {
+    return;
   }
-  // SW activo no es el de FCM (o no hay ninguno): intentar registrar/activar
   console.log('[FCM] waitForServiceWorker: SW FCM no activo, intentando registro proactivo...');
   await getMessagingSWRegistration();
-  // Margen adicional en iOS para completar la activación
   if (isIOS()) {
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -165,8 +180,6 @@ export async function getFCMToken(): Promise<string | null> {
     return null;
   }
   try {
-    // Barrera obligatoria: el SW DEBE estar listo antes de getToken para evitar race condition
-    await navigator.serviceWorker.ready;
     await waitForServiceWorker();
     const swReg = await getMessagingSWRegistration();
     if (!swReg) {
@@ -214,7 +227,6 @@ export async function forceRefreshFCMToken(): Promise<string | null> {
     return null;
   }
   try {
-    await navigator.serviceWorker.ready;
     await waitForServiceWorker();
     const swReg = await getMessagingSWRegistration();
     if (!swReg) {
@@ -265,7 +277,6 @@ export async function getFCMTokenWithRetry(options?: {
     delayMs = 2000,
     initialDelayMs = ios ? 2500 : 800,
   } = options ?? {};
-  await navigator.serviceWorker.ready;
   const swOutcome = await waitForServiceWorkerWithTimeout(SW_READY_RACE_MS);
   if (swOutcome === 'timeout') {
     console.warn('[FCM] getFCMTokenWithRetry: timeout esperando SW');
