@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import type { UserRole } from '@/lib/useAuth';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { fcmRegisterSchema } from '@/lib/schemas/fcmRegister';
 
@@ -12,7 +13,7 @@ function stringArraysEqual(a: string[], b: string[]): boolean {
 }
 
 export async function POST(request: Request) {
-  let auth: { uid: string };
+  let auth: { uid: string; rol: UserRole; localId: string | null };
   try {
     auth = await requireAuth(request, ['central', 'rider', 'local', 'maestro', 'cliente']);
   } catch (e) {
@@ -43,6 +44,13 @@ export async function POST(request: Request) {
     const { token: rawToken, role: roleStr, uid: bodyUid, localId: bodyLocalId } = parseResult.data;
     const trimmedToken = rawToken.trim();
 
+    if (roleStr === 'local' && auth.rol !== 'local') {
+      return NextResponse.json(
+        { error: 'Solo cuentas de restaurante pueden registrar notificaciones de local' },
+        { status: 403 }
+      );
+    }
+
     // Anti-spoofing: si el cliente envía uid, debe coincidir exactamente con el del JWT
     if (bodyUid && bodyUid.trim() !== auth.uid) {
       console.warn('[FCM] Intento de registrar token con uid ajeno:', { claim: auth.uid, bodyUid });
@@ -50,18 +58,47 @@ export async function POST(request: Request) {
     }
 
     const db = getAdminFirestore();
-    // Para local: el localId siempre se toma de la identidad autenticada (Firestore), nunca del body sin validar
+    /**
+     * Para local: hace falta persistir `localId` en fcm_tokens porque sendFCMToRestaurantByLocalId
+     * filtra con where('localId','==', pedido.localId). Si users.localId está vacío (datos viejos)
+     * pero el panel envía el id del restaurante y el usuario es rol local, usamos ese valor;
+     * si ambos existen deben coincidir (anti-spoofing).
+     */
     let localId: string | null = null;
     if (roleStr === 'local') {
       const userSnap = await db.collection('users').doc(auth.uid).get();
-      const trustedLocalId = userSnap.data()?.localId ?? null;
-      // Si el body trae localId, debe coincidir con el del usuario autenticado
+      const userData = userSnap.data();
+      const fromDb =
+        typeof userData?.localId === 'string' && userData.localId.trim() ? userData.localId.trim() : null;
+      const fromClaim =
+        typeof auth.localId === 'string' && auth.localId.trim() ? auth.localId.trim() : null;
+      const trustedLocalId = fromDb || fromClaim;
       const candidateLocalId = typeof bodyLocalId === 'string' && bodyLocalId.trim() ? bodyLocalId.trim() : null;
       if (candidateLocalId && trustedLocalId && candidateLocalId !== trustedLocalId) {
-        console.warn('[FCM] Intento de registrar token con localId ajeno:', { uid: auth.uid, candidate: candidateLocalId, trusted: trustedLocalId });
+        console.warn('[FCM] Intento de registrar token con localId ajeno:', {
+          uid: auth.uid,
+          candidate: candidateLocalId,
+          trusted: trustedLocalId,
+        });
         return NextResponse.json({ error: 'localId no coincide con el usuario autenticado' }, { status: 403 });
       }
-      localId = trustedLocalId;
+      if (trustedLocalId) {
+        localId = trustedLocalId;
+      } else if (candidateLocalId) {
+        localId = candidateLocalId;
+        console.warn('[FCM] Register: sin localId en perfil/JWT; usando localId del cliente para', auth.uid);
+      } else {
+        localId = null;
+      }
+      if (!localId) {
+        return NextResponse.json(
+          {
+            error:
+              'Tu cuenta de restaurante no tiene un local asignado en el sistema. Contacta a soporte o vuelve a iniciar sesión desde el enlace de tu local.',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const docId = `${auth.uid}_${roleStr}`;

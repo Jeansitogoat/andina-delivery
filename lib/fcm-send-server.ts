@@ -187,6 +187,16 @@ export async function sendFCMToRestaurantByLocalId(
     ref: d.ref,
     tokens: extractTokens(d.data() as TokenDocData),
   }));
+  const n = docsWithTokens.reduce((a, d) => a + d.tokens.length, 0);
+  if (n === 0) {
+    console.warn(
+      '[FCM] Ningún token para restaurante localId=',
+      localId.trim(),
+      '(docs:',
+      snap.size,
+      ') — revisar registro FCM y campo localId en fcm_tokens'
+    );
+  }
   return sendDedupedToTokens(docsWithTokens, title, body, data);
 }
 
