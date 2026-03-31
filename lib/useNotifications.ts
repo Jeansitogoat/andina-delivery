@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   getFCMToken,
   setupFCMForegroundListener,
@@ -8,6 +8,7 @@ import {
 } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseAuth } from '@/lib/firebase/client';
+import { useAuth, type AndinaUser } from '@/lib/useAuth';
 
 /** PWA instalada (atajo desde pantalla de inicio). */
 export function isFCMPWA(): boolean {
@@ -66,6 +67,8 @@ const TOKEN_KEY_PREFIX = 'andina_fcm_token_';
 const PENDING_REGISTER_KEY = 'andina_fcm_pending_';
 const TOKEN_GET_TIMEOUT_MS = 10_000;
 const REGISTER_FETCH_TIMEOUT_MS = 20_000;
+/** La comprobación /api/fcm/status no debe bloquear el registro más de esto. */
+const FCM_STATUS_PROBE_MS = 3_000;
 
 /** getToken acotado en tiempo; evita tablets colgadas sin feedback. */
 function raceGetFCMToken(timeoutMs: number): Promise<{ token: string | null; timedOut: boolean }> {
@@ -87,6 +90,31 @@ function raceGetFCMToken(timeoutMs: number): Promise<{ token: string | null; tim
         done(null, false);
       });
   });
+}
+
+/** GET /api/fcm/status acotado: si tarda o falla, el caller sigue con el registro. */
+async function fetchFcmStatusProbe(
+  fcmRole: NotificationRole,
+  idTok: string,
+  fcmToken: string
+): Promise<{ hasCurrentToken?: boolean | null; hasToken?: boolean } | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), FCM_STATUS_PROBE_MS);
+  try {
+    const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(fcmRole)}`, {
+      headers: {
+        Authorization: `Bearer ${idTok}`,
+        'x-fcm-token': fcmToken,
+      },
+      signal: ctl.signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean | null; hasToken?: boolean };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function getOptedOut(): boolean {
@@ -118,7 +146,47 @@ function classifyRegisterError(status: number, errorMsg: string): RegisterErrorT
   return 'unknown';
 }
 
+function fcmRoleFromProfile(u: AndinaUser): NotificationRole {
+  if (u.rol === 'local') return 'local';
+  if (u.rol === 'rider') return 'rider';
+  if (u.rol === 'central' || u.rol === 'maestro') return 'central';
+  return 'user';
+}
+
 export function useNotifications(role: NotificationRole, options?: { localId?: string }) {
+  const { user, loading: authLoading } = useAuth();
+
+  /** Página de operador de local: exige rol local + localId antes de POST /register. */
+  const expectsLocalRegister = role === 'local' || Boolean(options?.localId?.trim());
+
+  const fcmRole: NotificationRole = useMemo(() => {
+    const routedAsLocal = role === 'local' || Boolean(options?.localId?.trim());
+    if (authLoading || !user) {
+      return routedAsLocal ? 'local' : role;
+    }
+    if (user.rol === 'local') return 'local';
+    if (routedAsLocal) return 'local';
+    return fcmRoleFromProfile(user);
+  }, [authLoading, user, role, options?.localId]);
+
+  const effectiveLocalId = useMemo(() => {
+    const fromOpts = options?.localId?.trim();
+    const fromUser = user?.localId?.trim();
+    return (fromOpts || fromUser || '').trim();
+  }, [options?.localId, user?.localId]);
+
+  /** Perfil listo para POST: siempre auth resuelto; en contexto local, rol local + id de restaurante. */
+  const registrationAllowed =
+    !authLoading &&
+    user != null &&
+    user.rol != null &&
+    (!expectsLocalRegister || (user.rol === 'local' && Boolean(effectiveLocalId)));
+
+  /** UI: mostrar carga mientras faltan datos obligatorios para registrar un local. */
+  const waitingForFcmProfile =
+    expectsLocalRegister &&
+    (authLoading || !user || user.rol !== 'local' || !effectiveLocalId);
+
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,9 +197,12 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const [resyncing, setResyncing] = useState(false);
   /** null = sin comprobar; true/false según /api/fcm/status (y coincidencia con token local si existe). */
   const [serverTokenRegistered, setServerTokenRegistered] = useState<boolean | null>(null);
+  const registerInFlightRef = useRef(false);
+  /** Tras POST /register OK, evita ráfagas automáticas mientras status/index convergen. */
+  const registerCooldownUntilRef = useRef(0);
 
-  const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${role}` : TOKEN_KEY_PREFIX;
-  const pendingKey = typeof window !== 'undefined' ? `${PENDING_REGISTER_KEY}${role}` : PENDING_REGISTER_KEY;
+  const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${fcmRole}` : TOKEN_KEY_PREFIX;
+  const pendingKey = typeof window !== 'undefined' ? `${PENDING_REGISTER_KEY}${fcmRole}` : PENDING_REGISTER_KEY;
 
   const readStoredToken = useCallback((): string | null => {
     if (typeof window === 'undefined') return null;
@@ -208,36 +279,61 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       setServerTokenRegistered(null);
       return;
     }
+    if (!registrationAllowed) {
+      setServerTokenRegistered(null);
+      return;
+    }
     const idToken = await getIdToken();
     if (!idToken) {
       setServerTokenRegistered(null);
       return;
     }
     const stored = readStoredToken() ?? '';
-    const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(role)}`, {
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        ...(stored ? { 'x-fcm-token': stored } : {}),
-      },
-    }).catch(() => null);
-    if (!res?.ok) {
+    const data =
+      stored.length > 0
+        ? await fetchFcmStatusProbe(fcmRole, idToken, stored)
+        : await (async () => {
+            const ctl = new AbortController();
+            const timer = setTimeout(() => ctl.abort(), FCM_STATUS_PROBE_MS);
+            try {
+              const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(fcmRole)}`, {
+                headers: { Authorization: `Bearer ${idToken}` },
+                signal: ctl.signal,
+              });
+              if (!res.ok) return null;
+              return (await res.json().catch(() => ({}))) as {
+                hasToken?: boolean;
+                hasCurrentToken?: boolean | null;
+              };
+            } catch {
+              return null;
+            } finally {
+              clearTimeout(timer);
+            }
+          })();
+    if (!data) {
       setServerTokenRegistered(null);
       return;
     }
-    const data = (await res.json().catch(() => ({}))) as {
-      hasToken?: boolean;
-      hasCurrentToken?: boolean | null;
-    };
     if (stored && typeof data.hasCurrentToken === 'boolean') {
       setServerTokenRegistered(data.hasCurrentToken);
     } else {
       setServerTokenRegistered(Boolean(data.hasToken));
     }
-  }, [permission, optedOut, role, readStoredToken]);
+  }, [permission, optedOut, fcmRole, readStoredToken, registrationAllowed]);
 
   const registerToken = useCallback(
     async (fcmToken: string | null, silent = false, extraPayloadOverride?: Record<string, string>): Promise<boolean> => {
       if (!fcmToken) return false;
+      if (!registrationAllowed) return false;
+      if (fcmRole === 'local' && !effectiveLocalId) {
+        if (!silent) {
+          console.warn('[FCM] registerToken omitido: rol local sin localId en perfil o ruta.');
+        }
+        return false;
+      }
+      if (registerInFlightRef.current) return false;
+      registerInFlightRef.current = true;
       try {
         // Guardia de Auth: esperar a que Firebase tenga usuario activo antes de enviar
         const uid = await waitForAuthCurrentUser(5000);
@@ -254,8 +350,10 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
           return false;
         }
         // Payload obligatorio: token + uid + rol (+ localId si rol=local)
-        const body: Record<string, string> = { token: fcmToken, role, uid };
-        const extra = extraPayloadOverride ?? (options?.localId ? { localId: options.localId } : undefined);
+        const body: Record<string, string> = { token: fcmToken, role: fcmRole, uid };
+        const extra =
+          extraPayloadOverride ??
+          (fcmRole === 'local' && effectiveLocalId ? { localId: effectiveLocalId } : undefined);
         if (extra) Object.assign(body, extra);
         const abortCtl = new AbortController();
         const registerTimer = setTimeout(() => abortCtl.abort(), REGISTER_FETCH_TIMEOUT_MS);
@@ -285,12 +383,18 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         }
         clearTimeout(registerTimer);
         if (res.ok) {
+          registerCooldownUntilRef.current = Date.now() + 5000;
           lastRegisteredTokenRef.current = fcmToken;
           writeStoredToken(fcmToken);
           // Limpieza inmediata de estado: el mensaje "token no registrado" desaparece sin recargar
           setPendingRegister(false);
           setError(null);
-          console.log('🔥 Token guardado en Firestore. Rol:', role, options?.localId ? `localId:${options.localId}` : '');
+          setServerTokenRegistered(true);
+          console.log(
+            '🔥 Token guardado en Firestore. Rol:',
+            fcmRole,
+            effectiveLocalId ? `localId:${effectiveLocalId}` : ''
+          );
           void refreshServerTokenStatus();
           return true;
         }
@@ -318,9 +422,18 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         console.warn('[FCM] registerToken: Error de red, marcando pendiente:', msg);
         setPendingRegister(true);
         return false;
+      } finally {
+        registerInFlightRef.current = false;
       }
     },
-    [role, options?.localId, writeStoredToken, setPendingRegister, refreshServerTokenStatus]
+    [
+      registrationAllowed,
+      fcmRole,
+      effectiveLocalId,
+      writeStoredToken,
+      setPendingRegister,
+      refreshServerTokenStatus,
+    ]
   );
 
   /**
@@ -368,16 +481,23 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   useEffect(() => {
     if (typeof window === 'undefined' || permission !== 'granted' || optedOut) return;
     if (!isWebPushEnvironment()) return;
+    if (!registrationAllowed) return;
     // Tras reload, el ref arranca en null y forzaba POST aunque localStorage ya tuviera el mismo token.
     lastRegisteredTokenRef.current = readStoredToken();
     const syncToken = () => {
       raceGetFCMToken(TOKEN_GET_TIMEOUT_MS).then(async (r) => {
+        let token = r.token;
         if (r.timedOut) {
-          console.warn('[FCM] Timeout obteniendo token en sync; marcando registro pendiente.');
-          setPendingRegister(true);
-          return;
+          const cached = readStoredToken();
+          if (cached) {
+            token = cached;
+            console.warn('[FCM] Timeout obteniendo token en sync; continuando registro con token almacenado.');
+          } else {
+            console.warn('[FCM] Timeout obteniendo token en sync; marcando registro pendiente.');
+            setPendingRegister(true);
+            return;
+          }
         }
-        const token = r.token;
         if (!token) return;
         const stored = readStoredToken();
         const hasPending = getPendingRegister();
@@ -385,28 +505,26 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         if (looksSyncedLocally) {
           const idTok = await getIdToken();
           if (idTok) {
-            const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(role)}`, {
-              headers: {
-                Authorization: `Bearer ${idTok}`,
-                'x-fcm-token': token,
-              },
-            }).catch(() => null);
-            if (res?.ok) {
-              const data = (await res.json().catch(() => ({}))) as {
-                hasCurrentToken?: boolean | null;
-                hasToken?: boolean;
-              };
-              if (data.hasCurrentToken === true) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[FCM] Skip register: token already in server.');
-                }
-                return;
+            const data = await fetchFcmStatusProbe(fcmRole, idTok, token);
+            if (data?.hasCurrentToken === true) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[FCM] Skip register: token already in server.');
               }
+              return;
             }
+            // Timeout, abort o error de /status: no bloquear registro
           }
         }
+        if (
+          !getPendingRegister() &&
+          Date.now() < registerCooldownUntilRef.current &&
+          readStoredToken() === token &&
+          lastRegisteredTokenRef.current === token
+        ) {
+          return;
+        }
         lastRegisteredTokenRef.current = null;
-        registerToken(token, true);
+        await registerToken(token, true);
       });
     };
     const onVisibility = () => {
@@ -423,7 +541,15 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', onOnline);
     };
-  }, [permission, optedOut, registerToken, readStoredToken, getPendingRegister, role]);
+  }, [
+    permission,
+    optedOut,
+    registrationAllowed,
+    registerToken,
+    readStoredToken,
+    getPendingRegister,
+    fcmRole,
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -454,6 +580,10 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     if (!uid) {
       console.warn('[FCM] requestPermission: No hay usuario autenticado. Abortando solicitud de permiso.');
       setError('Inicia sesión y vuelve a intentar activar notificaciones.');
+      return;
+    }
+    if (!registrationAllowed) {
+      setError('Cargando tu perfil… espera un momento e intenta de nuevo.');
       return;
     }
     try {
@@ -519,11 +649,12 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     } finally {
       setLoading(false);
     }
-  }, [registerWithBackoff, refreshServerTokenStatus, setPendingRegister]);
+  }, [registerWithBackoff, refreshServerTokenStatus, setPendingRegister, registrationAllowed]);
 
   /** Reintenta obtener el token FCM y registrarlo (sin pedir permiso). Para el botón "Reintentar" cuando permission ya es granted. */
   const reintentarRegistro = useCallback(async (): Promise<boolean> => {
     if (permission !== 'granted' || optedOut) return false;
+    if (!registrationAllowed) return false;
     const r = await raceGetFCMToken(TOKEN_GET_TIMEOUT_MS);
     if (r.timedOut) {
       setError('Tiempo de espera agotado');
@@ -533,11 +664,13 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     const ok = await registerWithBackoff(r.token);
     void refreshServerTokenStatus();
     return ok;
-  }, [permission, optedOut, registerWithBackoff, refreshServerTokenStatus]);
+  }, [permission, optedOut, registrationAllowed, registerWithBackoff, refreshServerTokenStatus]);
 
   const resincronizarNotificaciones = useCallback(async () => {
     if (typeof window === 'undefined' || !isWebPushEnvironment()) return;
     if (permission !== 'granted' || optedOut) return;
+    if (!registrationAllowed) return;
+    registerCooldownUntilRef.current = 0;
     setResyncing(true);
     setError(null);
     try {
@@ -582,6 +715,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   }, [
     permission,
     optedOut,
+    registrationAllowed,
     writeStoredToken,
     setPendingRegister,
     pendingKey,
@@ -605,7 +739,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ role, token }),
+        body: JSON.stringify({ role: fcmRole, token }),
       });
       if (res.ok) {
         if (typeof window !== 'undefined') {
@@ -622,7 +756,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     } catch {
       setError('No se pudo desactivar. Intenta de nuevo.');
     }
-  }, [role, setPendingRegister, readStoredToken]);
+  }, [fcmRole, setPendingRegister, readStoredToken]);
 
   const isSupported = typeof window !== 'undefined' && 'Notification' in window;
 
@@ -641,5 +775,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     resincronizarNotificaciones,
     desactivar,
     registerToken,
+    /** True mientras el contexto local espera perfil (rol + localId) para poder registrar. */
+    waitingForFcmProfile,
   };
 }

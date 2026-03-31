@@ -98,8 +98,15 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   const [mensajePassword, setMensajePassword] = useState<{ tipo: 'ok' | 'error'; text: string } | null>(null);
   const [categoriasDiscovery, setCategoriasDiscovery] = useState<string[]>(['cafes']);
   const [fbUserState, setFbUserState] = useState<FirebaseUser | null>(null);
-  const { permission: notifPermission, requestPermission, reintentarRegistro, loading: notifLoading } = useNotifications('local', { localId: id });
-  const [tokenActivo, setTokenActivo] = useState<boolean | null>(null);
+  const {
+    permission: notifPermission,
+    requestPermission,
+    reintentarRegistro,
+    loading: notifLoading,
+    serverTokenRegistered,
+    refreshServerTokenStatus,
+    waitingForFcmProfile,
+  } = useNotifications('local', { localId: id });
   const [syncingDevice, setSyncingDevice] = useState(false);
 
   useEffect(() => {
@@ -160,36 +167,6 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
       .catch(() => {});
     return () => { cancelled = true; };
   }, [id]);
-
-  useEffect(() => {
-    if (!id || notifPermission !== 'granted') {
-      setTokenActivo(null);
-      return;
-    }
-    let cancelled = false;
-    const loadStatus = async () => {
-      const tok = await getIdToken();
-      if (!tok || cancelled) return;
-      const stored =
-        typeof window !== 'undefined' ? localStorage.getItem('andina_fcm_token_local') ?? '' : '';
-      const res = await fetch('/api/fcm/status?role=local', {
-        headers: {
-          Authorization: `Bearer ${tok}`,
-          ...(stored ? { 'x-fcm-token': stored } : {}),
-        },
-      }).catch(() => null);
-      if (!res || !res.ok || cancelled) {
-        if (!cancelled) setTokenActivo(false);
-        return;
-      }
-      const data = (await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean };
-      if (!cancelled) setTokenActivo(Boolean(data.hasCurrentToken));
-    };
-    loadStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, notifPermission, notifLoading]);
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
@@ -399,17 +376,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
       if (token && typeof window !== 'undefined') {
         localStorage.setItem('andina_fcm_token_local', token);
       }
-      const tok = await getIdToken();
-      if (tok) {
-        const res = await fetch('/api/fcm/status?role=local', {
-          headers: {
-            Authorization: `Bearer ${tok}`,
-            ...(token ? { 'x-fcm-token': token } : {}),
-          },
-        }).catch(() => null);
-        const data = res && res.ok ? ((await res.json().catch(() => ({}))) as { hasCurrentToken?: boolean }) : null;
-        setTokenActivo(Boolean(data?.hasCurrentToken));
-      }
+      void refreshServerTokenStatus();
     } finally {
       setSyncingDevice(false);
     }
@@ -858,8 +825,24 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               <p className="text-sm text-gray-600">
                 Permiso: <strong>{notifPermission === 'granted' ? 'Activo' : notifPermission === 'denied' ? 'Bloqueado' : 'Pendiente'}</strong>
               </p>
-              <p className="text-sm text-gray-600">
-                Token actual: <strong>{notifPermission !== 'granted' ? 'Sin permiso' : tokenActivo ? 'Activo' : 'No sincronizado'}</strong>
+              <p className="text-sm text-gray-600 flex flex-wrap items-center gap-2">
+                <span>Token actual:</span>
+                <strong className="inline-flex items-center gap-1.5 font-semibold">
+                  {notifPermission !== 'granted' ? (
+                    'Sin permiso'
+                  ) : waitingForFcmProfile ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-rojo-andino shrink-0" aria-hidden />
+                      Preparando perfil…
+                    </>
+                  ) : serverTokenRegistered === true ? (
+                    'Sincronizado'
+                  ) : serverTokenRegistered === false ? (
+                    'No sincronizado'
+                  ) : (
+                    'Comprobando…'
+                  )}
+                </strong>
               </p>
               <button
                 type="button"
