@@ -497,6 +497,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     if (typeof window === 'undefined' || permission !== 'granted' || optedOut) return;
     if (!isWebPushEnvironment()) return;
     if (!registrationAllowed) return;
+    if (expectsLocalRegister) return;
     // Tras reload, el ref arranca en null y forzaba POST aunque localStorage ya tuviera el mismo token.
     lastRegisteredTokenRef.current = readStoredToken();
     const syncToken = () => {
@@ -577,6 +578,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     permission,
     optedOut,
     registrationAllowed,
+    expectsLocalRegister,
     registerToken,
     readStoredToken,
     getPendingRegister,

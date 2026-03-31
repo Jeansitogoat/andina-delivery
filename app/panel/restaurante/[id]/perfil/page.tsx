@@ -102,11 +102,14 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     requestPermission,
     reintentarRegistro,
     loading: notifLoading,
+    error: notifError,
+    isSupported: notifSupported,
+    optedOut,
     serverTokenRegistered,
     refreshServerTokenStatus,
     waitingForFcmProfile,
   } = useNotifications('local', { localId: id });
-  const [syncingDevice, setSyncingDevice] = useState(false);
+  const [reintentandoNotif, setReintentandoNotif] = useState(false);
 
   useEffect(() => {
     const auth = getFirebaseAuth();
@@ -170,6 +173,12 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    if (notifPermission !== 'granted' || optedOut) return;
+    void refreshServerTokenStatus();
+  }, [id, notifPermission, optedOut, refreshServerTokenStatus]);
 
   async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -363,19 +372,18 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
   const showPasswordFormRestaurante = hasEmailPasswordProvider(fbUserState);
   const showGoogleMessageRestaurante = fbUserState && !showPasswordFormRestaurante;
 
-  async function syncCurrentDevice() {
-    setSyncingDevice(true);
+  async function activarOReintentarNotificaciones() {
+    if (notifPermission !== 'granted' || optedOut) {
+      await requestPermission();
+      await refreshServerTokenStatus();
+      return;
+    }
+    setReintentandoNotif(true);
     try {
-      if (notifPermission !== 'granted') {
-        await requestPermission();
-      } else {
-        await reintentarRegistro();
-      }
-      void refreshServerTokenStatus();
-    } catch {
-      /* errores ya en el hook (requestPermission / reintentarRegistro) */
+      await reintentarRegistro();
+      await refreshServerTokenStatus();
     } finally {
-      setSyncingDevice(false);
+      setReintentandoNotif(false);
     }
   }
 
@@ -819,36 +827,36 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
               <span className="font-semibold text-gray-900">Estado del dispositivo</span>
             </div>
             <div className="px-4 pb-4 space-y-3">
-              <p className="text-sm text-gray-600">
-                Permiso: <strong>{notifPermission === 'granted' ? 'Activo' : notifPermission === 'denied' ? 'Bloqueado' : 'Pendiente'}</strong>
-              </p>
-              <p className="text-sm text-gray-600 flex flex-wrap items-center gap-2">
-                <span>Token actual:</span>
-                <strong className="inline-flex items-center gap-1.5 font-semibold">
-                  {notifPermission !== 'granted' ? (
-                    'Sin permiso'
-                  ) : waitingForFcmProfile ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-rojo-andino shrink-0" aria-hidden />
-                      Preparando perfil…
-                    </>
-                  ) : serverTokenRegistered === true ? (
-                    'Sincronizado'
-                  ) : serverTokenRegistered === false ? (
-                    'No sincronizado'
+              {notifPermission === 'granted' && !optedOut && serverTokenRegistered === true ? (
+                <p className="text-sm font-semibold text-green-700">Notificaciones: Registradas ✅</p>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-red-600">Notificaciones: No Registradas ❌</p>
+                  {notifError ? (
+                    <p className="text-xs text-red-600 leading-relaxed">{notifError}</p>
+                  ) : null}
+                  {!notifSupported ? (
+                    <p className="text-xs text-amber-700 leading-relaxed">
+                      Este navegador no soporta notificaciones push para operación.
+                    </p>
                   ) : (
-                    'Comprobando…'
+                    <button
+                      type="button"
+                      disabled={notifLoading || reintentandoNotif || waitingForFcmProfile}
+                      onClick={() => void activarOReintentarNotificaciones()}
+                      className="w-full py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-70"
+                    >
+                      {waitingForFcmProfile
+                        ? 'Cargando perfil...'
+                        : notifLoading
+                          ? 'Activando...'
+                          : reintentandoNotif
+                            ? 'Reintentando...'
+                            : 'Activar/Reintentar'}
+                    </button>
                   )}
-                </strong>
-              </p>
-              <button
-                type="button"
-                disabled={syncingDevice || notifLoading}
-                onClick={() => void syncCurrentDevice()}
-                className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-70"
-              >
-                {syncingDevice ? 'Sincronizando...' : 'Sincronizar dispositivo'}
-              </button>
+                </>
+              )}
             </div>
           </section>
 

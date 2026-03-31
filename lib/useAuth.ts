@@ -284,6 +284,7 @@ export function useAuth() {
                 ? 'central'
                 : user.rol;
           localStorage.removeItem(`andina_fcm_token_${roleToClean}`);
+          localStorage.removeItem(`andina_fcm_pending_${roleToClean}`);
         }
       } catch {
         /* Silencioso en mÃ³vil (modo privado, WebView, etc.) */
