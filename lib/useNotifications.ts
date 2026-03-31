@@ -66,6 +66,11 @@ const OPTED_OUT_KEY = 'andina_notifications_opted_out';
 const TOKEN_KEY_PREFIX = 'andina_fcm_token_';
 const PENDING_REGISTER_KEY = 'andina_fcm_pending_';
 const TOKEN_GET_TIMEOUT_MS = 10_000;
+/**
+ * Sync en background: getFCMToken() primero espera SW + registro FCM (varios s) y luego getToken;
+ * un tope de 10s dispara timeout aunque la promesa siga viva → falsos "Timeout en sync".
+ */
+const TOKEN_SYNC_GET_TIMEOUT_MS = 30_000;
 const REGISTER_FETCH_TIMEOUT_MS = 20_000;
 /** La comprobación /api/fcm/status no debe bloquear el registro más de esto. */
 const FCM_STATUS_PROBE_MS = 3_000;
@@ -200,6 +205,10 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const registerInFlightRef = useRef(false);
   /** Tras POST /register OK, evita ráfagas automáticas mientras status/index convergen. */
   const registerCooldownUntilRef = useRef(0);
+  /** Evita varias carreras raceGetFCMToken en paralelo (visibility + efecto + online). */
+  const syncTokenInFlightRef = useRef(false);
+  /** Copia del último serverTokenRegistered para decisiones en callbacks async sin cerrar sobre estado viejo. */
+  const serverTokenRegisteredRef = useRef(false);
 
   const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${fcmRole}` : TOKEN_KEY_PREFIX;
   const pendingKey = typeof window !== 'undefined' ? `${PENDING_REGISTER_KEY}${fcmRole}` : PENDING_REGISTER_KEY;
@@ -269,6 +278,10 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       }
     }
   }, [pendingKey]);
+
+  useEffect(() => {
+    serverTokenRegisteredRef.current = serverTokenRegistered === true;
+  }, [serverTokenRegistered]);
 
   const refreshServerTokenStatus = useCallback(async () => {
     if (typeof window === 'undefined' || permission !== 'granted' || optedOut) {
@@ -485,13 +498,23 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     // Tras reload, el ref arranca en null y forzaba POST aunque localStorage ya tuviera el mismo token.
     lastRegisteredTokenRef.current = readStoredToken();
     const syncToken = () => {
-      raceGetFCMToken(TOKEN_GET_TIMEOUT_MS).then(async (r) => {
+      if (syncTokenInFlightRef.current) return;
+      syncTokenInFlightRef.current = true;
+      raceGetFCMToken(TOKEN_SYNC_GET_TIMEOUT_MS).then(async (r) => {
+        try {
         let token = r.token;
         if (r.timedOut) {
           const cached = readStoredToken();
           if (cached) {
             token = cached;
-            console.warn('[FCM] Timeout obteniendo token en sync; continuando registro con token almacenado.');
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[FCM] Sync: tope de tiempo en getToken; usando token en almacenamiento.');
+            }
+          } else if (serverTokenRegisteredRef.current) {
+            console.warn(
+              '[FCM] Sync en segundo plano: no hubo token local a tiempo; el servidor puede tener un token viejo. Si no llegan notificaciones, en Perfil del local usen «Re-sincronizar dispositivo».'
+            );
+            return;
           } else {
             console.warn('[FCM] Timeout obteniendo token en sync; marcando registro pendiente.');
             setPendingRegister(true);
@@ -525,6 +548,9 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         }
         lastRegisteredTokenRef.current = null;
         await registerToken(token, true);
+        } finally {
+          syncTokenInFlightRef.current = false;
+        }
       });
     };
     const onVisibility = () => {
