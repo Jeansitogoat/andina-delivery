@@ -65,15 +65,16 @@ export type NotificationPermission = 'granted' | 'denied' | 'default';
 const OPTED_OUT_KEY = 'andina_notifications_opted_out';
 const TOKEN_KEY_PREFIX = 'andina_fcm_token_';
 const PENDING_REGISTER_KEY = 'andina_fcm_pending_';
-const TOKEN_GET_TIMEOUT_MS = 10_000;
 /**
- * Sync en background: getFCMToken() primero espera SW + registro FCM (varios s) y luego getToken;
- * un tope de 10s dispara timeout aunque la promesa siga viva → falsos "Timeout en sync".
+ * Presupuesto único para SW + getToken: toques cortos (10s) cortaban la promesa mientras el SW aún cargaba.
+ * Aplica a botón del usuario, reintento y sync en segundo plano.
  */
-const TOKEN_SYNC_GET_TIMEOUT_MS = 30_000;
+const FCM_GET_TOKEN_BUDGET_MS = 55_000;
 const REGISTER_FETCH_TIMEOUT_MS = 20_000;
 /** La comprobación /api/fcm/status no debe bloquear el registro más de esto. */
 const FCM_STATUS_PROBE_MS = 3_000;
+/** Evita disparar getToken al cambiar de pestaña cada pocos segundos. */
+const FCM_VISIBILITY_SYNC_COOLDOWN_MS = 120_000;
 
 /** getToken acotado en tiempo; evita tablets colgadas sin feedback. */
 function raceGetFCMToken(timeoutMs: number): Promise<{ token: string | null; timedOut: boolean }> {
@@ -207,6 +208,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const registerCooldownUntilRef = useRef(0);
   /** Evita varias carreras raceGetFCMToken en paralelo (visibility + efecto + online). */
   const syncTokenInFlightRef = useRef(false);
+  const lastVisibilityFcmSyncRef = useRef(0);
   /** Copia del último serverTokenRegistered para decisiones en callbacks async sin cerrar sobre estado viejo. */
   const serverTokenRegisteredRef = useRef(false);
 
@@ -500,7 +502,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     const syncToken = () => {
       if (syncTokenInFlightRef.current) return;
       syncTokenInFlightRef.current = true;
-      raceGetFCMToken(TOKEN_SYNC_GET_TIMEOUT_MS).then(async (r) => {
+      raceGetFCMToken(FCM_GET_TOKEN_BUDGET_MS).then(async (r) => {
         try {
         let token = r.token;
         if (r.timedOut) {
@@ -554,7 +556,11 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       });
     };
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') syncToken();
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastVisibilityFcmSyncRef.current < FCM_VISIBILITY_SYNC_COOLDOWN_MS) return;
+      lastVisibilityFcmSyncRef.current = now;
+      syncToken();
     };
     const onOnline = () => {
       console.log('[FCM] Conexión restaurada. Re-sincronizando token pendiente...');
@@ -639,11 +645,11 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
         console.log('[FCM] SW listo. Obteniendo token...');
         let token: string | null = null;
         let sawTimeout = false;
-        for (let attempt = 0; attempt < 3 && !token && !sawTimeout; attempt++) {
+        for (let attempt = 0; attempt < 2 && !token && !sawTimeout; attempt++) {
           if (attempt > 0) {
             await new Promise((resolve) => setTimeout(resolve, 2000));
           }
-          const r = await raceGetFCMToken(TOKEN_GET_TIMEOUT_MS);
+          const r = await raceGetFCMToken(FCM_GET_TOKEN_BUDGET_MS);
           if (r.timedOut) {
             sawTimeout = true;
             setError('Tiempo de espera agotado');
@@ -681,7 +687,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const reintentarRegistro = useCallback(async (): Promise<boolean> => {
     if (permission !== 'granted' || optedOut) return false;
     if (!registrationAllowed) return false;
-    const r = await raceGetFCMToken(TOKEN_GET_TIMEOUT_MS);
+    const r = await raceGetFCMToken(FCM_GET_TOKEN_BUDGET_MS);
     if (r.timedOut) {
       setError('Tiempo de espera agotado');
       return false;
@@ -711,7 +717,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       }
       const { forceRefreshFCMToken } = await import('@/lib/fcm-client');
       const outcome = await new Promise<{ token: string | null; timedOut: boolean }>((resolve) => {
-        const timer = setTimeout(() => resolve({ token: null, timedOut: true }), TOKEN_GET_TIMEOUT_MS);
+        const timer = setTimeout(() => resolve({ token: null, timedOut: true }), FCM_GET_TOKEN_BUDGET_MS);
         forceRefreshFCMToken()
           .then((token) => {
             clearTimeout(timer);

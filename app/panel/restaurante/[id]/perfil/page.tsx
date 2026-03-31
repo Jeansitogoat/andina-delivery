@@ -30,7 +30,6 @@ import {
   mapFirebasePasswordError,
 } from '@/lib/passwordChangeHelpers';
 import { useNotifications } from '@/lib/useNotifications';
-import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
@@ -372,11 +371,9 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
       } else {
         await reintentarRegistro();
       }
-      const token = await getFCMTokenWithRetry({ maxAttempts: 3, delayMs: 1500 });
-      if (token && typeof window !== 'undefined') {
-        localStorage.setItem('andina_fcm_token_local', token);
-      }
       void refreshServerTokenStatus();
+    } catch {
+      /* errores ya en el hook (requestPermission / reintentarRegistro) */
     } finally {
       setSyncingDevice(false);
     }
