@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getIdToken } from '@/lib/authToken';
+import { useAuth } from '@/lib/useAuth';
 import {
   ArrowLeft,
   Zap,
@@ -15,10 +17,8 @@ import {
   FileText,
   MoreHorizontal,
   ChevronRight,
-  Clock,
 } from 'lucide-react';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
-import { formatWhatsAppLink } from '@/lib/utils/phone';
 
 // ---- Tipos ----
 interface MandadoForm {
@@ -26,6 +26,10 @@ interface MandadoForm {
   desde: string;
   hasta: string;
   telefono: string;
+  desdeLat: number | null;
+  desdeLng: number | null;
+  hastaLat: number | null;
+  hastaLng: number | null;
 }
 
 // ---- Datos ----
@@ -103,14 +107,38 @@ function ProgressBar({ step }: { step: number }) {
 // ---- Página principal ----
 export default function ExpressPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState<MandadoForm>({ que: '', desde: '', hasta: '', telefono: '' });
-  const [confirmed, setConfirmed] = useState(false);
+  const [form, setForm] = useState<MandadoForm>({
+    que: '',
+    desde: '',
+    hasta: '',
+    telefono: '',
+    desdeLat: null,
+    desdeLng: null,
+    hastaLat: null,
+    hastaLng: null,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(false);
+  /** Paso 2: un solo mapa visible (Recogida / Entrega). */
+  const [mapaTab, setMapaTab] = useState<'desde' | 'hasta'>('desde');
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
   }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace('/auth?redirect=/express');
+      return;
+    }
+    if (user.rol !== 'cliente') {
+      router.replace('/');
+    }
+  }, [authLoading, user, router]);
 
   const handleTipoClick = (tipo: string) => {
     if (form.que.includes(tipo)) return;
@@ -119,11 +147,45 @@ export default function ExpressPage() {
 
   const handleNext = () => {
     if (step < 3) setStep((s) => s + 1);
-    else handleConfirm();
+    else void handleConfirm();
   };
 
-  const handleConfirm = () => {
-    setConfirmed(true);
+  const handleConfirm = async () => {
+    setSubmitError(null);
+    const tok = await getIdToken();
+    if (!tok) {
+      setSubmitError('Inicia sesión para solicitar un mandado.');
+      return;
+    }
+    const categoria = form.que.split(':')[0]?.trim().slice(0, 80) ?? '';
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/mandados', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({
+          categoria,
+          descripcion: form.que.trim(),
+          desdeTexto: form.desde.trim(),
+          hastaTexto: form.hasta.trim(),
+          desdeLat: form.desdeLat,
+          desdeLng: form.desdeLng,
+          hastaLat: form.hastaLat,
+          hastaLng: form.hastaLng,
+          clienteTelefono: form.telefono.trim(),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
+      if (!res.ok) {
+        setSubmitError(data.error ?? 'No se pudo crear el mandado.');
+        return;
+      }
+      if (data.id) router.push(`/mandado/${data.id}`);
+    } catch {
+      setSubmitError('Error de red. Intenta de nuevo.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const canNext =
@@ -133,112 +195,10 @@ export default function ExpressPage() {
       ? form.desde.trim().length > 0 && form.hasta.trim().length > 0
       : true;
 
-  // ---- CONFIRMACIÓN ----
-  if (confirmed) {
+  if (authLoading || !user || user.rol !== 'cliente') {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-amber-50 to-white flex flex-col items-center justify-center px-4">
-        <div
-          className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 text-center"
-          style={{ animation: 'scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards' }}
-        >
-          {/* Ícono éxito */}
-          <div className="w-20 h-20 rounded-full bg-dorado-oro/20 flex items-center justify-center mx-auto mb-5">
-            <div className="w-14 h-14 rounded-full bg-dorado-oro flex items-center justify-center">
-              <Zap className="w-8 h-8 text-gray-900" />
-            </div>
-          </div>
-          <h2 className="font-black text-2xl text-gray-900 mb-2">¡Mandado solicitado!</h2>
-          <p className="text-gray-500 text-sm mb-6">
-            Tu socio de la Compañía Virgen de la Merced está en camino.
-          </p>
-
-          {/* Tiempo estimado */}
-          <div className="flex items-center justify-center gap-2 bg-dorado-oro/10 border border-dorado-oro/30 rounded-2xl py-3 px-5 mb-5">
-            <Clock className="w-4 h-4 text-dorado-oro" />
-            <span className="text-sm font-semibold text-gray-800">
-              Tiempo estimado: <span className="text-rojo-andino font-black">15-30 min</span>
-            </span>
-          </div>
-
-          {/* Resumen */}
-          <div className="bg-gray-50 rounded-2xl p-4 text-left space-y-3 mb-6">
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-lg bg-dorado-oro/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <FileText className="w-3.5 h-3.5 text-amber-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-400 font-medium">Mandado</p>
-                <p className="text-sm text-gray-800 font-semibold">{form.que}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-lg bg-dorado-oro/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <MapPin className="w-3.5 h-3.5 text-amber-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-400 font-medium">Desde</p>
-                <p className="text-sm text-gray-800 font-semibold">{form.desde}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-lg bg-rojo-andino/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <MapPin className="w-3.5 h-3.5 text-rojo-andino" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-400 font-medium">Hasta</p>
-                <p className="text-sm text-gray-800 font-semibold">{form.hasta}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Socio */}
-          <div className="flex items-center gap-3 bg-rojo-andino/5 border border-rojo-andino/15 rounded-2xl p-3 mb-6 text-left">
-            <div className="w-10 h-10 rounded-full bg-rojo-andino/10 flex items-center justify-center flex-shrink-0">
-              <Truck className="w-5 h-5 text-rojo-andino" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-900">Cía. Virgen de la Merced</p>
-              <p className="text-xs text-gray-500 mt-0.5">Socio asignado · En camino</p>
-            </div>
-          </div>
-
-          <a
-            href={`${formatWhatsAppLink('593992250333')}?text=${encodeURIComponent(
-              `Hola! Solicité un mandado:\n¿Qué? ${form.que}\nDesde: ${form.desde}\nHasta: ${form.hasta}`
-            )}`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm mb-3 transition-colors"
-          >
-            <Phone className="w-4 h-4" />
-            Contactar por WhatsApp · 099 225 0333
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              setConfirmed(false);
-              setStep(1);
-              setForm({ que: '', desde: '', hasta: '', telefono: '' });
-            }}
-            className="w-full py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm mb-2 transition-colors"
-          >
-            Solicitar otro mandado
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            className="w-full py-3 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-bold text-sm transition-colors"
-          >
-            Volver al inicio
-          </button>
-        </div>
-
-        <style>{`
-          @keyframes scaleIn {
-            from { opacity: 0; transform: scale(0.85); }
-            to   { opacity: 1; transform: scale(1); }
-          }
-        `}</style>
+      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-sm text-gray-500">Cargando…</p>
       </main>
     );
   }
@@ -376,73 +336,95 @@ export default function ExpressPage() {
             style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
           >
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              {/* Recoger en */}
-              <div className="px-4 py-4">
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-800 mb-2">
-                  <div className="w-6 h-6 rounded-lg bg-dorado-oro/20 flex items-center justify-center">
-                    <MapPin className="w-3.5 h-3.5 text-amber-600" />
-                  </div>
-                  Recoger en *
-                </label>
-                <CampoUbicacionConMapa
-                  value={form.desde}
-                  onChange={(v) => setForm((f) => ({ ...f, desde: v }))}
-                  label=""
-                  placeholder="¿Dónde recogemos el mandado?"
-                  compact
-                />
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {SUGERENCIAS_DESDE.slice(0, 4).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, desde: s }))}
-                      className="px-2.5 py-1 rounded-lg bg-dorado-oro/10 text-amber-700 text-xs font-medium hover:bg-dorado-oro/20 transition-colors"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex p-1.5 gap-1 border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setMapaTab('desde')}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
+                    mapaTab === 'desde'
+                      ? 'bg-dorado-oro text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-xs font-black text-amber-800 bg-white/50 px-1.5 rounded">A</span>
+                  Recogida
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMapaTab('hasta')}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
+                    mapaTab === 'hasta'
+                      ? 'bg-rojo-andino/15 text-rojo-andino shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-xs font-black text-white bg-rojo-andino px-1.5 rounded">B</span>
+                  Entrega
+                </button>
               </div>
 
-              {/* Línea conectora visual */}
-              <div className="relative flex items-center px-4">
-                <div className="w-6 flex flex-col items-center gap-0.5">
-                  <div className="w-0.5 h-2 bg-gray-200 rounded" />
-                  <div className="w-0.5 h-2 bg-gray-200 rounded" />
-                  <div className="w-0.5 h-2 bg-gray-200 rounded" />
-                </div>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-
-              {/* Entregar en */}
-              <div className="px-4 py-4">
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-800 mb-2">
-                  <div className="w-6 h-6 rounded-lg bg-rojo-andino/10 flex items-center justify-center">
-                    <MapPin className="w-3.5 h-3.5 text-rojo-andino" />
+              {mapaTab === 'desde' ? (
+                <div className="px-4 py-4">
+                  <p className="text-xs text-gray-500 mb-3">
+                    Punto <strong className="text-amber-800">A</strong> — donde recogemos el mandado.
+                  </p>
+                  <CampoUbicacionConMapa
+                    value={form.desde}
+                    onChange={(v) => setForm((f) => ({ ...f, desde: v }))}
+                    onCoordsChange={(lat, lng) => setForm((f) => ({ ...f, desdeLat: lat, desdeLng: lng }))}
+                    initialLat={form.desdeLat}
+                    initialLng={form.desdeLng}
+                    label=""
+                    placeholder="¿Dónde recogemos el mandado?"
+                    compact
+                  />
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {SUGERENCIAS_DESDE.slice(0, 4).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, desde: s }))}
+                        className="px-2.5 py-1 rounded-lg bg-dorado-oro/10 text-amber-700 text-xs font-medium hover:bg-dorado-oro/20 transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
                   </div>
-                  Entregar en *
-                </label>
-                <CampoUbicacionConMapa
-                  value={form.hasta}
-                  onChange={(v) => setForm((f) => ({ ...f, hasta: v }))}
-                  label=""
-                  placeholder="¿A dónde lo llevamos?"
-                  compact
-                />
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {SUGERENCIAS_HASTA.slice(0, 4).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, hasta: s }))}
-                      className="px-2.5 py-1 rounded-lg bg-rojo-andino/10 text-rojo-andino text-xs font-medium hover:bg-rojo-andino/20 transition-colors"
-                    >
-                      {s}
-                    </button>
-                  ))}
                 </div>
-              </div>
+              ) : (
+                <div className="px-4 py-4">
+                  <p className="text-xs text-gray-500 mb-3">
+                    Punto <strong className="text-rojo-andino">B</strong> — donde entregamos el mandado.
+                  </p>
+                  {form.desde.trim() ? (
+                    <div className="mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-600">
+                      <span className="text-amber-700 font-semibold">A</span> {form.desde}
+                    </div>
+                  ) : null}
+                  <CampoUbicacionConMapa
+                    value={form.hasta}
+                    onChange={(v) => setForm((f) => ({ ...f, hasta: v }))}
+                    onCoordsChange={(lat, lng) => setForm((f) => ({ ...f, hastaLat: lat, hastaLng: lng }))}
+                    initialLat={form.hastaLat}
+                    initialLng={form.hastaLng}
+                    label=""
+                    placeholder="¿A dónde lo llevamos?"
+                    compact
+                  />
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {SUGERENCIAS_HASTA.slice(0, 4).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, hasta: s }))}
+                        className="px-2.5 py-1 rounded-lg bg-rojo-andino/10 text-rojo-andino text-xs font-medium hover:bg-rojo-andino/20 transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Info de costo */}
@@ -543,13 +525,16 @@ export default function ExpressPage() {
 
       {/* ---- BOTÓN STICKY INFERIOR ---- */}
       <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-50 via-gray-50/95 to-transparent px-4 pb-6 pt-4 z-30">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto space-y-2">
+          {submitError ? (
+            <p className="text-sm text-center text-red-600 font-medium px-1">{submitError}</p>
+          ) : null}
           <button
             type="button"
             onClick={handleNext}
-            disabled={!canNext}
+            disabled={!canNext || submitting}
             className={`w-full py-4 rounded-2xl font-bold text-base shadow-2xl transition-all flex items-center justify-center gap-2 ${
-              canNext
+              canNext && !submitting
                 ? 'bg-rojo-andino hover:bg-rojo-andino/90 text-white active:scale-[0.98]'
                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }`}
@@ -559,6 +544,8 @@ export default function ExpressPage() {
                 Siguiente
                 <ChevronRight className="w-5 h-5" />
               </>
+            ) : submitting ? (
+              <>Enviando…</>
             ) : (
               <>
                 <Zap className="w-5 h-5" />

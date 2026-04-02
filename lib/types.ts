@@ -139,3 +139,36 @@ export interface CarreraRider {
   totalCliente?: number;
 }
 
+/** Mandados (/express): documento plano en Firestore `mandados`. */
+export type EstadoMandado =
+  | 'pendiente'
+  | 'asignado'
+  | 'en_camino'
+  | 'completado'
+  | 'cancelado';
+
+/** Consultas acotadas en paneles operativos (evitar lecturas innecesarias). */
+export const MANDADO_ESTADOS_ACTIVOS_CENTRAL: EstadoMandado[] = ['pendiente', 'asignado', 'en_camino'];
+export const MANDADO_ESTADOS_ACTIVOS_RIDER: EstadoMandado[] = ['asignado', 'en_camino'];
+
+export interface MandadoCentral {
+  id: string;
+  clienteId: string;
+  clienteNombre: string;
+  clienteTelefono: string;
+  categoria: string;
+  descripcion: string;
+  desdeTexto: string;
+  hastaTexto: string;
+  desdeLat: number | null;
+  desdeLng: number | null;
+  hastaLat: number | null;
+  hastaLng: number | null;
+  estado: EstadoMandado;
+  riderId: string | null;
+  riderNombre: string | null;
+  timestamp: number;
+  hora?: string;
+  updatedAt?: number;
+}
+

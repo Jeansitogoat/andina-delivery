@@ -30,11 +30,19 @@ import {
   CreditCard,
   ChevronDown,
   Settings,
+  Zap,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { useOrderSoundAutoplayUnlock } from '@/lib/useOrderSoundAutoplayUnlock';
 import { useAuth } from '@/lib/useAuth';
-import type { EstadoCarrera, EstadoRider, CarreraRider } from '@/lib/types';
+import {
+  MANDADO_ESTADOS_ACTIVOS_RIDER,
+  type EstadoCarrera,
+  type EstadoRider,
+  type CarreraRider,
+  type MandadoCentral,
+} from '@/lib/types';
+import { docToMandadoCentral } from '@/lib/mandado-map';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
@@ -112,7 +120,7 @@ export default function PanelRiderPage() {
   useNotifications('rider');
   const [carreras, setCarreras] = useState<CarreraRider[]>([]);
   const [historialHoy, setHistorialHoy] = useState<CarreraRider[]>([]);
-  const [tab, setTab] = useState<'activas' | 'historial'>('activas');
+  const [tab, setTab] = useState<'activas' | 'mandados' | 'historial'>('activas');
   const [filtroHistorial, setFiltroHistorial] = useState<'hoy' | 'semana' | 'mes'>('hoy');
   const [carreraActiva, setCarreraActiva] = useState<CarreraRider | null>(null);
   const [mostrarVerificacion, setMostrarVerificacion] = useState(false);
@@ -127,6 +135,8 @@ export default function PanelRiderPage() {
   const [sessionInvalid, setSessionInvalid] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [avanzandoKey, setAvanzandoKey] = useState<string | null>(null);
+  const [avanzandoMandadoKey, setAvanzandoMandadoKey] = useState<string | null>(null);
+  const [mandadosActivos, setMandadosActivos] = useState<MandadoCentral[]>([]);
   const [rechazandoCarreraId, setRechazandoCarreraId] = useState<string | null>(null);
 
   const { showToast: showGlobalToast } = useToast();
@@ -208,6 +218,25 @@ export default function PanelRiderPage() {
       showGlobalToast({ type: 'error', message: 'Error al cargar carreras. Recarga la página.' });
     });
 
+    const qMandados = query(
+      collection(db, 'mandados'),
+      where('riderId', '==', uid),
+      where('estado', 'in', [...MANDADO_ESTADOS_ACTIVOS_RIDER]),
+      orderBy('timestamp', 'desc'),
+      limit(20)
+    );
+    const unsubMandados = onSnapshot(
+      qMandados,
+      (snap) => {
+        setMandadosActivos(
+          snap.docs.map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>))
+        );
+      },
+      () => {
+        showGlobalToast({ type: 'error', message: 'Error al sincronizar mandados.' });
+      }
+    );
+
     const qHistorial = query(
       collection(db, 'pedidos'),
       where('riderId', '==', uid),
@@ -232,6 +261,7 @@ export default function PanelRiderPage() {
     });
 
     return () => {
+      unsubMandados();
       unsubActivas();
       unsubHistorial();
     };
@@ -344,6 +374,40 @@ export default function PanelRiderPage() {
       showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAvanzandoKey(null);
+    }
+  }
+
+  async function avanzarMandado(mandadoId: string, estado: 'en_camino' | 'completado') {
+    setAvanzandoMandadoKey(`${mandadoId}_${estado}`);
+    const prev = mandadosActivos;
+    setMandadosActivos((list) =>
+      list.map((m) => (m.id === mandadoId ? { ...m, estado } : m))
+    );
+    try {
+      const tok = await getIdToken();
+      if (!tok) {
+        setMandadosActivos(prev);
+        showToast('No se pudo actualizar. Revisa la sesión.');
+        return;
+      }
+      const res = await fetch(`/api/mandados/${encodeURIComponent(mandadoId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ estado }),
+      });
+      if (!res.ok) {
+        setMandadosActivos(prev);
+        showGlobalToast({ type: 'error', message: 'No se pudo actualizar el mandado.' });
+      } else if (estado === 'en_camino') {
+        showToast('Mandado en camino');
+      } else {
+        showToast('Mandado completado');
+      }
+    } catch {
+      setMandadosActivos(prev);
+      showGlobalToast({ type: 'error', message: 'Error de red.' });
+    } finally {
+      setAvanzandoMandadoKey(null);
     }
   }
 
@@ -710,21 +774,28 @@ export default function PanelRiderPage() {
         <div className="max-w-lg mx-auto px-4 -mt-1">
           <div className="bg-white/95 border border-rider-100 rounded-2xl p-1 flex shadow-soft mb-4 mt-4 overflow-x-auto scrollbar-hide">
             {([
-              { id: 'activas', label: `Carreras activas (${activasCount})`, mobileLabel: `Activas (${activasCount})`, icon: Bike },
+              { id: 'activas', label: `Carreras (${activasCount})`, mobileLabel: `Activas (${activasCount})`, icon: Bike },
+              { id: 'mandados', label: `Mandados (${mandadosActivos.length})`, mobileLabel: `Mandados (${mandadosActivos.length})`, icon: Zap },
               { id: 'historial', label: 'Historial de hoy', mobileLabel: 'Historial', icon: History },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setTab(id)}
-                className={`flex-1 min-w-[140px] sm:min-w-0 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                className={`flex-1 min-w-[120px] sm:min-w-0 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
                   tab === id
                     ? 'bg-rider-700 text-white shadow-sm'
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                <span className="sm:hidden">{id === 'activas' ? `Activas (${activasCount})` : 'Historial'}</span>
+                <span className="sm:hidden">
+                  {id === 'activas'
+                    ? `Activas (${activasCount})`
+                    : id === 'mandados'
+                      ? `Mandados (${mandadosActivos.length})`
+                      : 'Historial'}
+                </span>
                 <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
@@ -769,6 +840,91 @@ export default function PanelRiderPage() {
                     />
                   );
                 })
+              )}
+            </div>
+          )}
+
+          {tab === 'mandados' && (
+            <div className="space-y-3">
+              {mandadosActivos.length === 0 ? (
+                <div className="bg-white rounded-3xl p-10 text-center shadow-soft border border-rider-100">
+                  <Zap className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                  <p className="font-bold text-gray-400">No tienes mandados activos</p>
+                  <p className="text-xs text-gray-300 mt-1">La central te asignará mandados desde /express</p>
+                </div>
+              ) : (
+                mandadosActivos.map((m) => (
+                  <div key={m.id} className="bg-white rounded-3xl p-4 shadow-soft border border-amber-100">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          m.estado === 'asignado'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                            : 'bg-purple-50 text-purple-700 border border-purple-100'
+                        }`}
+                      >
+                        {m.estado === 'asignado' ? 'Asignado' : 'En camino'}
+                      </span>
+                      <span className="text-[10px] text-gray-400">{m.hora}</span>
+                    </div>
+                    <p className="font-bold text-gray-900 text-sm mb-2">{m.descripcion}</p>
+                    <p className="text-xs text-gray-600">
+                      <span className="text-amber-700 font-semibold">A</span> {m.desdeTexto}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      <span className="text-rider-700 font-semibold">B</span> {m.hastaTexto}
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <a
+                        href={
+                          m.desdeLat != null && m.desdeLng != null
+                            ? `https://www.google.com/maps/search/?api=1&query=${m.desdeLat},${m.desdeLng}`
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.desdeTexto + ', Piñas, Ecuador')}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-rider-700"
+                      >
+                        <Navigation className="w-3 h-3" />
+                        Mapa A
+                      </a>
+                      <a
+                        href={
+                          m.hastaLat != null && m.hastaLng != null
+                            ? `https://www.google.com/maps/search/?api=1&query=${m.hastaLat},${m.hastaLng}`
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.hastaTexto + ', Piñas, Ecuador')}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600"
+                      >
+                        <Navigation className="w-3 h-3" />
+                        Mapa B
+                      </a>
+                    </div>
+                    {m.estado === 'asignado' ? (
+                      <LoadingButton
+                        type="button"
+                        className="w-full mt-3 py-3 rounded-2xl bg-rider-700 text-white font-bold text-sm"
+                        loading={avanzandoMandadoKey === `${m.id}_en_camino`}
+                        disabled={!!avanzandoMandadoKey}
+                        onClick={() => avanzarMandado(m.id, 'en_camino')}
+                      >
+                        Marcar en camino
+                      </LoadingButton>
+                    ) : (
+                      <LoadingButton
+                        type="button"
+                        className="w-full mt-3 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm"
+                        loading={avanzandoMandadoKey === `${m.id}_completado`}
+                        disabled={!!avanzandoMandadoKey}
+                        onClick={() => avanzarMandado(m.id, 'completado')}
+                      >
+                        Completar mandado
+                      </LoadingButton>
+                    )}
+                  </div>
+                ))
               )}
             </div>
           )}

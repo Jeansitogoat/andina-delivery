@@ -34,7 +34,16 @@ import { useNotifications } from '@/lib/useNotifications';
 import { useOrderSoundAutoplayUnlock } from '@/lib/useOrderSoundAutoplayUnlock';
 import { sendNotification } from '@/lib/notifications';
 import { useAuth } from '@/lib/useAuth';
-import type { EstadoPedido, EstadoRider, PedidoCentral, RiderCentral } from '@/lib/types';
+import {
+  MANDADO_ESTADOS_ACTIVOS_CENTRAL,
+  type EstadoMandado,
+  type EstadoPedido,
+  type EstadoRider,
+  type MandadoCentral,
+  type PedidoCentral,
+  type RiderCentral,
+} from '@/lib/types';
+import { docToMandadoCentral } from '@/lib/mandado-map';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
@@ -51,6 +60,14 @@ const ESTADO_RIDER_CONFIG: Record<EstadoRider, { label: string; dot: string; bg:
   disponible:     { label: 'Disponible',       dot: 'bg-green-400',  bg: 'bg-green-50 border-green-200 text-green-700' },
   ocupado:        { label: 'Ocupado',           dot: 'bg-yellow-400', bg: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
   fuera_servicio: { label: 'Fuera de servicio', dot: 'bg-red-400',    bg: 'bg-red-50 border-red-200 text-red-700' },
+};
+
+const ESTADO_MANDADO_CONFIG: Record<EstadoMandado, { label: string; color: string; bg: string }> = {
+  pendiente: { label: 'Pendiente', color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200' },
+  asignado: { label: 'Asignado', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200' },
+  en_camino: { label: 'En camino', color: 'text-purple-600', bg: 'bg-purple-50 border-purple-200' },
+  completado: { label: 'Completado', color: 'text-green-600', bg: 'bg-green-50 border-green-200' },
+  cancelado: { label: 'Cancelado', color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
 };
 
 const ESTADO_PEDIDO_CONFIG: Record<EstadoPedido, { label: string; color: string; bg: string }> = {
@@ -138,7 +155,7 @@ export default function PanelCentralPage() {
   const { permission, requestPermission, loading: notifLoading } = useNotifications('central');
   const [pedidos, setPedidos] = useState<PedidoCentral[]>([]);
   const [rawRiderDocs, setRawRiderDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
-  const [tab, setTab] = useState<'activos' | 'riders' | 'historial' | 'tarifas'>('activos');
+  const [tab, setTab] = useState<'activos' | 'mandados' | 'riders' | 'historial' | 'tarifas'>('activos');
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState<PedidoCentral | null>(null);
   const [mostrarAsignar, setMostrarAsignar] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -162,7 +179,11 @@ export default function PanelCentralPage() {
   const [loadingTarifas, setLoadingTarifas] = useState(false);
   const [guardandoTarifas, setGuardandoTarifas] = useState(false);
   const [asignandoKey, setAsignandoKey] = useState<string | null>(null);
+  const [asignandoMandadoKey, setAsignandoMandadoKey] = useState<string | null>(null);
   const [avanzandoId, setAvanzandoId] = useState<string | null>(null);
+  const [mandados, setMandados] = useState<MandadoCentral[]>([]);
+  const [mandadoSeleccionado, setMandadoSeleccionado] = useState<MandadoCentral | null>(null);
+  const [mostrarAsignarMandado, setMostrarAsignarMandado] = useState(false);
 
   const [showLimpiarModal, setShowLimpiarModal] = useState(false);
   const [confirmacionLimpiar, setConfirmacionLimpiar] = useState('');
@@ -293,6 +314,25 @@ export default function PanelCentralPage() {
       limit(50)
     );
 
+    const qMandados = query(
+      collection(db, 'mandados'),
+      where('estado', 'in', [...MANDADO_ESTADOS_ACTIVOS_CENTRAL]),
+      orderBy('timestamp', 'desc'),
+      limit(40)
+    );
+
+    const unsubMandados = onSnapshot(
+      qMandados,
+      (snap) => {
+        setMandados(
+          snap.docs.map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>))
+        );
+      },
+      () => {
+        showGlobalToast({ type: 'error', message: 'Error al sincronizar mandados. Recarga la página.' });
+      }
+    );
+
     const unsubPedidos = onSnapshot(
       qPedidos,
       (snap) => {
@@ -360,6 +400,7 @@ export default function PanelCentralPage() {
     );
 
     return () => {
+      unsubMandados();
       unsubPedidos();
       unsubRiders();
     };
@@ -436,6 +477,56 @@ export default function PanelCentralPage() {
       showGlobalToast({ type: 'error', message: '¡Ups! El internet se fue a dar una vuelta. Reintenta en un momento.' });
     } finally {
       setAsignandoKey(null);
+    }
+  }
+
+  async function asignarMandadoRider(mandadoId: string, riderId: string) {
+    const rider = riders.find((r) => r.id === riderId);
+    const mandado = mandados.find((m) => m.id === mandadoId);
+    if (!rider || !mandado) return;
+    const key = `mandado_${mandadoId}_${riderId}`;
+    setAsignandoMandadoKey(key);
+    const prevMandados = mandados;
+    setMandados((list) =>
+      list.map((m) =>
+        m.id === mandadoId ? { ...m, estado: 'asignado' as const, riderId, riderNombre: rider.nombre } : m
+      )
+    );
+    setMostrarAsignarMandado(false);
+    setMandadoSeleccionado(null);
+    sendNotification({
+      target: 'rider',
+      uid: riderId,
+      title: 'Nuevo mandado asignado',
+      body: mandado.descripcion.slice(0, 120),
+    });
+    try {
+      const tok = await getIdToken();
+      if (!tok) {
+        setMandados(prevMandados);
+        showToast('No se pudo asignar. Revisa la sesión.');
+        return;
+      }
+      const res = await fetch(`/api/mandados/${mandadoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ riderId, riderNombre: rider.nombre }),
+      });
+      if (!res.ok) {
+        setMandados(prevMandados);
+        showToast('No se pudo asignar el mandado.');
+        showGlobalToast({
+          type: 'error',
+          message: res.status === 403 ? 'No tienes permiso para esta acción.' : 'Error al asignar mandado.',
+        });
+      } else {
+        showToast(`✅ ${rider.nombre} asignado al mandado`);
+      }
+    } catch {
+      setMandados(prevMandados);
+      showToast('No se pudo asignar. Revisa la conexión.');
+    } finally {
+      setAsignandoMandadoKey(null);
     }
   }
 
@@ -724,6 +815,7 @@ export default function PanelCentralPage() {
             <div className="bg-white rounded-2xl p-1 flex shadow-sm mb-4 overflow-x-auto scrollbar-hide">
               {[
                 { id: 'activos', label: 'Activos (' + pedidosActivos.length + ')', icon: Package },
+                { id: 'mandados', label: 'Mandados (' + mandados.length + ')', icon: Zap },
                 { id: 'riders', label: 'Riders (' + riders.length + ')', icon: Bike },
                 { id: 'historial', label: 'Historial (' + pedidosHistorial.length + ')', icon: History },
                 { id: 'tarifas', label: 'Tarifas', icon: Truck },
@@ -731,23 +823,70 @@ export default function PanelCentralPage() {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setTab(id as 'activos' | 'riders' | 'historial' | 'tarifas')}
+                  onClick={() => setTab(id as 'activos' | 'mandados' | 'riders' | 'historial' | 'tarifas')}
                   className={'flex-1 min-w-[108px] sm:min-w-[120px] md:min-w-[80px] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ' + (tab === id ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600')}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span className="sm:hidden">
                     {id === 'activos'
                       ? `Activos (${pedidosActivos.length})`
-                      : id === 'riders'
-                        ? `Riders (${riders.length})`
-                        : id === 'historial'
-                          ? `Historial (${pedidosHistorial.length})`
-                          : 'Tarifas'}
+                      : id === 'mandados'
+                        ? `Mandados (${mandados.length})`
+                        : id === 'riders'
+                          ? `Riders (${riders.length})`
+                          : id === 'historial'
+                            ? `Historial (${pedidosHistorial.length})`
+                            : 'Tarifas'}
                   </span>
                   <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
             </div>
+
+            {tab === 'mandados' && (
+              <div className="space-y-3">
+                {mandados.length === 0 ? (
+                  <div className="bg-white rounded-3xl p-10 text-center shadow-sm">
+                    <Zap className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                    <p className="font-bold text-gray-400">No hay mandados activos</p>
+                    <p className="text-xs text-gray-400 mt-1">Los mandados de /express aparecerán aquí</p>
+                  </div>
+                ) : (
+                  mandados.map((m) => {
+                    const cfg = ESTADO_MANDADO_CONFIG[m.estado];
+                    const pendienteSinRider = m.estado === 'pendiente' && !m.riderId;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setMandadoSeleccionado(m)}
+                        className="w-full text-left bg-white rounded-3xl p-4 shadow-sm border border-amber-100 hover:border-amber-300 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className={'text-[10px] font-bold px-2 py-0.5 rounded-full border ' + cfg.bg + ' ' + cfg.color}>
+                            {cfg.label}
+                          </span>
+                          <span className="text-[10px] text-gray-400">{m.hora ?? tiempoTranscurrido(m.timestamp)}</span>
+                        </div>
+                        <p className="font-bold text-gray-900 text-sm line-clamp-2 mb-2">{m.descripcion}</p>
+                        <p className="text-xs text-gray-500 line-clamp-1">
+                          <span className="text-amber-700">A</span> {m.desdeTexto}
+                        </p>
+                        <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
+                          <span className="text-rojo-andino">B</span> {m.hastaTexto}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-2">{m.clienteNombre}</p>
+                        {pendienteSinRider ? (
+                          <span className="inline-block mt-2 text-xs font-bold text-purple-600">Toca para asignar rider →</span>
+                        ) : m.riderNombre ? (
+                          <p className="text-xs text-blue-600 mt-2 font-semibold">Rider: {m.riderNombre}</p>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
 
             {tab === 'activos' && (
               <div className="space-y-3">
@@ -1094,6 +1233,198 @@ export default function PanelCentralPage() {
                 >
                   Eliminar
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {mandadoSeleccionado && !mostrarAsignarMandado && (
+          <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/50">
+            <div
+              className="bg-white rounded-t-3xl max-h-[80vh] overflow-y-auto"
+              style={{ animation: 'slideUp 0.3s ease forwards' }}
+            >
+              <div className="sticky top-0 bg-white px-5 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-gray-900">Mandado #{mandadoSeleccionado.id}</h3>
+                  <p className="text-xs text-gray-400">{tiempoTranscurrido(mandadoSeleccionado.timestamp)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMandadoSeleccionado(null)}
+                  className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center"
+                >
+                  <X className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className={'flex items-center gap-2 px-4 py-2.5 rounded-2xl border ' + ESTADO_MANDADO_CONFIG[mandadoSeleccionado.estado].bg}>
+                  <span className={'text-sm font-bold ' + ESTADO_MANDADO_CONFIG[mandadoSeleccionado.estado].color}>
+                    {ESTADO_MANDADO_CONFIG[mandadoSeleccionado.estado].label}
+                  </span>
+                </div>
+                <div className="bg-amber-50 rounded-2xl p-4">
+                  <p className="text-xs font-semibold text-amber-700 mb-1">MANDADO</p>
+                  <p className="font-bold text-gray-900">{mandadoSeleccionado.descripcion}</p>
+                  {mandadoSeleccionado.categoria ? (
+                    <p className="text-xs text-gray-500 mt-1">Categoría: {mandadoSeleccionado.categoria}</p>
+                  ) : null}
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <p className="text-xs font-semibold text-gray-400 mb-1">RECOGER (A)</p>
+                  <p className="text-sm text-gray-800">{mandadoSeleccionado.desdeTexto}</p>
+                  <a
+                    href={
+                      mandadoSeleccionado.desdeLat != null && mandadoSeleccionado.desdeLng != null
+                        ? `https://www.google.com/maps/search/?api=1&query=${mandadoSeleccionado.desdeLat},${mandadoSeleccionado.desdeLng}`
+                        : 'https://www.google.com/maps/search/?api=1&query=' +
+                          encodeURIComponent(mandadoSeleccionado.desdeTexto + ', Piñas, Ecuador')
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-amber-700"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    Ver en Maps
+                  </a>
+                </div>
+                <div className="bg-rojo-andino/5 rounded-2xl p-4">
+                  <p className="text-xs font-semibold text-rojo-andino mb-1">ENTREGAR (B)</p>
+                  <p className="text-sm text-gray-800">{mandadoSeleccionado.hastaTexto}</p>
+                  <a
+                    href={
+                      mandadoSeleccionado.hastaLat != null && mandadoSeleccionado.hastaLng != null
+                        ? `https://www.google.com/maps/search/?api=1&query=${mandadoSeleccionado.hastaLat},${mandadoSeleccionado.hastaLng}`
+                        : 'https://www.google.com/maps/search/?api=1&query=' +
+                          encodeURIComponent(mandadoSeleccionado.hastaTexto + ', Piñas, Ecuador')
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-rojo-andino"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    Ver en Maps
+                  </a>
+                </div>
+                <div className="rounded-2xl border border-gray-100 p-4">
+                  <p className="text-xs font-semibold text-gray-400 mb-1">CLIENTE</p>
+                  <p className="font-bold text-gray-900">{mandadoSeleccionado.clienteNombre}</p>
+                  {mandadoSeleccionado.clienteTelefono ? (
+                    <a href={'tel:' + mandadoSeleccionado.clienteTelefono} className="text-xs font-bold text-green-600 mt-2 inline-flex items-center gap-1">
+                      <Phone className="w-3 h-3" />
+                      {mandadoSeleccionado.clienteTelefono}
+                    </a>
+                  ) : null}
+                </div>
+                {mandadoSeleccionado.riderId && (() => {
+                  const rider = riders.find((r) => r.id === mandadoSeleccionado.riderId);
+                  if (!rider) return null;
+                  return (
+                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-center gap-3">
+                      {getSafeImageSrc(rider.photoURL) ? (
+                        <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200 relative">
+                          <Image
+                            src={getSafeImageSrc(rider.photoURL)!}
+                            alt={rider.nombre}
+                            fill
+                            sizes="40px"
+                            className="object-cover"
+                            unoptimized={shouldBypassImageOptimizer(rider.photoURL)}
+                          />
+                        </div>
+                      ) : (
+                        <div className={'w-10 h-10 rounded-xl ' + rider.color + ' flex items-center justify-center text-white font-black flex-shrink-0'}>
+                          {rider.inicial}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <p className="font-bold text-gray-900">{rider.nombre}</p>
+                        <p className="text-xs text-gray-500">Rider asignado</p>
+                      </div>
+                      <a
+                        href={'tel:' + rider.telefono}
+                        className="w-9 h-9 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center"
+                      >
+                        <Phone className="w-4 h-4 text-green-600" />
+                      </a>
+                    </div>
+                  );
+                })()}
+                {mandadoSeleccionado.estado === 'pendiente' && !mandadoSeleccionado.riderId ? (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarAsignarMandado(true)}
+                    className="w-full py-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Bike className="w-5 h-5" />
+                    Asignar rider
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {mostrarAsignarMandado && mandadoSeleccionado && (
+          <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60">
+            <div
+              className="bg-white rounded-t-3xl max-h-[70vh] overflow-y-auto"
+              style={{ animation: 'slideUp 0.3s ease forwards' }}
+            >
+              <div className="sticky top-0 bg-white px-5 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-gray-900">Asignar rider</h3>
+                  <p className="text-xs text-gray-400">Mandado #{mandadoSeleccionado.id} · {mandadoSeleccionado.clienteNombre}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMostrarAsignarMandado(false)}
+                  className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center"
+                >
+                  <X className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
+              <div className="p-5 space-y-2">
+                {riders.filter((r) => r.estado === 'disponible').length === 0 ? (
+                  <div className="text-center py-8">
+                    <AlertCircle className="w-10 h-10 text-orange-300 mx-auto mb-3" />
+                    <p className="font-bold text-gray-500">No hay riders disponibles</p>
+                  </div>
+                ) : (
+                  riders
+                    .filter((r) => r.estado === 'disponible')
+                    .map((rider) => (
+                      <LoadingButton
+                        key={rider.id}
+                        type="button"
+                        loading={asignandoMandadoKey === `mandado_${mandadoSeleccionado.id}_${rider.id}`}
+                        disabled={!!asignandoMandadoKey}
+                        onClick={() => asignarMandadoRider(mandadoSeleccionado.id, rider.id)}
+                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 hover:border-purple-300 hover:bg-purple-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                      >
+                        {getSafeImageSrc(rider.photoURL) ? (
+                          <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200 relative">
+                            <Image
+                              src={getSafeImageSrc(rider.photoURL)!}
+                              alt={rider.nombre}
+                              fill
+                              sizes="44px"
+                              className="object-cover"
+                              unoptimized={shouldBypassImageOptimizer(rider.photoURL)}
+                            />
+                          </div>
+                        ) : (
+                          <div className={'w-11 h-11 rounded-xl ' + rider.color + ' flex items-center justify-center text-white font-black text-lg flex-shrink-0'}>
+                            {rider.inicial}
+                          </div>
+                        )}
+                        <div className="flex-1 text-left">
+                          <p className="font-bold text-gray-900">{rider.nombre}</p>
+                          <p className="text-xs text-gray-500">Disponible · {rider.carrerasHoy} carreras hoy</p>
+                        </div>
+                      </LoadingButton>
+                    ))
+                )}
               </div>
             </div>
           </div>
