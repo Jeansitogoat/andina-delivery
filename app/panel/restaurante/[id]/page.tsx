@@ -52,7 +52,6 @@ import { startOfDayGuayaquil } from '@/lib/guayaquil-time';
 import { getFirestoreDb } from '@/lib/firebase/client';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { getOrderMoney } from '@/lib/order-money';
-import { calcularComision, calcularNetoLocal } from '@/lib/commissions';
 import type { PedidoCentral } from '@/lib/types';
 
 const MOTIVOS_RAPIDOS_CANCEL_LOCAL = [
@@ -90,13 +89,6 @@ interface Order {
   batchLeaderLocalId?: string | null;
   deliveryType?: 'delivery' | 'pickup';
   paymentMethod?: 'efectivo' | 'transferencia';
-}
-
-function panelOrderNetoEstimado(o: Pick<Order, 'total' | 'subtotalBase' | 'serviceFee'>) {
-  const fee = o.serviceFee ?? 0;
-  const comisionEst = calcularComision(o.total, o.subtotalBase, fee);
-  const netoEst = calcularNetoLocal(o.subtotalBase, comisionEst);
-  return { comisionEst, netoEst };
 }
 
 function estadoToStatus(estado: EstadoPedido): OrderStatus {
@@ -884,9 +876,8 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                     <div>
                       <span className="font-bold text-gray-900 text-sm">{order.orderNum}</span>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Cliente paga ${order.total.toFixed(2)} · Menú ${order.subtotalBase.toFixed(2)}
+                        Total ${order.total.toFixed(2)}
                         {order.deliveryType === 'pickup' ? ' · Retiro' : order.costoEnvio ? ` · Envío $${order.costoEnvio.toFixed(2)}` : ''}
-                        {order.serviceFee ? ` · Serv. Andina (cliente) $${order.serviceFee.toFixed(2)}` : ''}
                         {' · '}
                         {formatDireccionCorta(order.direccion)}
                       </p>
@@ -1088,35 +1079,13 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                                 </div>
                                 <p className="text-sm text-gray-500 mt-1.5">{order.cliente} · {order.tiempo}</p>
                               </div>
-                              <div className="text-right flex-shrink-0 max-w-[148px] space-y-0.5">
-                                {(() => {
-                                  const { comisionEst, netoEst } = panelOrderNetoEstimado(order);
-                                  return (
-                                    <>
-                                      <p className="font-black text-rojo-andino text-lg leading-tight tabular-nums">
-                                        ${order.total.toFixed(2)}
-                                      </p>
-                                      <p className="text-[10px] text-gray-500 font-medium leading-tight">Paga el cliente</p>
-                                      <p className="text-[11px] text-gray-600 tabular-nums">
-                                        Menú ${order.subtotalBase.toFixed(2)}
-                                        {order.serviceFee ? (
-                                          <span className="block text-amber-800/90">
-                                            + Serv. Andina (no es tuyo) ${order.serviceFee.toFixed(2)}
-                                          </span>
-                                        ) : null}
-                                        {order.deliveryType !== 'pickup' && (order.costoEnvio ?? 0) > 0 ? (
-                                          <span className="block text-gray-500">Envío ${(order.costoEnvio ?? 0).toFixed(2)}</span>
-                                        ) : null}
-                                      </p>
-                                      <p className="text-xs font-bold text-emerald-800 pt-0.5 border-t border-gray-100 mt-1 tabular-nums">
-                                        ~Recibes {netoEst.toFixed(2)}
-                                      </p>
-                                      <p className="text-[10px] text-gray-400 leading-tight">
-                                        Comisión est. 8% · {comisionEst.toFixed(2)}
-                                      </p>
-                                    </>
-                                  );
-                                })()}
+                              <div className="text-right flex-shrink-0 max-w-[120px]">
+                                <p className="font-black text-rojo-andino text-lg leading-tight tabular-nums">
+                                  ${order.total.toFixed(2)}
+                                </p>
+                                <p className="text-[10px] text-gray-500 font-medium leading-tight mt-0.5">
+                                  Total pedido
+                                </p>
                               </div>
                             </div>
                             <ul className="text-sm text-gray-600 mb-4 space-y-1.5">
@@ -1269,11 +1238,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                           <span className="font-semibold text-gray-900">{order.id}</span>
                           <p className="text-sm text-gray-500 mt-0.5 truncate">{order.cliente}</p>
                           <p className="text-xs text-gray-600 mt-1 tabular-nums">
-                            Cliente ${order.total.toFixed(2)} · Menú ${order.subtotalBase.toFixed(2)}
-                            {order.serviceFee ? ` · Serv. Andina $${order.serviceFee.toFixed(2)}` : ''}
-                          </p>
-                          <p className="text-xs font-semibold text-emerald-800 mt-0.5 tabular-nums">
-                            ~Recibes {panelOrderNetoEstimado(order).netoEst.toFixed(2)}
+                            Total ${order.total.toFixed(2)}
                           </p>
                         </div>
                         <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0">
@@ -1320,11 +1285,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                         <span className="font-semibold text-gray-900">{order.id}</span>
                         <p className="text-sm text-gray-500 mt-0.5 truncate">{order.cliente}</p>
                         <p className="text-xs text-gray-600 mt-1 tabular-nums">
-                          Cliente ${order.total.toFixed(2)} · Menú ${order.subtotalBase.toFixed(2)}
-                          {order.serviceFee ? ` · Serv. Andina $${order.serviceFee.toFixed(2)}` : ''}
-                        </p>
-                        <p className="text-xs font-semibold text-emerald-800 mt-0.5 tabular-nums">
-                          ~Recibes {panelOrderNetoEstimado(order).netoEst.toFixed(2)}
+                          Total ${order.total.toFixed(2)}
                         </p>
                       </div>
                       <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center flex-shrink-0">
