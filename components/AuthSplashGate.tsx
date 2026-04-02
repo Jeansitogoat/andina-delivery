@@ -23,7 +23,7 @@ export default function AuthSplashGate({ children }: { children: React.ReactNode
   if (showSplash) {
     return (
       <div
-        className="fixed inset-0 z-[9999] flex min-h-screen flex-col items-center justify-center bg-[#c40f0f] overflow-hidden"
+        className="fixed inset-0 z-[10060] flex min-h-screen flex-col items-center justify-center bg-[#c40f0f] overflow-hidden"
         aria-hidden="true"
       >
         <div className="flex flex-col items-center gap-4">

@@ -12,9 +12,12 @@ import { ToastProvider } from '@/lib/ToastContext';
 import AuthSplashGate from '@/components/AuthSplashGate';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import FCMAutoRegister from '@/components/FCMAutoRegister';
+import AppLaunchTracker from '@/components/AppLaunchTracker';
+import { PWAInstallPromptProvider } from '@/components/PWAInstallPromptProvider';
 import PWAInstallBanner from '@/components/PWAInstallBanner';
 import NotificationPromptBanner from '@/components/NotificationPromptBanner';
 import NotificationShield from '@/components/NotificationShield';
+import LocationBackupBanner from '@/components/LocationBackupBanner';
 
 export const metadata: Metadata = {
   title: 'Andina Delivery - Piñas',
@@ -50,6 +53,8 @@ export default function RootLayout({
           <NetworkStatusProvider>
           <ToastProvider>
           <NetworkBanner />
+          <AppLaunchTracker>
+          <PWAInstallPromptProvider>
           <AndinaProvider>
             <PublicConfigProvider>
               <AddressesProvider>
@@ -60,11 +65,14 @@ export default function RootLayout({
                     <PWAInstallBanner />
                     <NotificationPromptBanner />
                     <NotificationShield />
+                    <LocationBackupBanner />
                   </FullScreenModalProvider>
                 </CartProvider>
               </AddressesProvider>
             </PublicConfigProvider>
           </AndinaProvider>
+          </PWAInstallPromptProvider>
+          </AppLaunchTracker>
           </ToastProvider>
           </NetworkStatusProvider>
           </ErrorBoundary>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useCallback, useState, useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { getDoc, doc } from 'firebase/firestore';
 import type { DireccionGuardada } from '@/components/usuario/SeccionDirecciones';
 import { useAuth } from '@/lib/useAuth';
@@ -54,6 +55,7 @@ function saveToLocalStorage(dirs: DireccionGuardada[]) {
 }
 
 export function AddressesProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const { user } = useAuth();
   const [direcciones, setDirecciones] = useState<DireccionGuardada[]>([]);
   const [selectedId, setSelectedIdState] = useState<string | null>(null);
@@ -147,9 +149,10 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true);
   }, [user?.uid]);
 
-  /* Pedir permiso de ubicación para cálculo de distancia para cálculo de distancia (fallback si no hay dirección con coords) */
+  /* Pedir permiso de ubicación (fallback distancia). No en /auth: coincide con onboarding PWA. */
   useEffect(() => {
     if (typeof window === 'undefined' || !navigator?.geolocation) return;
+    if (pathname?.startsWith('/auth')) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -160,7 +163,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       () => {},
       { timeout: 10000, maximumAge: 300000, enableHighAccuracy: true }
     );
-  }, []);
+  }, [pathname]);
 
   const scheduleSaveAddresses = useCallback(
     (dirs: DireccionGuardada[]) => {

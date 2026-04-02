@@ -1,9 +1,10 @@
 'use client';
 
 import { BellRing, ShieldAlert } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth, type AndinaUser } from '@/lib/useAuth';
 import { useNotifications } from '@/lib/useNotifications';
+import { useLaunchCount, isBackupLaunchEligible } from '@/lib/launchCount';
 
 const OPERATIONAL_ROLES = new Set(['local', 'rider', 'central', 'maestro']);
 const SESSION_SKIP_KEY = 'andina_notif_shield_skip_session';
@@ -31,9 +32,12 @@ function roleForNotifications(user: AndinaUser): 'local' | 'rider' | 'central' |
 function NotificationShieldWithHooks({ user }: { user: AndinaUser }) {
   const role = roleForNotifications(user);
   const { permission, requestPermission, loading, isSupported } = useNotifications(role);
+  const launchCount = useLaunchCount();
+  const backupOk = isBackupLaunchEligible(launchCount);
 
   const [skipped, setSkipped] = useState(false);
   const [likelyDesktop, setLikelyDesktop] = useState(false);
+  const autoRequestDone = useRef(false);
 
   useEffect(() => {
     try {
@@ -43,6 +47,14 @@ function NotificationShieldWithHooks({ user }: { user: AndinaUser }) {
     }
     setLikelyDesktop(detectLikelyDesktop());
   }, []);
+
+  useEffect(() => {
+    if (!isSupported) return;
+    if (permission !== 'default') return;
+    if (autoRequestDone.current) return;
+    autoRequestDone.current = true;
+    void requestPermission();
+  }, [isSupported, permission, requestPermission]);
 
   const dismissForSession = useCallback(() => {
     try {
@@ -55,6 +67,13 @@ function NotificationShieldWithHooks({ user }: { user: AndinaUser }) {
 
   if (permission === 'granted') return null;
   if (skipped) return null;
+
+  /* Plan de respaldo: no bloquear la primera visita si denegaron o el entorno no sirve. */
+  if (!backupOk) {
+    if (permission === 'denied') return null;
+    if (permission === 'default') return null;
+    if (!isSupported) return null;
+  }
 
   return (
     <div className="fixed inset-0 z-[80] bg-slate-950/95 backdrop-blur-sm flex items-center justify-center p-6">
@@ -98,7 +117,7 @@ function NotificationShieldWithHooks({ user }: { user: AndinaUser }) {
           <div className="mt-6 flex flex-col gap-3">
             <button
               type="button"
-              onClick={requestPermission}
+              onClick={() => void requestPermission()}
               disabled={loading}
               className="w-full py-3 rounded-2xl bg-rojo-andino text-white font-bold hover:bg-rojo-andino/90 disabled:opacity-70"
             >

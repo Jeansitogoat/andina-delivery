@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/useAuth';
 import { useNotifications, isWebPushEnvironment } from '@/lib/useNotifications';
 import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 import type { NotificationRole } from '@/lib/useNotifications';
+import { useLaunchCount, isBackupLaunchEligible } from '@/lib/launchCount';
 
 const ROLE_MAP: Record<string, NotificationRole> = {
   cliente: 'user',
@@ -21,7 +22,10 @@ const DISMISS_DAYS = 7;
 
 function isIOS(): boolean {
   if (typeof window === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
 }
 
 function isPWA(): boolean {
@@ -46,13 +50,17 @@ function getInstallInstructions(): string {
 
 export default function NotificationPromptBanner() {
   const pathname = usePathname();
+  const launchCount = useLaunchCount();
+  const backupOk = isBackupLaunchEligible(launchCount);
   const { user, loading: authLoading } = useAuth();
   const role = user ? (ROLE_MAP[user.rol] ?? 'user') : 'user';
-  const { permission, requestPermission, loading: notifLoading, isSupported, error: notifError, registerToken } = useNotifications(role);
+  const { permission, requestPermission, loading: notifLoading, isSupported, error: notifError, registerToken } =
+    useNotifications(role);
   const [dismissed, setDismissed] = useState(false);
   const [ready, setReady] = useState(false);
   const [pwa, setPwa] = useState(false);
   const lastRetryAt = useRef(0);
+  const autoRequestDone = useRef(false);
   const RETRY_THROTTLE_MS = 90_000;
 
   useEffect(() => {
@@ -69,6 +77,16 @@ export default function NotificationPromptBanner() {
     setPwa(isPWA());
     setReady(true);
   }, []);
+
+  /* Solicitud automática una vez tras login (cliente). */
+  useEffect(() => {
+    if (!user || user.rol !== 'cliente') return;
+    if (!isSupported) return;
+    if (permission !== 'default') return;
+    if (autoRequestDone.current) return;
+    autoRequestDone.current = true;
+    void requestPermission();
+  }, [user, isSupported, permission, requestPermission]);
 
   // Reintentar registro del token cuando ya hay permiso y usuario logueado (crítico para iOS).
   useEffect(() => {
@@ -92,6 +110,7 @@ export default function NotificationPromptBanner() {
   const inPanel = pathname?.startsWith('/panel') ?? false;
   const show =
     ready &&
+    backupOk &&
     !authLoading &&
     user &&
     user.rol === 'cliente' &&
@@ -158,7 +177,7 @@ export default function NotificationPromptBanner() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={requestPermission}
+            onClick={() => void requestPermission()}
             disabled={notifLoading}
             className="px-4 py-2 rounded-xl bg-rojo-andino text-white font-bold text-sm hover:bg-rojo-andino/90 transition-colors disabled:opacity-70"
           >

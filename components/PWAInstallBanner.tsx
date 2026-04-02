@@ -1,82 +1,99 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Download, Share, X } from 'lucide-react';
+import { usePWAInstallPrompt } from '@/components/PWAInstallPromptProvider';
+import { useLaunchCount, isBackupLaunchEligible } from '@/lib/launchCount';
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-};
+const SESSION_DISMISS_ANDROID = 'andina_pwa_android_floating_dismissed';
+const SESSION_DISMISS_IOS = 'andina_pwa_ios_floating_dismissed';
 
 export default function PWAInstallBanner() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const pathname = usePathname();
+  const launchCount = useLaunchCount();
+  const { deferredPrompt, promptInstall } = usePWAInstallPrompt();
   const [showAndroidBanner, setShowAndroidBanner] = useState(false);
   const [showIOSBanner, setShowIOSBanner] = useState(false);
   const [installed, setInstalled] = useState(false);
 
+  const backupOk = isBackupLaunchEligible(launchCount);
+  const hideOnAuth = pathname === '/auth';
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (hideOnAuth) return;
+    if (!backupOk) return;
 
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-      || (window.navigator as { standalone?: boolean }).standalone
-      || document.referrer.includes('android-app://');
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as { standalone?: boolean }).standalone ||
+      document.referrer.includes('android-app://');
 
     if (isStandalone) {
       setInstalled(true);
       return;
     }
 
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isAndroidChrome = /Android/.test(navigator.userAgent) && /Chrome/.test(navigator.userAgent);
 
-    const handleBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    let androidClosed = false;
+    let iosClosed = false;
+    try {
+      androidClosed = sessionStorage.getItem(SESSION_DISMISS_ANDROID) === '1';
+      iosClosed = sessionStorage.getItem(SESSION_DISMISS_IOS) === '1';
+    } catch {
+      /* modo privado */
+    }
+
+    if (isAndroidChrome && deferredPrompt && !androidClosed) {
       setShowAndroidBanner(true);
-    };
-
-    if (isAndroidChrome) {
-      window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    } else {
+      setShowAndroidBanner(false);
     }
 
-    if (isIOS) {
-      const key = 'andina_pwa_ios_banner_dismissed';
-      try {
-        const dismissedAt = sessionStorage.getItem(key);
-        if (!dismissedAt) {
-          setShowIOSBanner(true);
-        }
-      } catch {
-        /* Silencioso en móvil (modo privado, WebView, etc.) */
-      }
+    if (isIOS && !iosClosed) {
+      setShowIOSBanner(true);
+    } else {
+      setShowIOSBanner(false);
     }
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-    };
-  }, []);
+    return undefined;
+  }, [hideOnAuth, backupOk, deferredPrompt]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
+    const result = await promptInstall();
+    if (result?.outcome === 'accepted') {
       setShowAndroidBanner(false);
       setInstalled(true);
     }
-    setDeferredPrompt(null);
   };
 
   const dismissIOS = () => {
     setShowIOSBanner(false);
     try {
-      sessionStorage.setItem('andina_pwa_ios_banner_dismissed', Date.now().toString());
+      sessionStorage.setItem(SESSION_DISMISS_IOS, '1');
     } catch {
-      /* Silencioso en móvil (modo privado, WebView, etc.) */
+      /* modo privado */
+    }
+  };
+
+  const dismissAndroid = () => {
+    setShowAndroidBanner(false);
+    try {
+      sessionStorage.setItem(SESSION_DISMISS_ANDROID, '1');
+    } catch {
+      /* modo privado */
     }
   };
 
   if (installed) return null;
+  if (hideOnAuth) return null;
+  if (!backupOk) return null;
   if (!showAndroidBanner && !showIOSBanner) return null;
 
   if (showAndroidBanner) {
@@ -100,7 +117,7 @@ export default function PWAInstallBanner() {
             </button>
             <button
               type="button"
-              onClick={() => setShowAndroidBanner(false)}
+              onClick={dismissAndroid}
               className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
               aria-label="Cerrar"
             >
@@ -123,10 +140,7 @@ export default function PWAInstallBanner() {
             <div className="flex-1 min-w-0">
               <p className="font-bold text-gray-900 text-sm">Añadir Andina a tu iPhone</p>
               <p className="text-xs text-gray-600 mt-1.5">
-                1. Toca el botón <strong>Compartir</strong> (flecha hacia arriba) o los <strong>tres puntitos</strong> (...) en la barra de abajo
-              </p>
-              <p className="text-xs text-gray-600 mt-0.5">
-                2. Elige <strong>Añadir a pantalla de inicio</strong>
+                Para instalar: Toca el botón de Compartir y selecciona Agregar al inicio
               </p>
             </div>
             <button

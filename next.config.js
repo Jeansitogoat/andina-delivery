@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  /** Evita chunks rotos tipo `vendor-chunks/@opentelemetry.js` en dev/build (Firebase Admin / trazas). */
+  serverExternalPackages: ['@opentelemetry/api'],
   async redirects() {
     return [
       { source: '/favicon.ico', destination: '/logo-andina.png', permanent: false },
