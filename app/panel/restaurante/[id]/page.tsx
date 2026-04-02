@@ -721,7 +721,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                 {
                   icon: TrendingUp,
                   label: 'Venta menú',
-                  hint: 'Suma menú; el cliente paga más (servicio, envío). Neto en cada pedido.',
+                  hint: 'Neto en cada pedido.',
                   value: `$${todayEarnings.toFixed(2)}`,
                 },
               ] as const

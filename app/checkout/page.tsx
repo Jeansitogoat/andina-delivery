@@ -1324,7 +1324,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between text-sm text-gray-600">
                 <span className="text-left">
                   Coste de servicio
-                  <span className="block text-[11px] font-normal text-gray-400">1,5% del subtotal (mín. $0,10 · máx. $0,30)</span>
+                  <span className="block text-[11px] font-normal text-gray-400"></span>
                 </span>
                 <span className="font-semibold text-gray-900">${serviceCost.toFixed(2)}</span>
               </div>

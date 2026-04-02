@@ -441,8 +441,8 @@ export default function SeguimientoPedidoPage({
             </div>
             <p className="text-xs text-gray-500 mb-3 leading-snug">
               {deliveryType === 'pickup'
-                ? 'Retiro en local: sin envío a domicilio. Incluye menú, IVA si aplica y costo de servicio de la plataforma.'
-                : 'Incluye productos, envío, IVA si aplica y costo de servicio de la plataforma (1,5% del subtotal, máx. $0,30).'}
+                ? ''
+                : ''}
             </p>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
