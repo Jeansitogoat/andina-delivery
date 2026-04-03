@@ -9,6 +9,8 @@ const nextConfig = {
     ];
   },
   images: {
+    /** Desactiva Image Optimization de Vercel en toda la app (evita error 402 por cuota). */
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',

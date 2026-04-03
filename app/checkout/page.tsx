@@ -1072,7 +1072,7 @@ export default function CheckoutPage() {
         <p className="text-gray-500 text-center mb-6">Agrega productos desde un restaurante para hacer tu pedido.</p>
         <button
           type="button"
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/?modo=cliente')}
           className="py-3 px-6 rounded-2xl bg-rojo-andino text-white font-bold shadow-lg hover:bg-rojo-andino/90 transition-colors"
         >
           Seguir comprando

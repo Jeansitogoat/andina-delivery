@@ -32,6 +32,13 @@ import { useNotifications } from '@/lib/useNotifications';
 import { getIdToken } from '@/lib/authToken';
 import { useToast } from '@/lib/ToastContext';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
+import SeguimientoStepper from '@/components/seguimiento/SeguimientoStepper';
+import {
+  labelsStepperComida,
+  labelsStepperPickup,
+  pasoStepper4ComidaDelivery,
+  pasoStepper4ComidaPickup,
+} from '@/lib/seguimiento-mapa';
 
 /* ─────────────── tipos ─────────────── */
 interface EstadoPedido {
@@ -214,7 +221,7 @@ export default function SeguimientoPedidoPage({
       if (token) headers.Authorization = `Bearer ${token}`;
       const res = await fetch(`/api/pedidos/${id}`, { headers });
       if (res.status === 401 || res.status === 403) {
-        router.replace('/');
+        router.replace('/?modo=cliente');
         return;
       }
       if (res.status === 404) {
@@ -359,7 +366,7 @@ export default function SeguimientoPedidoPage({
         <div className="max-w-lg mx-auto flex items-center gap-3 px-4 h-14">
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-gray-700" />
@@ -404,7 +411,7 @@ export default function SeguimientoPedidoPage({
             </button>
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/?modo=cliente')}
               className="px-5 py-3 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
             >
               Ir al inicio
@@ -571,53 +578,20 @@ export default function SeguimientoPedidoPage({
           </div>
         )}
 
-        {/* ── barra de progreso ── */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm">
-          <h3 className="font-bold text-gray-900 text-sm mb-4">Progreso del pedido</h3>
-          <div className="space-y-0">
-            {estadosParaMostrar.map((estado, idx) => {
-              const esCancelado = estadoCancelado;
-              const esEstadoCancelado = estado.id === 'cancelado_local' || estado.id === 'cancelado_cliente';
-              const completado = esCancelado
-                ? (idx <= 1 || esEstadoCancelado)
-                : idx <= idxActual;
-              const activo = idx === idxActual;
-              const ultimo = idx === estadosParaMostrar.length - 1;
-              return (
-                <div key={estado.id} className="flex items-start gap-3">
-                  {/* línea + círculo */}
-                  <div className="flex flex-col items-center">
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-500 ${
-                        completado
-                          ? `${estado.bgColor} text-white shadow-md ${activo ? 'ring-4 ring-offset-1 ring-' + estado.bgColor + '/30' : ''}`
-                          : 'bg-gray-100 text-gray-300'
-                      }`}
-                    >
-                      {completado ? estado.icono : <div className="w-2 h-2 rounded-full bg-gray-300" />}
-                    </div>
-                    {!ultimo && (
-                      <div
-                        className={`w-0.5 h-8 transition-all duration-700 ${
-                          esCancelado ? (idx <= 1 || esEstadoCancelado ? 'bg-red-400' : 'bg-gray-200') : (idx < idxActual ? 'bg-green-400' : 'bg-gray-200')
-                        }`}
-                      />
-                    )}
-                  </div>
-                  {/* texto */}
-                  <div className="pb-6 pt-1">
-                    <p className={`text-sm font-bold ${completado ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {estado.label}
-                    </p>
-                    <p className={`text-xs mt-0.5 ${completado ? 'text-gray-500' : 'text-gray-300'}`}>
-                      {estado.sublabel}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+        {/* ── barra de progreso (4 pasos) ── */}
+        {!estadoCancelado && (
+          <div className="bg-white rounded-3xl p-5 shadow-sm">
+            <h3 className="font-bold text-gray-900 text-sm mb-4">Progreso del pedido</h3>
+            <SeguimientoStepper
+              labels={isPickup ? labelsStepperPickup() : labelsStepperComida()}
+              pasoActual={
+                isPickup
+                  ? pasoStepper4ComidaPickup(estadoActual)
+                  : pasoStepper4ComidaDelivery(estadoActual)
+              }
+            />
           </div>
-        </div>
+        )}
 
         {estadoCancelado && paymentMethod === 'transferencia' && (
           <div className="bg-white rounded-3xl p-5 shadow-md border-2 border-emerald-200 ring-1 ring-emerald-100">
@@ -842,7 +816,7 @@ export default function SeguimientoPedidoPage({
               disabled={enviandoCalificacion}
               onClick={async () => {
                 if (calificacionEnviada) {
-                  router.push('/');
+                  router.push('/?modo=cliente');
                   return;
                 }
                 setEnviandoCalificacion(true);
@@ -862,7 +836,7 @@ export default function SeguimientoPedidoPage({
                   });
                   if (res.ok) {
                     setCalificacionEnviada(true);
-                    router.push('/');
+                    router.push('/?modo=cliente');
                   }
                 } finally {
                   setEnviandoCalificacion(false);
@@ -875,7 +849,7 @@ export default function SeguimientoPedidoPage({
             {!calificacionEnviada && (
               <button
                 type="button"
-                onClick={() => router.push('/')}
+                onClick={() => router.push('/?modo=cliente')}
                 className="w-full mt-2 py-2.5 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm hover:bg-gray-50"
               >
                 Ir al inicio sin calificar
@@ -888,7 +862,7 @@ export default function SeguimientoPedidoPage({
         {(estadoActual !== 'entregado' || estadoCancelado) && (
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="w-full py-3.5 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-sm transition-colors"
           >
             Volver al inicio

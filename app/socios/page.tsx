@@ -195,7 +195,7 @@ export default function SociosPage() {
           <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/?modo=cliente')}
               className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center"
               aria-label="Cerrar"
             >
@@ -224,7 +224,7 @@ export default function SociosPage() {
           </a>
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="mt-4 text-gray-500 hover:text-gray-700 text-sm font-medium"
           >
             Volver al inicio
@@ -240,7 +240,7 @@ export default function SociosPage() {
         <div className="flex items-center justify-between mb-4">
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center hover:bg-white/30"
             aria-label="Cerrar"
           >

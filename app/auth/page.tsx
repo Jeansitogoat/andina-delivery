@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { getPanelPathForRole, isSafeInternalRedirectPath } from '@/lib/auth-routing';
 import { signInWithPopup, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, Loader2, CheckCircle2, UserCircle, Bike, User, Mail, Lock, Phone } from 'lucide-react';
@@ -15,6 +16,7 @@ type Paso = 'login' | 'registro' | 'registro-rider' | 'registro-exitoso' | 'regi
 
 export default function AuthPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading, loginWithEmail, registerWithEmail, logout } = useAuth();
   const [paso, setPaso] = useState<Paso>('login');
   const [registro, setRegistro] = useState({
@@ -35,30 +37,16 @@ export default function AuthPage() {
     registro.contraseña !== registro.confirmarContraseña && registro.confirmarContraseña.length > 0;
   const errorConfirmar = errorForm || (contraseñasNoCoinciden ? 'Las contraseñas no coinciden' : '');
 
-  // Si ya está logueado, redirigir: clientes al home, otros a su panel (así el botón Atrás no muestra login)
+  // Si ya está logueado: ?redirect= tiene prioridad; si no, panel por rol (así Atrás no muestra login)
   useEffect(() => {
     if (typeof window === 'undefined' || authLoading || !user) return;
-    if (user.rol === 'cliente') {
-      router.replace('/');
+    const raw = searchParams.get('redirect');
+    if (raw && isSafeInternalRedirectPath(raw)) {
+      router.replace(raw);
       return;
     }
-    switch (user.rol) {
-      case 'central':
-        router.replace('/panel/central');
-        break;
-      case 'rider':
-        router.replace('/panel/rider');
-        break;
-      case 'local':
-        router.replace(user.localId ? `/panel/restaurante/${user.localId}` : '/panel/restaurante');
-        break;
-      case 'maestro':
-        router.replace('/panel/maestro');
-        break;
-      default:
-        break;
-    }
-  }, [authLoading, user, router]);
+    router.replace(getPanelPathForRole(user.rol, user.localId ?? undefined));
+  }, [authLoading, user, router, searchParams]);
 
   // Procesar resultado de signInWithRedirect (Google en móvil)
   useEffect(() => {
@@ -101,24 +89,12 @@ export default function AuthPage() {
   }, []);
 
   function redirigirPorRol(rol: import('@/lib/useAuth').UserRole, localId?: string | null) {
-    switch (rol) {
-      case 'central':
-        router.push('/panel/central');
-        break;
-      case 'rider':
-        router.push('/panel/rider');
-        break;
-      case 'local':
-        router.push(localId ? `/panel/restaurante/${localId}` : '/panel/restaurante');
-        break;
-      case 'maestro':
-        router.push('/panel/maestro');
-        break;
-      case 'cliente':
-      default:
-        router.push('/');
-        break;
+    const raw = searchParams.get('redirect');
+    if (raw && isSafeInternalRedirectPath(raw)) {
+      router.replace(raw);
+      return;
     }
+    router.replace(getPanelPathForRole(rol, localId ?? undefined));
   }
 
   async function handleGoogle() {
@@ -316,7 +292,7 @@ export default function AuthPage() {
         <div className="flex justify-end p-4">
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="text-white/90 hover:text-white font-semibold text-sm py-2 px-4 rounded-xl hover:bg-white/10 transition-colors"
           >
             Omitir
@@ -604,7 +580,7 @@ export default function AuthPage() {
           </button>
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="w-full mt-3 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-semibold hover:bg-gray-50"
           >
             Volver al inicio

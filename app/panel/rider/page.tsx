@@ -31,6 +31,7 @@ import {
   ChevronDown,
   Settings,
   Zap,
+  Sandwich,
 } from 'lucide-react';
 import { useNotifications } from '@/lib/useNotifications';
 import { useOrderSoundAutoplayUnlock } from '@/lib/useOrderSoundAutoplayUnlock';
@@ -121,7 +122,7 @@ export default function PanelRiderPage() {
   useNotifications('rider');
   const [carreras, setCarreras] = useState<CarreraRider[]>([]);
   const [historialHoy, setHistorialHoy] = useState<CarreraRider[]>([]);
-  const [tab, setTab] = useState<'activas' | 'mandados' | 'historial'>('activas');
+  const [tab, setTab] = useState<'activas' | 'historial'>('activas');
   const [filtroHistorial, setFiltroHistorial] = useState<'hoy' | 'semana' | 'mes'>('hoy');
   const [carreraActiva, setCarreraActiva] = useState<CarreraRider | null>(null);
   const [mostrarVerificacion, setMostrarVerificacion] = useState(false);
@@ -142,6 +143,8 @@ export default function PanelRiderPage() {
 
   const { showToast: showGlobalToast } = useToast();
   const prevCarreraIdsRef = useRef<Set<string>>(new Set());
+  const mandadosRiderInitRef = useRef(false);
+  const prevMandadoRiderIdsRef = useRef<Set<string>>(new Set());
   const newOrderSoundRef = useOrderSoundAutoplayUnlock('/sounds/rider-new-order.mp3');
   function playNewCarreraSound() {
     try {
@@ -229,9 +232,22 @@ export default function PanelRiderPage() {
     const unsubMandados = onSnapshot(
       qMandados,
       (snap) => {
-        setMandadosActivos(
-          snap.docs.map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>))
-        );
+        const list = snap.docs.map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>));
+        setMandadosActivos(list);
+        const ids = new Set(list.map((m) => m.id));
+        if (!mandadosRiderInitRef.current) {
+          mandadosRiderInitRef.current = true;
+          prevMandadoRiderIdsRef.current = ids;
+        } else {
+          for (const id of ids) {
+            if (!prevMandadoRiderIdsRef.current.has(id)) {
+              playNewCarreraSound();
+              showToast('Nuevo mandado asignado');
+              break;
+            }
+          }
+          prevMandadoRiderIdsRef.current = ids;
+        }
       },
       () => {
         showGlobalToast({ type: 'error', message: 'Error al sincronizar mandados.' });
@@ -506,7 +522,27 @@ export default function PanelRiderPage() {
   });
   }
 
-  const activasCount = carreras.filter((c) => c.estado !== 'entregada').length;
+  const carrerasActivasNoEntregadas = carreras.filter((c) => c.estado !== 'entregada');
+  const activasCount = carrerasActivasNoEntregadas.length + mandadosActivos.length;
+
+  /** Cola única: grupos de carrera + mandados, orden por tiempo descendente. */
+  const colaUnificada = useMemo(() => {
+    type Item =
+      | { kind: 'carreraGroup'; group: CarreraRider[]; ts: number; key: string }
+      | { kind: 'mandado'; mandado: MandadoCentral; ts: number; key: string };
+    const items: Item[] = [];
+    for (const group of carrerasAgrupadas) {
+      const ts = Math.max(...group.map((c) => c.timestamp ?? 0));
+      const leader = group[0];
+      const key =
+        group.length > 1 && leader.batchId ? `batch_${leader.batchId}` : `c_${leader.id}`;
+      items.push({ kind: 'carreraGroup', group, ts, key });
+    }
+    for (const m of mandadosActivos) {
+      items.push({ kind: 'mandado', mandado: m, ts: m.timestamp ?? 0, key: `m_${m.id}` });
+    }
+    return items.sort((a, b) => b.ts - a.ts);
+  }, [carrerasAgrupadas, mandadosActivos]);
 
   if (loading || !user || (user.rol !== 'rider' && user.rol !== 'maestro')) {
     return (
@@ -554,7 +590,7 @@ export default function PanelRiderPage() {
           )}
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="mt-8 w-full py-3 rounded-2xl bg-gray-900 text-white font-bold"
           >
             Volver al inicio
@@ -637,7 +673,7 @@ export default function PanelRiderPage() {
                 <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-stretch sm:w-auto sm:min-w-[148px]">
                   <button
                     type="button"
-                    onClick={() => router.push('/')}
+                    onClick={() => router.push('/?modo=cliente')}
                     className="touch-target-lg min-h-[44px] flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 py-2 rounded-2xl bg-cyan-300/25 border border-cyan-200/35 hover:bg-cyan-300/35 text-sm font-bold transition-colors"
                     title="Pedir comida"
                   >
@@ -775,8 +811,7 @@ export default function PanelRiderPage() {
         <div className="max-w-lg mx-auto px-4 -mt-1">
           <div className="bg-white/95 border border-rider-100 rounded-2xl p-1 flex shadow-soft mb-4 mt-4 overflow-x-auto scrollbar-hide">
             {([
-              { id: 'activas', label: `Carreras (${activasCount})`, mobileLabel: `Activas (${activasCount})`, icon: Bike },
-              { id: 'mandados', label: `Mandados (${mandadosActivos.length})`, mobileLabel: `Mandados (${mandadosActivos.length})`, icon: Zap },
+              { id: 'activas', label: `En cola (${activasCount})`, mobileLabel: `Activas (${activasCount})`, icon: Bike },
               { id: 'historial', label: 'Historial de hoy', mobileLabel: 'Historial', icon: History },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
@@ -791,151 +826,154 @@ export default function PanelRiderPage() {
               >
                 <Icon className="w-4 h-4" />
                 <span className="sm:hidden">
-                  {id === 'activas'
-                    ? `Activas (${activasCount})`
-                    : id === 'mandados'
-                      ? `Mandados (${mandadosActivos.length})`
-                      : 'Historial'}
+                  {id === 'activas' ? `Activas (${activasCount})` : 'Historial'}
                 </span>
                 <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
 
-          {/* ── carreras activas ── */}
+          {/* ── cola unificada: comida + mandados por tiempo ── */}
           {tab === 'activas' && (
             <div className="space-y-4">
-              {carrerasAgrupadas.length === 0 ? (
+              {colaUnificada.length === 0 ? (
                 <div className="bg-white rounded-3xl p-10 text-center shadow-soft border border-rider-100">
                   <Bike className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                  <p className="font-bold text-gray-400">No tienes carreras activas</p>
-                  <p className="text-xs text-gray-300 mt-1">Espera la asignación de la central</p>
+                  <p className="font-bold text-gray-400">No tienes tareas en cola</p>
+                  <p className="text-xs text-gray-300 mt-1">Carreras y mandados aparecen aquí en orden de tiempo</p>
                 </div>
               ) : (
-                carrerasAgrupadas.map((group) => {
-                  const leader = group[0];
-                  const esBatch = group.length > 1;
-                  return esBatch ? (
-                    <TarjetaCarreraBatch
-                      key={leader.batchId!}
-                      carreras={group}
-                      avanzandoKey={avanzandoKey}
-                      onVerDetalle={() => setCarreraActiva(leader)}
-                      onEnCamino={() => avanzarEstado(leader.id, 'en_camino', leader.batchId ?? undefined)}
-                      onVerificar={() => {
-                        setCarreraActiva(leader);
-                        setMostrarVerificacion(true);
-                      }}
-                    />
-                  ) : (
-                    <TarjetaCarrera
-                      key={leader.id}
-                      carrera={leader}
-                      avanzandoKey={avanzandoKey}
-                      onVerDetalle={() => setCarreraActiva(leader)}
-                      onEnCamino={() => avanzarEstado(leader.id, 'en_camino')}
-                      onVerificar={() => {
-                        setCarreraActiva(leader);
-                        setMostrarVerificacion(true);
-                      }}
-                    />
+                colaUnificada.map((item) => {
+                  if (item.kind === 'carreraGroup') {
+                    const group = item.group;
+                    const leader = group[0];
+                    const esBatch = group.length > 1;
+                    return (
+                      <div key={item.key} className="space-y-1">
+                        <div className="flex items-center gap-2 px-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-900 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+                            <Sandwich className="w-3.5 h-3.5" />
+                            Comida
+                          </span>
+                        </div>
+                        {esBatch ? (
+                          <TarjetaCarreraBatch
+                            carreras={group}
+                            avanzandoKey={avanzandoKey}
+                            onVerDetalle={() => setCarreraActiva(leader)}
+                            onEnCamino={() => avanzarEstado(leader.id, 'en_camino', leader.batchId ?? undefined)}
+                            onVerificar={() => {
+                              setCarreraActiva(leader);
+                              setMostrarVerificacion(true);
+                            }}
+                          />
+                        ) : (
+                          <TarjetaCarrera
+                            carrera={leader}
+                            avanzandoKey={avanzandoKey}
+                            onVerDetalle={() => setCarreraActiva(leader)}
+                            onEnCamino={() => avanzarEstado(leader.id, 'en_camino')}
+                            onVerificar={() => {
+                              setCarreraActiva(leader);
+                              setMostrarVerificacion(true);
+                            }}
+                          />
+                        )}
+                      </div>
+                    );
+                  }
+                  const m = item.mandado;
+                  return (
+                    <div key={item.key} className="space-y-1">
+                      <div className="flex items-center gap-2 px-1">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-900 bg-dorado-oro/15 border border-amber-300/50 px-2 py-0.5 rounded-full">
+                          <Zap className="w-3.5 h-3.5 text-amber-800" />
+                          Mandado
+                        </span>
+                      </div>
+                      <div className="bg-white rounded-3xl p-4 shadow-soft border border-amber-100">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              m.estado === 'asignado'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                                : 'bg-purple-50 text-purple-700 border border-purple-100'
+                            }`}
+                          >
+                            {m.estado === 'asignado' ? 'Asignado' : 'En camino'}
+                          </span>
+                          <span className="text-[10px] text-gray-400">{m.hora}</span>
+                        </div>
+                        <p className="font-bold text-gray-900 text-sm mb-2">{m.descripcion}</p>
+                        <p className="text-xs text-gray-600">
+                          <span className="text-amber-700 font-semibold">A</span> {m.desdeTexto}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          <span className="text-rider-700 font-semibold">B</span> {m.hastaTexto}
+                        </p>
+                        {m.pagoRider != null || m.tarifaEnvio != null ? (
+                          <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-100">
+                            <p className="text-[11px] font-bold text-amber-900">
+                              Ref. pago carrera ${(m.pagoRider ?? m.tarifaEnvio ?? 0).toFixed(2)}
+                            </p>
+                            {m.distanciaKm != null ? (
+                              <p className="text-[10px] text-gray-600">{formatDistanceKm(m.distanciaKm)}</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <a
+                            href={
+                              m.desdeLat != null && m.desdeLng != null
+                                ? `https://www.google.com/maps/search/?api=1&query=${m.desdeLat},${m.desdeLng}`
+                                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.desdeTexto + ', Piñas, Ecuador')}`
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-rider-700"
+                          >
+                            <Navigation className="w-3 h-3" />
+                            Mapa A
+                          </a>
+                          <a
+                            href={
+                              m.hastaLat != null && m.hastaLng != null
+                                ? `https://www.google.com/maps/search/?api=1&query=${m.hastaLat},${m.hastaLng}`
+                                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.hastaTexto + ', Piñas, Ecuador')}`
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600"
+                          >
+                            <Navigation className="w-3 h-3" />
+                            Mapa B
+                          </a>
+                        </div>
+                        {m.estado === 'asignado' ? (
+                          <LoadingButton
+                            type="button"
+                            className="w-full mt-3 py-3 rounded-2xl bg-rider-700 text-white font-bold text-sm"
+                            loading={avanzandoMandadoKey === `${m.id}_en_camino`}
+                            disabled={!!avanzandoMandadoKey}
+                            onClick={() => avanzarMandado(m.id, 'en_camino')}
+                          >
+                            Marcar en camino
+                          </LoadingButton>
+                        ) : (
+                          <LoadingButton
+                            type="button"
+                            className="w-full mt-3 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm"
+                            loading={avanzandoMandadoKey === `${m.id}_completado`}
+                            disabled={!!avanzandoMandadoKey}
+                            onClick={() => avanzarMandado(m.id, 'completado')}
+                          >
+                            Completar mandado
+                          </LoadingButton>
+                        )}
+                      </div>
+                    </div>
                   );
                 })
-              )}
-            </div>
-          )}
-
-          {tab === 'mandados' && (
-            <div className="space-y-3">
-              {mandadosActivos.length === 0 ? (
-                <div className="bg-white rounded-3xl p-10 text-center shadow-soft border border-rider-100">
-                  <Zap className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                  <p className="font-bold text-gray-400">No tienes mandados activos</p>
-                  <p className="text-xs text-gray-300 mt-1">La central te asignará mandados desde /express</p>
-                </div>
-              ) : (
-                mandadosActivos.map((m) => (
-                  <div key={m.id} className="bg-white rounded-3xl p-4 shadow-soft border border-amber-100">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          m.estado === 'asignado'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                            : 'bg-purple-50 text-purple-700 border border-purple-100'
-                        }`}
-                      >
-                        {m.estado === 'asignado' ? 'Asignado' : 'En camino'}
-                      </span>
-                      <span className="text-[10px] text-gray-400">{m.hora}</span>
-                    </div>
-                    <p className="font-bold text-gray-900 text-sm mb-2">{m.descripcion}</p>
-                    <p className="text-xs text-gray-600">
-                      <span className="text-amber-700 font-semibold">A</span> {m.desdeTexto}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      <span className="text-rider-700 font-semibold">B</span> {m.hastaTexto}
-                    </p>
-                    {m.pagoRider != null || m.tarifaEnvio != null ? (
-                      <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-100">
-                        <p className="text-[11px] font-bold text-amber-900">
-                          Ref. pago carrera ${(m.pagoRider ?? m.tarifaEnvio ?? 0).toFixed(2)}
-                        </p>
-                        {m.distanciaKm != null ? (
-                          <p className="text-[10px] text-gray-600">{formatDistanceKm(m.distanciaKm)}</p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      <a
-                        href={
-                          m.desdeLat != null && m.desdeLng != null
-                            ? `https://www.google.com/maps/search/?api=1&query=${m.desdeLat},${m.desdeLng}`
-                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.desdeTexto + ', Piñas, Ecuador')}`
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-rider-700"
-                      >
-                        <Navigation className="w-3 h-3" />
-                        Mapa A
-                      </a>
-                      <a
-                        href={
-                          m.hastaLat != null && m.hastaLng != null
-                            ? `https://www.google.com/maps/search/?api=1&query=${m.hastaLat},${m.hastaLng}`
-                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.hastaTexto + ', Piñas, Ecuador')}`
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600"
-                      >
-                        <Navigation className="w-3 h-3" />
-                        Mapa B
-                      </a>
-                    </div>
-                    {m.estado === 'asignado' ? (
-                      <LoadingButton
-                        type="button"
-                        className="w-full mt-3 py-3 rounded-2xl bg-rider-700 text-white font-bold text-sm"
-                        loading={avanzandoMandadoKey === `${m.id}_en_camino`}
-                        disabled={!!avanzandoMandadoKey}
-                        onClick={() => avanzarMandado(m.id, 'en_camino')}
-                      >
-                        Marcar en camino
-                      </LoadingButton>
-                    ) : (
-                      <LoadingButton
-                        type="button"
-                        className="w-full mt-3 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm"
-                        loading={avanzandoMandadoKey === `${m.id}_completado`}
-                        disabled={!!avanzandoMandadoKey}
-                        onClick={() => avanzarMandado(m.id, 'completado')}
-                      >
-                        Completar mandado
-                      </LoadingButton>
-                    )}
-                  </div>
-                ))
               )}
             </div>
           )}

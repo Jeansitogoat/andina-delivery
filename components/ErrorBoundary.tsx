@@ -73,7 +73,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                 </Link>
               ) : (
                 <Link
-                  href="/"
+                  href="/?modo=cliente"
                   className="px-6 py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
                 >
                   Ir al inicio

@@ -11,6 +11,10 @@ import { calcularComision, calcularNetoLocal } from '@/lib/commissions';
 import { getOrderMoney } from '@/lib/order-money';
 import { getRiderDisplayNameForPedido } from '@/lib/rider-profile-admin';
 
+const RENOTIFY_COOLDOWN_MS = 3 * 60 * 1000;
+
+const PEDIDO_TERMINAL_SIN_ASIGNAR: string[] = ['entregado', 'cancelado_local', 'cancelado_cliente'];
+
 type PedidoConRider = PedidoCentral & { riderRating?: number | null };
 
 /** GET /api/pedidos/[id] → pedido por id. Requiere auth: solo dueño del pedido, dueño del local, rider asignado o central/maestro. */
@@ -288,7 +292,7 @@ export async function PATCH(
             typeof data.logisticaBumpAt === 'number' && !Number.isNaN(data.logisticaBumpAt)
               ? data.logisticaBumpAt
               : 0;
-          if (lastBump > 0 && Date.now() - lastBump < 180.000)  {
+          if (lastBump > 0 && Date.now() - lastBump < RENOTIFY_COOLDOWN_MS) {
             return NextResponse.json(
               { error: 'Espera al menos 3 minutos entre re-notificaciones' },
               { status: 429 }
@@ -407,6 +411,99 @@ export async function PATCH(
       } else {
         return NextResponse.json({ error: 'Estado no permitido para el rol rider' }, { status: 403 });
       }
+    }
+
+    /* Central / maestro: asignar rider con transacción (evita doble asignación). */
+    const isCentralOrMaestro = auth.rol === 'central' || auth.rol === 'maestro';
+    const riderIdInBody = typeof body.riderId === 'string' ? body.riderId.trim() : '';
+    const esAsignacionRider =
+      isCentralOrMaestro &&
+      riderIdInBody !== '' &&
+      (body.estado === undefined || body.estado === 'asignado');
+
+    if (esAsignacionRider) {
+      const estadoActual = (data.estado as string) || 'confirmado';
+      if (PEDIDO_TERMINAL_SIN_ASIGNAR.includes(estadoActual)) {
+        return NextResponse.json(
+          { error: 'No se puede asignar rider en este estado del pedido.' },
+          { status: 400 }
+        );
+      }
+      const currentRider = (data.riderId as string) || null;
+      if (currentRider && currentRider !== riderIdInBody) {
+        return NextResponse.json(
+          { error: 'Este pedido ya fue asignado a otro rider.' },
+          { status: 409 }
+        );
+      }
+      if (currentRider === riderIdInBody) {
+        return NextResponse.json({ ok: true, alreadyAssigned: true });
+      }
+
+      const riderNombre = await getRiderDisplayNameForPedido(db, riderIdInBody);
+      const estadoAsignacion = body.estado ?? 'asignado';
+
+      try {
+        await db.runTransaction(async (tx) => {
+          const s = await tx.get(ref);
+          if (!s.exists) {
+            throw new Error('NOT_FOUND');
+          }
+          const d = s.data()!;
+          const er = (d.riderId as string) || null;
+          const es = (d.estado as string) || 'confirmado';
+          if (PEDIDO_TERMINAL_SIN_ASIGNAR.includes(es)) {
+            throw new Error('BAD_STATE');
+          }
+          if (er && er !== riderIdInBody) {
+            throw new Error('CONFLICT');
+          }
+          if (er === riderIdInBody) {
+            return;
+          }
+          const patch: Record<string, unknown> = {
+            riderId: riderIdInBody,
+            riderNombre,
+            estado: estadoAsignacion,
+            updatedAt: FieldValue.serverTimestamp(),
+          };
+          if (body.propina !== undefined) patch.propina = body.propina;
+          tx.update(ref, sanitizeForFirestore(patch));
+        });
+      } catch (e) {
+        const code = e instanceof Error ? e.message : '';
+        if (code === 'CONFLICT') {
+          return NextResponse.json(
+            { error: 'Este pedido ya fue asignado a otro rider.' },
+            { status: 409 }
+          );
+        }
+        if (code === 'BAD_STATE') {
+          return NextResponse.json(
+            { error: 'No se puede asignar rider en este estado del pedido.' },
+            { status: 400 }
+          );
+        }
+        if (code === 'NOT_FOUND') {
+          return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 });
+        }
+        throw e;
+      }
+
+      const clienteIdAssign = data.clienteId ?? null;
+      if (clienteIdAssign && typeof clienteIdAssign === 'string') {
+        try {
+          await sendFCMToUser(
+            clienteIdAssign,
+            'Repartidor asignado',
+            'Tu pedido tiene repartidor asignado.',
+            { pedidoId: id }
+          );
+        } catch {
+          // ignorar
+        }
+      }
+      return NextResponse.json({ ok: true });
     }
 
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };

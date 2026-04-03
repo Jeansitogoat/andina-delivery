@@ -29,6 +29,7 @@ import {
   Truck,
   UserCircle,
   Plus,
+  Sandwich,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useNotifications } from '@/lib/useNotifications';
@@ -41,9 +42,11 @@ import {
   type EstadoPedido,
   type EstadoRider,
   type MandadoCentral,
+  type OrdenVista,
   type PedidoCentral,
   type RiderCentral,
 } from '@/lib/types';
+import { filtrarMandadosPanelCentral, mergeOrdenesUnificadas } from '@/lib/orden-vista';
 import { docToMandadoCentral } from '@/lib/mandado-map';
 import { validateTarifaTiers, MAX_TARIFA_TIERS } from '@/lib/tarifas-validacion';
 import { formatDistanceKm } from '@/lib/geo';
@@ -110,18 +113,6 @@ function estadoVistaCentral(p: PedidoCentral): EstadoPedido {
   return p.estado;
 }
 
-const ORDEN_ESTADO_CENTRAL: Record<EstadoPedido, number> = {
-  confirmado: 0,
-  preparando: 1,
-  listo: 2,
-  esperando_rider: 3,
-  asignado: 4,
-  en_camino: 5,
-  entregado: 6,
-  cancelado_local: 7,
-  cancelado_cliente: 8,
-};
-
 const PANEL_CENTRAL_KEYFRAMES = `
   @keyframes slideUp {
     from { transform: translateY(100%); }
@@ -158,7 +149,7 @@ export default function PanelCentralPage() {
   const { permission, requestPermission, loading: notifLoading } = useNotifications('central');
   const [pedidos, setPedidos] = useState<PedidoCentral[]>([]);
   const [rawRiderDocs, setRawRiderDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
-  const [tab, setTab] = useState<'activos' | 'mandados' | 'riders' | 'historial' | 'tarifas'>('activos');
+  const [tab, setTab] = useState<'activos' | 'riders' | 'historial' | 'tarifas'>('activos');
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState<PedidoCentral | null>(null);
   const [mostrarAsignar, setMostrarAsignar] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -172,6 +163,8 @@ export default function PanelCentralPage() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const prevPedidosCount = useRef(0);
   const prevLogisticaBumpByPedidoId = useRef<Record<string, number>>({});
+  const mandadosInicializadoRef = useRef(false);
+  const prevMandadoIdsRef = useRef<Set<string>>(new Set());
   const [sessionInvalid, setSessionInvalid] = useState(false);
   const [tarifasTiers, setTarifasTiers] = useState<Array<{ kmMax: number | null; tarifa: number }>>([
     { kmMax: 2.5, tarifa: 1.5 },
@@ -358,9 +351,25 @@ export default function PanelCentralPage() {
     const unsubMandados = onSnapshot(
       qMandados,
       (snap) => {
-        setMandados(
-          snap.docs.map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>))
-        );
+        const incoming = snap.docs.map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>));
+        setMandados(incoming);
+        const ids = new Set(incoming.map((m) => m.id));
+        if (!mandadosInicializadoRef.current) {
+          mandadosInicializadoRef.current = true;
+          prevMandadoIdsRef.current = ids;
+          return;
+        }
+        for (const id of ids) {
+          if (!prevMandadoIdsRef.current.has(id)) {
+            const m = incoming.find((x) => x.id === id);
+            setNuevoPedidoId(id);
+            showToast(`Nuevo mandado: ${m?.descripcion?.slice(0, 40) ?? id} · ${m?.clienteNombre ?? ''}`);
+            playNewOrderSound();
+            setTimeout(() => setNuevoPedidoId(null), 4000);
+            break;
+          }
+        }
+        prevMandadoIdsRef.current = ids;
       },
       () => {
         showGlobalToast({ type: 'error', message: 'Error al sincronizar mandados. Recarga la página.' });
@@ -649,9 +658,13 @@ export default function PanelCentralPage() {
     }
   }
 
-  /* stats */
-  const esperando = pedidos.filter(solicitudRiderPendiente).length;
-  const enCurso = pedidos.filter((p) => p.estado === 'asignado' || p.estado === 'en_camino').length;
+  /* stats (comida + mandados activos en listeners) */
+  const esperando =
+    pedidos.filter(solicitudRiderPendiente).length +
+    mandados.filter((m) => m.estado === 'pendiente' && !m.riderId).length;
+  const enCurso =
+    pedidos.filter((p) => p.estado === 'asignado' || p.estado === 'en_camino').length +
+    mandados.filter((m) => m.estado === 'asignado' || m.estado === 'en_camino').length;
   const entregadosHoy = pedidos.filter((p) => p.estado === 'entregado').length;
   const ridersDisponibles = riders.filter((r) => r.estado === 'disponible').length;
 
@@ -671,6 +684,14 @@ export default function PanelCentralPage() {
   const pedidosActivos = useMemo(() => pedidosFiltrados.filter(
     (p) => p.estado !== 'entregado' && p.estado !== 'cancelado_local' && p.estado !== 'cancelado_cliente'
   ), [pedidosFiltrados]);
+  const mandadosFiltrados = useMemo(
+    () => filtrarMandadosPanelCentral(mandados, busqueda, filtroEstado),
+    [mandados, busqueda, filtroEstado]
+  );
+  const ordenesUnificadas = useMemo(
+    () => mergeOrdenesUnificadas(pedidosActivos, mandadosFiltrados),
+    [pedidosActivos, mandadosFiltrados]
+  );
   const pedidosHistorial = useMemo(() => pedidosFiltrados.filter(
     (p) => p.estado === 'entregado' || p.estado === 'cancelado_local' || p.estado === 'cancelado_cliente'
   ), [pedidosFiltrados]);
@@ -697,7 +718,7 @@ export default function PanelCentralPage() {
               <div className="flex items-center justify-between gap-3 mb-3">
                 <button
                   type="button"
-                  onClick={() => router.push('/')}
+                  onClick={() => router.push('/?modo=cliente')}
                   className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
                 >
                   <ArrowLeft className="w-5 h-5 text-white" />
@@ -730,7 +751,7 @@ export default function PanelCentralPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => router.push('/')}
+                  onClick={() => router.push('/?modo=cliente')}
                   className="flex-shrink-0 min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
                   title="Ir como cliente"
                 >
@@ -842,8 +863,7 @@ export default function PanelCentralPage() {
 
             <div className="bg-white rounded-2xl p-1 flex shadow-sm mb-4 overflow-x-auto scrollbar-hide">
               {[
-                { id: 'activos', label: 'Activos (' + pedidosActivos.length + ')', icon: Package },
-                { id: 'mandados', label: 'Mandados (' + mandados.length + ')', icon: Zap },
+                { id: 'activos', label: 'Órdenes activas (' + ordenesUnificadas.length + ')', icon: Package },
                 { id: 'riders', label: 'Riders (' + riders.length + ')', icon: Bike },
                 { id: 'historial', label: 'Historial (' + pedidosHistorial.length + ')', icon: History },
                 { id: 'tarifas', label: 'Tarifas', icon: Truck },
@@ -851,126 +871,123 @@ export default function PanelCentralPage() {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setTab(id as 'activos' | 'mandados' | 'riders' | 'historial' | 'tarifas')}
+                  onClick={() => setTab(id as 'activos' | 'riders' | 'historial' | 'tarifas')}
                   className={'flex-1 min-w-[108px] sm:min-w-[120px] md:min-w-[80px] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ' + (tab === id ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600')}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span className="sm:hidden">
                     {id === 'activos'
-                      ? `Activos (${pedidosActivos.length})`
-                      : id === 'mandados'
-                        ? `Mandados (${mandados.length})`
-                        : id === 'riders'
-                          ? `Riders (${riders.length})`
-                          : id === 'historial'
-                            ? `Historial (${pedidosHistorial.length})`
-                            : 'Tarifas'}
+                      ? `Activas (${ordenesUnificadas.length})`
+                      : id === 'riders'
+                        ? `Riders (${riders.length})`
+                        : id === 'historial'
+                          ? `Historial (${pedidosHistorial.length})`
+                          : 'Tarifas'}
                   </span>
                   <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
             </div>
 
-            {tab === 'mandados' && (
-              <div className="space-y-3">
-                {mandados.length === 0 ? (
-                  <div className="bg-white rounded-3xl p-10 text-center shadow-sm">
-                    <Zap className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                    <p className="font-bold text-gray-400">No hay mandados activos</p>
-                    <p className="text-xs text-gray-400 mt-1">Los mandados de /express aparecerán aquí</p>
-                  </div>
-                ) : (
-                  mandados.map((m) => {
-                    const cfg = ESTADO_MANDADO_CONFIG[m.estado];
-                    const pendienteSinRider = m.estado === 'pendiente' && !m.riderId;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setMandadoSeleccionado(m)}
-                        className="w-full text-left bg-white rounded-3xl p-4 shadow-sm border border-amber-100 hover:border-amber-300 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <span className={'text-[10px] font-bold px-2 py-0.5 rounded-full border ' + cfg.bg + ' ' + cfg.color}>
-                            {cfg.label}
-                          </span>
-                          <span className="text-[10px] text-gray-400">{m.hora ?? tiempoTranscurrido(m.timestamp)}</span>
-                        </div>
-                        <p className="font-bold text-gray-900 text-sm line-clamp-2 mb-2">{m.descripcion}</p>
-                        <p className="text-xs text-gray-500 line-clamp-1">
-                          <span className="text-amber-700">A</span> {m.desdeTexto}
-                        </p>
-                        <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
-                          <span className="text-rojo-andino">B</span> {m.hastaTexto}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-2">{m.clienteNombre}</p>
-                        {m.tarifaEnvio != null ? (
-                          <p className="text-xs font-bold text-gray-800 mt-1">
-                            Carrera ${m.tarifaEnvio.toFixed(2)}
-                            {m.distanciaKm != null ? (
-                              <span className="font-normal text-gray-500"> · {formatDistanceKm(m.distanciaKm)}</span>
-                            ) : null}
-                          </p>
-                        ) : null}
-                        {pendienteSinRider ? (
-                          <span className="inline-block mt-2 text-xs font-bold text-purple-600">Toca para asignar rider →</span>
-                        ) : m.riderNombre ? (
-                          <p className="text-xs text-blue-600 mt-2 font-semibold">Rider: {m.riderNombre}</p>
-                        ) : null}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-
             {tab === 'activos' && (
               <div className="space-y-3">
-                {loadingData && pedidos.length === 0 ? (
+                {loadingData && pedidos.length === 0 && mandados.length === 0 ? (
                   <SkeletonListaPedidos />
-                ) : pedidosActivos.length === 0 ? (
+                ) : ordenesUnificadas.length === 0 ? (
                   <div className="bg-white rounded-3xl p-10 text-center shadow-sm">
-                    <CheckCircle2 className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                    <p className="font-bold text-gray-400">No hay pedidos activos</p>
+                    <Package className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                    <p className="font-bold text-gray-400">No hay órdenes activas</p>
+                    <p className="text-xs text-gray-400 mt-1">Pedidos y mandados aparecen en esta misma lista</p>
                   </div>
                 ) : (
-                  pedidosActivos
-                    .slice()
-                    .sort((a, b) => {
-                      const da = ORDEN_ESTADO_CENTRAL[estadoVistaCentral(a)];
-                      const db = ORDEN_ESTADO_CENTRAL[estadoVistaCentral(b)];
-                      if (da !== db) return da - db;
-                      return effectiveSortTs(b) - effectiveSortTs(a);
-                    })
-                    .map((pedido) => {
+                  ordenesUnificadas.map((orden: OrdenVista) => {
+                    if (orden.tipo === 'comida') {
+                      const pedido = orden.pedido;
                       const esMultiStop = !!pedido.batchId;
                       const totalParadas = esMultiStop
                         ? pedidosActivos.filter((p) => p.batchId === pedido.batchId).length
                         : null;
-                      const numeroParada = esMultiStop
-                        ? ((pedido.batchIndex ?? 0) + 1)
-                        : null;
+                      const numeroParada = esMultiStop ? ((pedido.batchIndex ?? 0) + 1) : null;
                       return (
-                        <TarjetaPedidoCentral
-                          key={pedido.id}
-                          pedido={pedido}
-                          riders={riders}
-                          isNuevo={pedido.id === nuevoPedidoId}
-                          esMultiStop={esMultiStop}
-                          numeroParada={numeroParada}
-                          totalParadas={totalParadas}
-                          avanzandoId={avanzandoId}
-                          asignandoKey={asignandoKey}
-                          onAsignar={() => {
-                            setPedidoSeleccionado(pedido);
-                            setMostrarAsignar(true);
-                          }}
-                          onVerDetalle={() => setPedidoSeleccionado(pedido)}
-                          onAvanzar={() => avanzarEstado(pedido.id)}
-                          onEliminar={() => setEliminarPedidoId(pedido.id)}
-                        />
+                        <div key={`c-${pedido.id}`} className="space-y-1">
+                          <div className="flex items-center gap-2 px-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-900 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+                              <Sandwich className="w-3.5 h-3.5" />
+                              Comida
+                            </span>
+                          </div>
+                          <TarjetaPedidoCentral
+                            pedido={pedido}
+                            riders={riders}
+                            isNuevo={pedido.id === nuevoPedidoId}
+                            esMultiStop={esMultiStop}
+                            numeroParada={numeroParada}
+                            totalParadas={totalParadas}
+                            avanzandoId={avanzandoId}
+                            asignandoKey={asignandoKey}
+                            onAsignar={() => {
+                              setPedidoSeleccionado(pedido);
+                              setMostrarAsignar(true);
+                            }}
+                            onVerDetalle={() => setPedidoSeleccionado(pedido)}
+                            onAvanzar={() => avanzarEstado(pedido.id)}
+                            onEliminar={() => setEliminarPedidoId(pedido.id)}
+                          />
+                        </div>
                       );
-                    })
+                    }
+                    const m = orden.mandado;
+                    const cfg = ESTADO_MANDADO_CONFIG[m.estado];
+                    const pendienteSinRider = m.estado === 'pendiente' && !m.riderId;
+                    return (
+                      <div key={`m-${m.id}`} className="space-y-1">
+                        <div className="flex items-center gap-2 px-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-900 bg-dorado-oro/15 border border-amber-300/50 px-2 py-0.5 rounded-full">
+                            <Zap className="w-3.5 h-3.5 text-amber-800" />
+                            Mandado
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMandadoSeleccionado(m)}
+                          className={
+                            'w-full text-left bg-white rounded-3xl p-4 shadow-sm border transition-colors ' +
+                            (m.id === nuevoPedidoId
+                              ? 'border-orange-400 shadow-orange-100 shadow-lg'
+                              : 'border-amber-100 hover:border-amber-300')
+                          }
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <span className={'text-[10px] font-bold px-2 py-0.5 rounded-full border ' + cfg.bg + ' ' + cfg.color}>
+                              {cfg.label}
+                            </span>
+                            <span className="text-[10px] text-gray-400">{m.hora ?? tiempoTranscurrido(m.timestamp)}</span>
+                          </div>
+                          <p className="font-bold text-gray-900 text-sm line-clamp-2 mb-2">{m.descripcion}</p>
+                          <p className="text-xs text-gray-500 line-clamp-1">
+                            <span className="text-amber-700">A</span> {m.desdeTexto}
+                          </p>
+                          <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
+                            <span className="text-rojo-andino">B</span> {m.hastaTexto}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-2">{m.clienteNombre}</p>
+                          {m.tarifaEnvio != null ? (
+                            <p className="text-xs font-bold text-gray-800 mt-1">
+                              Carrera ${m.tarifaEnvio.toFixed(2)}
+                              {m.distanciaKm != null ? (
+                                <span className="font-normal text-gray-500"> · {formatDistanceKm(m.distanciaKm)}</span>
+                              ) : null}
+                            </p>
+                          ) : null}
+                          {pendienteSinRider ? (
+                            <span className="inline-block mt-2 text-xs font-bold text-purple-600">Toca para asignar rider →</span>
+                          ) : m.riderNombre ? (
+                            <p className="text-xs text-blue-600 mt-2 font-semibold">Rider: {m.riderNombre}</p>
+                          ) : null}
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             )}

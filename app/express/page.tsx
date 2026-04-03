@@ -19,6 +19,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
+import { getPanelPathForRole } from '@/lib/auth-routing';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
 
@@ -154,7 +155,7 @@ export default function ExpressPage() {
       return;
     }
     if (user.rol !== 'cliente') {
-      router.replace('/');
+      router.replace(getPanelPathForRole(user.rol, user.localId ?? undefined));
     }
   }, [authLoading, user, router]);
 

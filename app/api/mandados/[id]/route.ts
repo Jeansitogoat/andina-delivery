@@ -90,14 +90,61 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!ACTIVOS.includes(estadoActual)) {
       return NextResponse.json({ error: 'Mandado ya cerrado' }, { status: 400 });
     }
-    await ref.update(
-      sanitizeForFirestore({
-        riderId,
-        riderNombre,
-        estado: 'asignado',
-        updatedAt: FieldValue.serverTimestamp(),
-      })
-    );
+    if (riderActual && riderActual !== riderId) {
+      return NextResponse.json({ error: 'Este mandado ya fue asignado a otro rider.' }, { status: 409 });
+    }
+    if (estadoActual === 'asignado' && riderActual === riderId) {
+      return NextResponse.json({ ok: true, alreadyAssigned: true });
+    }
+    if (estadoActual !== 'pendiente' || riderActual) {
+      return NextResponse.json(
+        { error: 'Solo se puede asignar rider mientras el mandado está pendiente y sin rider.' },
+        { status: 400 }
+      );
+    }
+
+    try {
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        if (!s.exists) {
+          throw new Error('NOT_FOUND');
+        }
+        const d = s.data()!;
+        const er = (d.riderId as string) || null;
+        const es = (d.estado as EstadoMandado) || 'pendiente';
+        if (es !== 'pendiente') {
+          throw new Error('BAD_STATE');
+        }
+        if (er) {
+          throw new Error('CONFLICT');
+        }
+        tx.update(
+          ref,
+          sanitizeForFirestore({
+            riderId,
+            riderNombre,
+            estado: 'asignado',
+            updatedAt: FieldValue.serverTimestamp(),
+          })
+        );
+      });
+    } catch (e) {
+      const code = e instanceof Error ? e.message : '';
+      if (code === 'CONFLICT') {
+        return NextResponse.json({ error: 'Este mandado ya fue asignado a otro rider.' }, { status: 409 });
+      }
+      if (code === 'BAD_STATE') {
+        return NextResponse.json(
+          { error: 'Solo se puede asignar rider mientras el mandado está pendiente.' },
+          { status: 400 }
+        );
+      }
+      if (code === 'NOT_FOUND') {
+        return NextResponse.json({ error: 'Mandado no encontrado' }, { status: 404 });
+      }
+      throw e;
+    }
+
     void sendFCMToRider(riderId, 'Nuevo mandado asignado', descripcion, {
       tipo: 'mandado',
       mandadoId: id,

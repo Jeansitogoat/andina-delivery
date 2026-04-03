@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { getPanelPathForRole } from '@/lib/auth-routing';
 import {
   Search,
   UtensilsCrossed,
@@ -97,6 +98,7 @@ function getDiscoveryKeysFromLocales(
 
 export default function Home() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { cartCount, localId: cartLocalId } = useCart();
   const [search, setSearch] = useState('');
@@ -176,21 +178,14 @@ export default function Home() {
 
   // Primera visita → /auth: lo gestiona AuthSplashGate (evita flash de locales antes del login).
 
-  // Redirigir local y maestro a su panel (rider y central pueden quedarse para pedir)
+  // Enrutador por rol: operativos van a su panel salvo ?modo=cliente (evita bucle si quieren pedir como cliente)
   useEffect(() => {
     if (typeof window === 'undefined' || authLoading || !user) return;
-    if (user.rol === 'cliente' || user.rol === 'rider' || user.rol === 'central') return;
-    switch (user.rol) {
-      case 'local':
-        router.replace(user.localId ? `/panel/restaurante/${user.localId}` : '/panel/restaurante');
-        return;
-      case 'maestro':
-        router.replace('/panel/maestro');
-        return;
-      default:
-        break;
-    }
-  }, [authLoading, user, router]);
+    if (searchParams.get('modo') === 'cliente') return;
+    const target = getPanelPathForRole(user.rol, user.localId ?? undefined);
+    if (target === '/') return;
+    router.replace(target);
+  }, [authLoading, user, router, searchParams]);
 
   const { banners, intervalSeconds: carruselIntervalSeconds } = usePublicConfig();
 

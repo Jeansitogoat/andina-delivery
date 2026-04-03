@@ -258,7 +258,7 @@ export default function PerfilPage() {
       if (localId) {
         router.push(`/restaurante/${localId}`);
       } else {
-        router.push('/');
+        router.push('/?modo=cliente');
       }
     }
   }
@@ -393,7 +393,7 @@ export default function PerfilPage() {
                 <p className="font-medium">Aún no tienes pedidos</p>
                 <button
                   type="button"
-                  onClick={() => router.push('/')}
+                  onClick={() => router.push('/?modo=cliente')}
                   className="mt-3 text-rojo-andino font-semibold text-sm hover:underline"
                 >
                   Explorar restaurantes

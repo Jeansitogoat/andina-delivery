@@ -36,7 +36,7 @@ export default function NotFound() {
       <div className="flex flex-col gap-3 w-full max-w-xs">
         <button
           type="button"
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/?modo=cliente')}
           className="w-full py-4 rounded-2xl bg-white text-gray-900 font-black text-base flex items-center justify-center gap-2 shadow-lg hover:bg-white/90 transition-all active:scale-95"
         >
           <Home className="w-5 h-5" />

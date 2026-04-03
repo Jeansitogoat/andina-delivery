@@ -19,11 +19,10 @@ import {
   Tag,
 } from 'lucide-react';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import NavPanel from '@/components/panel/NavPanel';
 import PasswordInput from '@/components/PasswordInput';
 import { getIdToken } from '@/lib/authToken';
-import { getFirebaseAuth, getFirebaseStorage } from '@/lib/firebase/client';
+import { getFirebaseAuth } from '@/lib/firebase/client';
 import {
   hasEmailPasswordProvider,
   validatePasswordChangeFields,
@@ -34,7 +33,7 @@ import { useNotifications } from '@/lib/useNotifications';
 import type { Local } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
-import { uploadLocalQr } from '@/lib/storageUpload';
+import { uploadLocalLogo, uploadLocalCover, uploadLocalQr } from '@/lib/storageUpload';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 import {
   DISCOVERY_CATEGORIES,
@@ -191,12 +190,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     if (!file || !id) return;
     setLogoUploading(true);
     try {
-      const compressed = await compressImage(file, 'logo');
-      const storage = getFirebaseStorage();
-      const path = `locales/${id}/logo`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadLocalLogo(id, file);
       setLogo(url);
     } catch {
       const reader = new FileReader();
@@ -216,12 +210,7 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     if (!file || !id) return;
     setCoverUploading(true);
     try {
-      const compressed = await compressImage(file, 'cover');
-      const storage = getFirebaseStorage();
-      const path = `locales/${id}/cover`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadLocalCover(id, file);
       setCover(url);
     } catch {
       const reader = new FileReader();

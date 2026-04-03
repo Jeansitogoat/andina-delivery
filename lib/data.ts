@@ -16,6 +16,8 @@ export interface MenuItem {
   price: number;
   description?: string;
   image?: string;
+  /** Marcado por herramienta maestro "Optimizar imágenes antiguas" (idempotencia). */
+  imagenOptimizada?: boolean;
   bestseller?: boolean;
   category: string;
   /** Si true, se muestran variaciones y se usa su precio en lugar del base */
@@ -70,6 +72,10 @@ export interface Local {
   featuredUntil?: number | null;
   logo: string;
   cover: string;
+  /** Herramienta maestro: logo ya pasado por compresión optimizada. */
+  logoOptimizada?: boolean;
+  /** Herramienta maestro: portada ya pasada por compresión optimizada. */
+  coverOptimizada?: boolean;
   address?: string;
   /** Coordenadas del local para cálculo de distancia. */
   lat?: number;

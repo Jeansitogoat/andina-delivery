@@ -656,7 +656,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/?modo=cliente')}
               className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors active:scale-95"
             >
               <ArrowLeft className="w-5 h-5" />

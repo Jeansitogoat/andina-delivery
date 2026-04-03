@@ -136,7 +136,7 @@ export default function PrivacidadPage() {
         </div>
 
         <Link
-          href="/"
+          href="/?modo=cliente"
           className="mt-6 inline-flex items-center gap-2 text-rojo-andino font-semibold text-sm hover:underline"
         >
           <ArrowLeft className="w-4 h-4" />

@@ -23,12 +23,10 @@ import {
   Camera,
   ImageIcon,
 } from 'lucide-react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getFirebaseStorage } from '@/lib/firebase/client';
 import { useAuth } from '@/lib/useAuth';
 import { getIdToken } from '@/lib/authToken';
 import type { Local } from '@/lib/data';
-import { compressImage } from '@/lib/compressImage';
+import { uploadBannerImage, uploadMaestroLocalLogo, uploadMaestroLocalCover } from '@/lib/storageUpload';
 import PasswordInput from '@/components/PasswordInput';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
@@ -36,6 +34,7 @@ import { formatDireccionCorta } from '@/lib/formatDireccion';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 import { useAndinaConfig } from '@/lib/AndinaContext';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
+import { runOptimizarImagenesAntiguas, type OptimizarImagenesResult } from '@/lib/optimizarImagenesAntiguasMaestro';
 
 interface Solicitud {
   id: string;
@@ -168,6 +167,10 @@ export default function PanelMaestroPage() {
   const [carruselIntervalSeconds, setCarruselIntervalSeconds] = useState(4);
   const [carruselIntervalSaving, setCarruselIntervalSaving] = useState(false);
   const [lastFcmSync, setLastFcmSync] = useState<Date | null>(null);
+
+  const [optimizarImagenesRunning, setOptimizarImagenesRunning] = useState(false);
+  const [optimizarImagenesLog, setOptimizarImagenesLog] = useState('');
+  const [optimizarImagenesResult, setOptimizarImagenesResult] = useState<OptimizarImagenesResult | null>(null);
 
   const [nuevoLocalManual, setNuevoLocalManual] = useState({
     name: '',
@@ -349,6 +352,28 @@ export default function PanelMaestroPage() {
     setTimeout(() => setToast(''), 3500);
   };
 
+  const handleOptimizarImagenesAntiguas = async () => {
+    if (optimizarImagenesRunning) return;
+    setOptimizarImagenesRunning(true);
+    setOptimizarImagenesLog('Iniciando…');
+    setOptimizarImagenesResult(null);
+    try {
+      const r = await runOptimizarImagenesAntiguas((msg) => setOptimizarImagenesLog(msg));
+      setOptimizarImagenesResult(r);
+      setOptimizarImagenesLog(
+        `Completado: ${r.optimized} optimizadas · ${r.skippedIdempotent} ya marcadas (omitidas) · ${r.errors} errores · ${r.sinUrlStorage} sin URL Storage.`
+      );
+      showToast('Optimización de imágenes finalizada');
+      refreshLocales();
+    } catch (e) {
+      console.error('[optimizar imágenes]', e);
+      setOptimizarImagenesLog('Error general. Revisa la consola.');
+      showToast('Error al ejecutar la optimización');
+    } finally {
+      setOptimizarImagenesRunning(false);
+    }
+  };
+
   const refreshSolicitudes = () => {
     setSolicitudesLoading(true);
     getIdToken()
@@ -414,12 +439,7 @@ export default function PanelMaestroPage() {
     e.target.value = '';
     setBannerUploading(true);
     try {
-      const storage = getFirebaseStorage();
-      const path = `banners/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const storageRef = ref(storage, path);
-      const compressed = await compressImage(file, 'banner');
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadBannerImage(file);
       setBannerForm((prev) => ({ ...prev, imageUrl: url }));
     } catch {
       showToast('Error al subir imagen. Verifica el formato e intenta de nuevo.');
@@ -573,12 +593,7 @@ export default function PanelMaestroPage() {
     if (!file?.type.startsWith('image/')) return;
     e.target.value = '';
     try {
-      const compressed = await compressImage(file, 'solicitudLogo');
-      const storage = getFirebaseStorage();
-      const path = `locales/logos/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadMaestroLocalLogo(file);
       setNuevoLocalManual((prev) => ({ ...prev, logo: url }));
     } catch {
       showToast('Error al subir logo');
@@ -590,12 +605,7 @@ export default function PanelMaestroPage() {
     if (!file?.type.startsWith('image/')) return;
     e.target.value = '';
     try {
-      const compressed = await compressImage(file, 'solicitudCover');
-      const storage = getFirebaseStorage();
-      const path = `locales/covers/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadMaestroLocalCover(file);
       setNuevoLocalManual((prev) => ({ ...prev, cover: url }));
     } catch {
       showToast('Error al subir cover');
@@ -711,12 +721,7 @@ export default function PanelMaestroPage() {
     if (!file?.type.startsWith('image/')) return;
     e.target.value = '';
     try {
-      const compressed = await compressImage(file, 'solicitudLogo');
-      const storage = getFirebaseStorage();
-      const path = `locales/logos/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadMaestroLocalLogo(file);
       setEditLocalForm((prev) => ({ ...prev, logo: url }));
     } catch {
       showToast('Error al subir logo');
@@ -728,12 +733,7 @@ export default function PanelMaestroPage() {
     if (!file?.type.startsWith('image/')) return;
     e.target.value = '';
     try {
-      const compressed = await compressImage(file, 'solicitudCover');
-      const storage = getFirebaseStorage();
-      const path = `locales/covers/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadMaestroLocalCover(file);
       setEditLocalForm((prev) => ({ ...prev, cover: url }));
     } catch {
       showToast('Error al subir cover');
@@ -1654,6 +1654,54 @@ export default function PanelMaestroPage() {
 
         {seccionActiva === 'locales' && (
         <>
+        <section className="mb-8">
+          <div className="bg-amber-50/80 rounded-2xl shadow-sm border-2 border-amber-200/80 overflow-hidden">
+            <div className="px-5 py-4 border-b border-amber-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                  <ImageIcon className="w-5 h-5 text-amber-700" />
+                  Optimizar imágenes antiguas
+                </h2>
+                <p className="text-sm text-amber-900/80 mt-1 max-w-2xl">
+                  Herramienta temporal: comprime logo, portada e imágenes de menú ya guardadas en Firebase Storage,
+                  actualiza las URLs en Firestore y marca documentos para no repetir el proceso (idempotente).
+                  Ejecución secuencial para no saturar el navegador ni las cuotas.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={optimizarImagenesRunning}
+                onClick={() => void handleOptimizarImagenesAntiguas()}
+                className="flex-shrink-0 px-5 py-3 rounded-xl bg-amber-600 text-white font-bold text-sm hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+              >
+                {optimizarImagenesRunning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Procesando…
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="w-4 h-4" />
+                    Optimizar imágenes antiguas
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="px-5 py-4 bg-white/60">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Progreso</p>
+              <p className="text-sm text-gray-800 min-h-[3rem] whitespace-pre-wrap break-words font-mono">
+                {optimizarImagenesLog || (optimizarImagenesResult
+                  ? `Último resultado: ${optimizarImagenesResult.optimized} optimizadas, ${optimizarImagenesResult.skippedIdempotent} omitidas, ${optimizarImagenesResult.errors} errores, ${optimizarImagenesResult.sinUrlStorage} sin URL Storage.`
+                  : 'Pulsa el botón para comenzar. No cierres esta pestaña hasta que termine.')}
+              </p>
+              <p className="text-[11px] text-gray-500 mt-3">
+                Si <code className="bg-gray-100 px-1 rounded">fetch</code> a Storage falla por CORS, configura el bucket con{' '}
+                <code className="bg-gray-100 px-1 rounded">gsutil cors set cors.json gs://TU_BUCKET</code>.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Crear local (manual) — para casos WhatsApp, etc. */}
         <section className="mb-8">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

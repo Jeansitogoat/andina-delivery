@@ -41,7 +41,7 @@ export default function GlobalError({
           </button>
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/?modo=cliente')}
             className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border-2 border-gray-200 text-gray-800 font-semibold py-3.5 hover:bg-gray-50 transition-colors"
           >
             <Home className="w-4 h-4" />

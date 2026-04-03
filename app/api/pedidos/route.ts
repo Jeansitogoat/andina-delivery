@@ -8,6 +8,10 @@ import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { normalizeDataUrl } from '@/lib/validImageUrl';
 import { pedidoPostSchema } from '@/lib/schemas/pedido';
 import { buildOrderMoney, getOrderMoney, resolveIvaConfig } from '@/lib/order-money';
+import { getMenuFromFirestore } from '@/lib/locales-firestore';
+import { computeSubtotalFromItemsCart } from '@/lib/pedido-precios-server';
+
+const TOTAL_PEDIDO_TOLERANCE = 0.01;
 
 const ESTADOS_ACTIVOS: string[] = ['confirmado', 'preparando', 'listo', 'esperando_rider', 'asignado', 'en_camino'];
 /** Pedidos activos en cocina: por defecto 20 con cursor; máximo 50 por página. */
@@ -318,10 +322,59 @@ export async function POST(request: Request) {
       );
     }
 
+    const cart = bodyParsed.itemsCart;
+    if (!cart?.items?.length) {
+      return NextResponse.json(
+        { error: 'Debes enviar itemsCart con los productos para validar el total contra el menú.' },
+        { status: 400 }
+      );
+    }
+    if (String(cart.localId).trim() !== localId) {
+      return NextResponse.json(
+        { error: 'itemsCart.localId debe coincidir con localId del pedido.' },
+        { status: 400 }
+      );
+    }
+
+    const menu = await getMenuFromFirestore(localId);
+    const menuById = new Map(menu.map((m) => [m.id, m]));
+    const subtotalResult = computeSubtotalFromItemsCart(cart.items, menuById);
+    if (!subtotalResult.ok) {
+      return NextResponse.json({ error: subtotalResult.error }, { status: 400 });
+    }
+
     const db = getAdminFirestore();
+    let localData: DocumentData | undefined;
+    const localSnap = await db.collection('locales').doc(localId).get();
+    localData = localSnap.data();
+    const ivaConfig = resolveIvaConfig(localData);
+    const costoEnvio =
+      typeof bodyParsed.costoEnvio === 'number' && !Number.isNaN(bodyParsed.costoEnvio)
+        ? bodyParsed.costoEnvio
+        : 0;
+    const serviceFee =
+      typeof bodyParsed.serviceFee === 'number' && !Number.isNaN(bodyParsed.serviceFee)
+        ? bodyParsed.serviceFee
+        : 0;
+    const orderMoney = buildOrderMoney({
+      subtotalBase: subtotalResult.subtotalBase,
+      costoEnvio,
+      serviceFee,
+      propina: 0,
+      ivaEnabled: ivaConfig.ivaEnabled,
+      ivaRate: ivaConfig.ivaRate,
+    });
+
+    const totalNum = Number(total);
+    if (!Number.isFinite(totalNum) || Math.abs(orderMoney.totalCliente - totalNum) > TOTAL_PEDIDO_TOLERANCE) {
+      return NextResponse.json(
+        { error: 'El total no coincide con los precios del menú. Actualiza la app o revisa el carrito.' },
+        { status: 400 }
+      );
+    }
+
     const docRef = db.collection('pedidos').doc(id);
     const existing = await docRef.get();
-    const totalNum = Number(total);
     const itemsKey = JSON.stringify(items);
 
     if (existing.exists) {
@@ -338,34 +391,6 @@ export async function POST(request: Request) {
     const ahora = new Date();
     const paymentMethod = bodyParsed.paymentMethod === 'transferencia' ? 'transferencia' : 'efectivo';
     const paymentConfirmed = bodyParsed.paymentConfirmed === true;
-    let localData: DocumentData | undefined;
-    const localSnap = await db.collection('locales').doc(localId).get();
-    localData = localSnap.data();
-    const ivaConfig = resolveIvaConfig(localData);
-    const costoEnvio =
-      typeof bodyParsed.costoEnvio === 'number' && !Number.isNaN(bodyParsed.costoEnvio)
-        ? bodyParsed.costoEnvio
-        : 0;
-    const serviceFee =
-      typeof bodyParsed.serviceFee === 'number' && !Number.isNaN(bodyParsed.serviceFee)
-        ? bodyParsed.serviceFee
-        : 0;
-    const propina = 0;
-    const subtotalBase =
-      typeof bodyParsed.subtotalBase === 'number' && !Number.isNaN(bodyParsed.subtotalBase)
-        ? bodyParsed.subtotalBase
-        : typeof bodyParsed.subtotal === 'number' && !Number.isNaN(bodyParsed.subtotal)
-          ? bodyParsed.subtotal
-          : Math.max(0, totalNum - costoEnvio - serviceFee);
-    const orderMoney = buildOrderMoney({
-      subtotalBase,
-      costoEnvio,
-      serviceFee,
-      propina,
-      ivaEnabled: ivaConfig.ivaEnabled,
-      ivaRate: ivaConfig.ivaRate,
-      totalCliente: totalNum,
-    });
     const pedido: PedidoCentral = {
       id,
       clienteId: uid,

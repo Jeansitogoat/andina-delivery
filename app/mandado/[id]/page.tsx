@@ -9,8 +9,6 @@ import {
   MapPin,
   Phone,
   Truck,
-  Clock,
-  CheckCircle2,
   Loader2,
   FileText,
   XCircle,
@@ -22,6 +20,10 @@ import type { MandadoCentral, EstadoMandado } from '@/lib/types';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
 import { formatDistanceKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
+import { getPanelPathForRole } from '@/lib/auth-routing';
+import SeguimientoStepper from '@/components/seguimiento/SeguimientoStepper';
+import { labelsStepperMandado, pasoStepper4Mandado } from '@/lib/seguimiento-mapa';
+import { useToast } from '@/lib/ToastContext';
 
 const WHATSAPP_CENTRAL = '593992250333';
 
@@ -53,6 +55,8 @@ export default function MandadoSeguimientoPage({
   const [mandado, setMandado] = useState<MandadoCentral | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (authLoading) return;
@@ -61,7 +65,7 @@ export default function MandadoSeguimientoPage({
       return;
     }
     if (user.rol !== 'cliente') {
-      router.replace('/');
+      router.replace(getPanelPathForRole(user.rol, user.localId ?? undefined));
       return;
     }
 
@@ -125,7 +129,7 @@ export default function MandadoSeguimientoPage({
             <p className="text-gray-700 font-semibold">No encontramos este mandado.</p>
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/?modo=cliente')}
               className="mt-4 w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm"
             >
               Volver al inicio
@@ -136,7 +140,7 @@ export default function MandadoSeguimientoPage({
             <p className="text-red-800 text-sm">{loadError}</p>
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/?modo=cliente')}
               className="mt-4 w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm"
             >
               Volver al inicio
@@ -152,35 +156,14 @@ export default function MandadoSeguimientoPage({
             <h2 className="text-center font-black text-xl text-gray-900 mb-1">{cfg.title}</h2>
             <p className="text-center text-sm text-gray-600 mb-6">{cfg.sub}</p>
 
-            {mandado.estado !== 'cancelado' && mandado.estado !== 'completado' ? (
-              <div className="flex items-center justify-center gap-2 bg-dorado-oro/10 border border-dorado-oro/30 rounded-2xl py-3 px-4 mb-6">
-                <Clock className="w-4 h-4 text-dorado-oro" />
-                <span className="text-sm font-semibold text-gray-800">
-                  Tiempo orientativo: <span className="text-rojo-andino font-black">15-30 min</span>
-                </span>
+            {mandado.estado !== 'cancelado' ? (
+              <div className="mb-8">
+                <SeguimientoStepper
+                  labels={labelsStepperMandado()}
+                  pasoActual={pasoStepper4Mandado(mandado.estado)}
+                />
               </div>
             ) : null}
-
-            {/* Pasos visuales */}
-            <div className="flex justify-between items-center mb-8 px-1">
-              {[
-                { n: 1, ok: cfg.step >= 1 && mandado.estado !== 'cancelado' },
-                { n: 2, ok: cfg.step >= 2 && mandado.estado !== 'cancelado' },
-                { n: 3, ok: cfg.step >= 3 && mandado.estado !== 'cancelado' },
-                { n: 4, ok: mandado.estado === 'completado' },
-              ].map((s, i) => (
-                <div key={s.n} className="flex flex-col items-center flex-1">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                      s.ok ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
-                    }`}
-                  >
-                    {s.ok ? <CheckCircle2 className="w-4 h-4" /> : s.n}
-                  </div>
-                  {i < 3 ? <div className="h-0.5 flex-1 w-full bg-gray-200 -mx-1 mt-4 hidden sm:block" /> : null}
-                </div>
-              ))}
-            </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-4 mb-4">
               <div className="flex items-start gap-3">
@@ -258,18 +241,39 @@ export default function MandadoSeguimientoPage({
             {mandado.estado === 'pendiente' ? (
               <button
                 type="button"
+                disabled={cancelando}
                 onClick={async () => {
+                  if (cancelando) return;
                   const tok = await getIdToken();
-                  if (!tok) return;
-                  await fetch(`/api/mandados/${mandado.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-                    body: JSON.stringify({ accion: 'cancelar_cliente' }),
-                  });
+                  if (!tok) {
+                    showToast({ type: 'error', message: 'Sesión expirada. Inicia sesión e intenta de nuevo.' });
+                    return;
+                  }
+                  setCancelando(true);
+                  try {
+                    const res = await fetch(`/api/mandados/${mandado.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+                      body: JSON.stringify({ accion: 'cancelar_cliente' }),
+                    });
+                    const data = (await res.json().catch(() => ({}))) as { error?: string };
+                    if (!res.ok) {
+                      showToast({
+                        type: 'error',
+                        message: typeof data.error === 'string' ? data.error : 'No se pudo cancelar. Intenta de nuevo.',
+                      });
+                      return;
+                    }
+                    showToast({ type: 'success', message: 'Solicitud cancelada.' });
+                  } catch {
+                    showToast({ type: 'error', message: 'Error de conexión. Revisa tu red e intenta de nuevo.' });
+                  } finally {
+                    setCancelando(false);
+                  }
                 }}
-                className="w-full py-3 rounded-2xl border border-red-200 text-red-600 font-semibold text-sm hover:bg-red-50 mb-3"
+                className="w-full py-3 rounded-2xl border border-red-200 text-red-600 font-semibold text-sm hover:bg-red-50 mb-3 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Cancelar solicitud
+                {cancelando ? 'Cancelando…' : 'Cancelar solicitud'}
               </button>
             ) : null}
 
@@ -282,7 +286,7 @@ export default function MandadoSeguimientoPage({
 
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/?modo=cliente')}
               className="w-full py-3 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-bold text-sm"
             >
               Volver al inicio

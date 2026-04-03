@@ -180,3 +180,8 @@ export interface MandadoCentral {
   updatedAt?: number;
 }
 
+/** Vista unificada para paneles Central/Rider (sin migración de base de datos). */
+export type OrdenVista =
+  | { tipo: 'comida'; pedido: PedidoCentral }
+  | { tipo: 'mandado'; mandado: MandadoCentral };
+

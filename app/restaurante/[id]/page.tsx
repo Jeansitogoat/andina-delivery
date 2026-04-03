@@ -121,7 +121,7 @@ export default function RestaurantePage({ params }: { params: Promise<{ id: stri
       return (
         <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50">
           <p className="text-gray-500 text-lg">Local no encontrado</p>
-          <button onClick={() => router.push('/')} className="text-rojo-andino font-semibold underline">
+          <button onClick={() => router.push('/?modo=cliente')} className="text-rojo-andino font-semibold underline">
             Volver al inicio
           </button>
         </main>

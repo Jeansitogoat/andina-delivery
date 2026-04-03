@@ -9,16 +9,17 @@ const isImage = (file: File) => file.type.startsWith('image/');
 export type Preset = 'avatar' | 'logo' | 'cover' | 'product' | 'solicitudLogo' | 'solicitudCover' | 'solicitudMenu' | 'banner';
 
 const PRESETS: Record<Preset, { maxSizeMB: number; maxWidthOrHeight: number; initialQuality?: number }> = {
-  avatar: { maxSizeMB: 0.5, maxWidthOrHeight: 400 },
-  logo: { maxSizeMB: 1, maxWidthOrHeight: 512 },
-  cover: { maxSizeMB: 1.2, maxWidthOrHeight: 1200, initialQuality: 0.88 },
-  product: { maxSizeMB: 0.8, maxWidthOrHeight: 600, initialQuality: 0.88 },
+  avatar: { maxSizeMB: 0.22, maxWidthOrHeight: 400 },
+  /** Objetivo ~200–300 KB antes de Storage (locales / maestro). */
+  logo: { maxSizeMB: 0.25, maxWidthOrHeight: 512, initialQuality: 0.88 },
+  cover: { maxSizeMB: 0.28, maxWidthOrHeight: 1100, initialQuality: 0.85 },
+  product: { maxSizeMB: 0.25, maxWidthOrHeight: 600, initialQuality: 0.88 },
   /** Formulario socios: límite bajo para no superar 1 MiB por documento en Firestore */
   solicitudLogo: { maxSizeMB: 0.15, maxWidthOrHeight: 400 },
   solicitudCover: { maxSizeMB: 0.2, maxWidthOrHeight: 500 },
   solicitudMenu: { maxSizeMB: 0.15, maxWidthOrHeight: 400 },
   /** Banners carrusel home: relación 3:1, carga rápida en móvil */
-  banner: { maxSizeMB: 0.7, maxWidthOrHeight: 1100, initialQuality: 0.85 },
+  banner: { maxSizeMB: 0.28, maxWidthOrHeight: 1100, initialQuality: 0.85 },
 };
 
 /**
