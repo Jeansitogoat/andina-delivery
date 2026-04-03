@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/useAuth';
 import { docToMandadoCentral } from '@/lib/mandado-map';
 import type { MandadoCentral, EstadoMandado } from '@/lib/types';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
+import { formatDistanceKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
 
 const WHATSAPP_CENTRAL = '593992250333';
@@ -209,6 +210,22 @@ export default function MandadoSeguimientoPage({
                   <p className="text-sm font-semibold text-gray-800">{mandado.hastaTexto}</p>
                 </div>
               </div>
+              {mandado.tarifaEnvio != null ? (
+                <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100">
+                  <p className="text-xs text-gray-500">Carrera estimada</p>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-gray-900">${mandado.tarifaEnvio.toFixed(2)}</p>
+                    {mandado.distanciaKm != null ? (
+                      <p className="text-[11px] text-gray-400">{formatDistanceKm(mandado.distanciaKm)}</p>
+                    ) : (
+                      <p className="text-[11px] text-gray-400">Sin distancia GPS (tarifa mínima)</p>
+                    )}
+                    {mandado.pagoRider != null ? (
+                      <p className="text-[11px] text-gray-500 mt-0.5">Pago rider ref. ${mandado.pagoRider.toFixed(2)}</p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {mandado.riderNombre && mandado.estado !== 'pendiente' ? (

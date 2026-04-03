@@ -28,6 +28,7 @@ import {
   DollarSign,
   Truck,
   UserCircle,
+  Plus,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useNotifications } from '@/lib/useNotifications';
@@ -44,6 +45,8 @@ import {
   type RiderCentral,
 } from '@/lib/types';
 import { docToMandadoCentral } from '@/lib/mandado-map';
+import { validateTarifaTiers, MAX_TARIFA_TIERS } from '@/lib/tarifas-validacion';
+import { formatDistanceKm } from '@/lib/geo';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
@@ -228,7 +231,37 @@ export default function PanelCentralPage() {
     setLoadingTarifas(false);
   }, [tab, andinaConfig]);
 
+  const agregarTramoTarifa = useCallback(() => {
+    setTarifasTiers((prev) => {
+      if (prev.length >= MAX_TARIFA_TIERS) return prev;
+      const last = prev[prev.length - 1];
+      const beforeLast = prev[prev.length - 2];
+      const newKm =
+        beforeLast && typeof beforeLast.kmMax === 'number'
+          ? Math.round((beforeLast.kmMax + 0.5) * 10) / 10
+          : 1;
+      const newRow = {
+        kmMax: newKm as number,
+        tarifa: typeof beforeLast?.tarifa === 'number' ? beforeLast.tarifa : last.tarifa,
+      };
+      return [...prev.slice(0, -1), newRow, last];
+    });
+  }, []);
+
+  const quitarTramoTarifa = useCallback((idx: number) => {
+    setTarifasTiers((prev) => {
+      if (prev.length <= 2 || idx === prev.length - 1) return prev;
+      return prev.filter((_, i) => i !== idx);
+    });
+  }, []);
+
   const guardarTarifas = useCallback(async () => {
+    const v = validateTarifaTiers(tarifasTiers);
+    if (!v.ok) {
+      showToast(v.error);
+      showGlobalToast({ type: 'error', message: v.error });
+      return;
+    }
     const tok = await getIdToken();
     if (!tok) return;
     setGuardandoTarifas(true);
@@ -240,17 +273,18 @@ export default function PanelCentralPage() {
       });
       if (res.ok) {
         showToast('Tarifas guardadas');
-        // Refrescar config global para que AndinaContext se actualice
         refreshConfig().catch(() => {});
       } else {
-        showToast('Error al guardar');
+        const data = await res.json().catch(() => ({}));
+        showToast(typeof data.error === 'string' ? data.error : 'Error al guardar');
+        showGlobalToast({ type: 'error', message: typeof data.error === 'string' ? data.error : 'Error al guardar' });
       }
     } catch {
       showToast('Error al guardar');
     } finally {
       setGuardandoTarifas(false);
     }
-  }, [tarifasTiers, tarifasPorParada, refreshConfig]);
+  }, [tarifasTiers, tarifasPorParada, refreshConfig, showGlobalToast]);
 
 
   const RIDER_COLORS_INLINE = [
@@ -494,12 +528,6 @@ export default function PanelCentralPage() {
     );
     setMostrarAsignarMandado(false);
     setMandadoSeleccionado(null);
-    sendNotification({
-      target: 'rider',
-      uid: riderId,
-      title: 'Nuevo mandado asignado',
-      body: mandado.descripcion.slice(0, 120),
-    });
     try {
       const tok = await getIdToken();
       if (!tok) {
@@ -876,6 +904,14 @@ export default function PanelCentralPage() {
                           <span className="text-rojo-andino">B</span> {m.hastaTexto}
                         </p>
                         <p className="text-xs text-gray-400 mt-2">{m.clienteNombre}</p>
+                        {m.tarifaEnvio != null ? (
+                          <p className="text-xs font-bold text-gray-800 mt-1">
+                            Carrera ${m.tarifaEnvio.toFixed(2)}
+                            {m.distanciaKm != null ? (
+                              <span className="font-normal text-gray-500"> · {formatDistanceKm(m.distanciaKm)}</span>
+                            ) : null}
+                          </p>
+                        ) : null}
                         {pendienteSinRider ? (
                           <span className="inline-block mt-2 text-xs font-bold text-purple-600">Toca para asignar rider →</span>
                         ) : m.riderNombre ? (
@@ -1023,14 +1059,17 @@ export default function PanelCentralPage() {
               <div className="space-y-4">
                 <div className="bg-white rounded-3xl p-4 shadow-sm">
                   <p className="text-xs font-semibold text-gray-400 mb-3">TARIFAS DE ENVÍO POR DISTANCIA</p>
-                  <p className="text-sm text-gray-600 mb-4">Estos valores se usan en la app para calcular el costo de envío según la distancia del cliente al restaurante.</p>
+                  <p className="text-sm text-gray-600 mb-2">Estos valores se usan en la app para calcular el costo de envío según la distancia del cliente al restaurante.</p>
+                  <p className="text-xs text-gray-500 mb-4">
+                    El precio aplica si la distancia es <strong>menor o igual</strong> al límite de km de ese tramo. El último tramo sin km cubre el resto de distancias. Máximo {MAX_TARIFA_TIERS} tramos.
+                  </p>
                   {loadingTarifas ? (
                     <div className="py-8 text-center text-gray-400 text-sm">Cargando...</div>
                   ) : (
                     <div className="space-y-3">
                       {tarifasTiers.map((tier, idx) => (
-                        <div key={idx} className="flex items-center gap-3">
-                          <div className="flex-1 flex gap-2">
+                        <div key={idx} className="flex items-center gap-2 sm:gap-3">
+                          <div className="flex-1 flex gap-2 min-w-0">
                             <div className="flex-1">
                               <label className="text-xs text-gray-500 block mb-1">Hasta (km)</label>
                               <input
@@ -1047,7 +1086,8 @@ export default function PanelCentralPage() {
                                   });
                                 }}
                                 placeholder="Sin límite"
-                                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                disabled={idx === tarifasTiers.length - 1}
+                                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-50 disabled:text-gray-400"
                               />
                             </div>
                             <div className="flex-1">
@@ -1069,11 +1109,32 @@ export default function PanelCentralPage() {
                               />
                             </div>
                           </div>
-                          {tier.kmMax == null && (
-                            <span className="text-xs text-gray-400 mt-6">(más de {tarifasTiers[idx - 1]?.kmMax ?? '0'} km)</span>
-                          )}
+                          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 flex-shrink-0 pt-5 sm:pt-0">
+                            {tier.kmMax == null ? (
+                              <span className="text-xs text-gray-400 whitespace-nowrap">(más de {tarifasTiers[idx - 1]?.kmMax ?? '0'} km)</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => quitarTramoTarifa(idx)}
+                                disabled={tarifasTiers.length <= 2}
+                                className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                title="Quitar tramo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
+                      <button
+                        type="button"
+                        onClick={agregarTramoTarifa}
+                        disabled={tarifasTiers.length >= MAX_TARIFA_TIERS}
+                        className="w-full py-2.5 rounded-xl border-2 border-dashed border-purple-200 text-purple-700 font-semibold text-sm hover:bg-purple-50 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Agregar tramo
+                      </button>
                       <div className="flex items-center gap-3 pt-2">
                         <label className="text-sm font-semibold text-gray-700">Por parada adicional ($)</label>
                         <input
@@ -1316,6 +1377,25 @@ export default function PanelCentralPage() {
                     </a>
                   ) : null}
                 </div>
+                {mandadoSeleccionado.tarifaEnvio != null ? (
+                  <div className="rounded-2xl border border-purple-100 bg-purple-50/50 p-4">
+                    <p className="text-xs font-semibold text-purple-700 mb-2">COBRO CARRERA</p>
+                    <p className="text-lg font-black text-gray-900">${mandadoSeleccionado.tarifaEnvio.toFixed(2)}</p>
+                    {mandadoSeleccionado.distanciaKm != null ? (
+                      <p className="text-xs text-gray-600 mt-1">{formatDistanceKm(mandadoSeleccionado.distanciaKm)}</p>
+                    ) : (
+                      <p className="text-xs text-gray-500 mt-1">Sin GPS en A/B (tarifa mínima)</p>
+                    )}
+                    {mandadoSeleccionado.pagoRider != null ? (
+                      <p className="text-xs text-gray-600 mt-2">
+                        Ref. rider ${mandadoSeleccionado.pagoRider.toFixed(2)}
+                        {mandadoSeleccionado.retencionCentral != null && mandadoSeleccionado.retencionCentral > 0
+                          ? ` · Central $${mandadoSeleccionado.retencionCentral.toFixed(2)}`
+                          : null}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {mandadoSeleccionado.riderId && (() => {
                   const rider = riders.find((r) => r.id === mandadoSeleccionado.riderId);
                   if (!rider) return null;

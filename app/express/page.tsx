@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { getIdToken } from '@/lib/authToken';
 import { useAuth } from '@/lib/useAuth';
@@ -19,6 +19,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
+import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
+import { haversineKm, formatDistanceKm } from '@/lib/geo';
 
 // ---- Tipos ----
 interface MandadoForm {
@@ -124,6 +126,22 @@ export default function ExpressPage() {
   const [pageVisible, setPageVisible] = useState(false);
   /** Paso 2: un solo mapa visible (Recogida / Entrega). */
   const [mapaTab, setMapaTab] = useState<'desde' | 'hasta'>('desde');
+  const { getTarifaEnvioPorDistancia, tiers, loading: loadingTarifas } = useTarifasEnvio();
+
+  const estimadoCarrera = useMemo(() => {
+    const hasCoords =
+      form.desdeLat != null &&
+      form.desdeLng != null &&
+      form.hastaLat != null &&
+      form.hastaLng != null;
+    if (hasCoords) {
+      const km = haversineKm(form.desdeLat!, form.desdeLng!, form.hastaLat!, form.hastaLng!);
+      const tarifa = getTarifaEnvioPorDistancia(km);
+      return { km, tarifa, sinCoords: false as const };
+    }
+    const minT = tiers.length > 0 ? tiers[0].tarifa : 1.5;
+    return { km: null as number | null, tarifa: minT, sinCoords: true as const };
+  }, [form.desdeLat, form.desdeLng, form.hastaLat, form.hastaLng, getTarifaEnvioPorDistancia, tiers]);
 
   useEffect(() => {
     requestAnimationFrame(() => setPageVisible(true));
@@ -188,12 +206,20 @@ export default function ExpressPage() {
     }
   };
 
+  const pinsCompletos =
+    form.desdeLat != null &&
+    form.desdeLng != null &&
+    form.hastaLat != null &&
+    form.hastaLng != null;
+
   const canNext =
     step === 1
       ? form.que.trim().length > 0
       : step === 2
-      ? form.desde.trim().length > 0 && form.hasta.trim().length > 0
-      : true;
+        ? form.desde.trim().length > 0 && form.hasta.trim().length > 0
+        : step === 3
+          ? pinsCompletos
+          : false;
 
   if (authLoading || !user || user.rol !== 'cliente') {
     return (
@@ -430,9 +456,16 @@ export default function ExpressPage() {
             {/* Info de costo */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-start gap-3">
               <Truck className="w-5 h-5 text-dorado-oro flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-gray-700">
+              <div className="text-sm text-gray-700 flex-1 min-w-0">
                 <p className="font-bold text-gray-900">Socio Cía. Virgen de la Merced</p>
-                <p className="text-gray-500 text-xs mt-0.5">Costo según distancia · Tiempo estimado 15-30 min</p>
+                <p className="text-gray-500 text-xs mt-0.5">
+                  {loadingTarifas
+                    ? 'Calculando tarifa…'
+                    : estimadoCarrera.sinCoords
+                      ? `Tarifa mínima estimada: $${estimadoCarrera.tarifa.toFixed(2)} (marca ambos puntos en el mapa para ver distancia exacta)`
+                      : `~${formatDistanceKm(estimadoCarrera.km!)} · Carrera estimada $${estimadoCarrera.tarifa.toFixed(2)}`}
+                </p>
+                <p className="text-gray-400 text-[11px] mt-1">Tiempo orientativo 15-30 min · Confirmación con central</p>
               </div>
             </div>
           </div>
@@ -478,6 +511,17 @@ export default function ExpressPage() {
                     <p className="text-sm font-semibold text-gray-800 mt-0.5">{form.hasta}</p>
                   </div>
                 </div>
+                <div className="pt-2 border-t border-gray-50 flex items-center justify-between gap-2">
+                  <p className="text-xs text-gray-500">Carrera estimada</p>
+                  <p className="text-sm font-black text-rojo-andino">
+                    {loadingTarifas ? '…' : `$${estimadoCarrera.tarifa.toFixed(2)}`}
+                    {estimadoCarrera.km != null ? (
+                      <span className="text-xs font-normal text-gray-400 ml-1">
+                        ({formatDistanceKm(estimadoCarrera.km)})
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -516,7 +560,10 @@ export default function ExpressPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-white text-sm">Cía. Virgen de la Merced</p>
-                <p className="text-white/70 text-xs mt-0.5">Tu mandado llega en 15-30 min · Costo según distancia</p>
+                <p className="text-white/70 text-xs mt-0.5">
+                  15-30 min ·{' '}
+                  {!loadingTarifas ? `~$${estimadoCarrera.tarifa.toFixed(2)} carrera` : 'Calculando…'}
+                </p>
               </div>
             </div>
           </div>
@@ -528,6 +575,11 @@ export default function ExpressPage() {
         <div className="max-w-2xl mx-auto space-y-2">
           {submitError ? (
             <p className="text-sm text-center text-red-600 font-medium px-1">{submitError}</p>
+          ) : null}
+          {step === 3 && !pinsCompletos ? (
+            <p className="text-xs text-center text-amber-700 font-medium px-1">
+              Marca los puntos A y B en el mapa (paso &quot;¿Dónde?&quot;) para continuar.
+            </p>
           ) : null}
           <button
             type="button"

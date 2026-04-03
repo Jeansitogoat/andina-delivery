@@ -4,6 +4,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import type { EstadoMandado } from '@/lib/types';
+import { sendFCMToRole, sendFCMToRider, sendFCMToUser } from '@/lib/fcm-send-server';
 
 type PatchBody = {
   estado?: EstadoMandado;
@@ -47,6 +48,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const clienteId = String(data.clienteId || '');
   const riderActual = (data.riderId as string) || null;
   const estadoActual = (data.estado as EstadoMandado) || 'pendiente';
+  const descripcion = String(data.descripcion || 'Mandado').slice(0, 120);
 
   if (auth.rol === 'cliente') {
     if (auth.uid !== clienteId) {
@@ -64,6 +66,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         updatedAt: FieldValue.serverTimestamp(),
       })
     );
+    void sendFCMToRole('central', 'Mandado cancelado', descripcion, {
+      tipo: 'mandado',
+      mandadoId: id,
+      estado: 'cancelado',
+    }).catch(() => {});
+    if (riderActual) {
+      void sendFCMToRider(riderActual, 'Mandado cancelado por el cliente', descripcion, {
+        tipo: 'mandado',
+        mandadoId: id,
+        estado: 'cancelado',
+      }).catch(() => {});
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -84,6 +98,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         updatedAt: FieldValue.serverTimestamp(),
       })
     );
+    void sendFCMToRider(riderId, 'Nuevo mandado asignado', descripcion, {
+      tipo: 'mandado',
+      mandadoId: id,
+      estado: 'asignado',
+    }).catch(() => {});
+    void sendFCMToUser(clienteId, 'Tu mandado tiene rider', `${riderNombre} fue asignado a tu mandado.`, {
+      tipo: 'mandado',
+      mandadoId: id,
+      estado: 'asignado',
+    }).catch(() => {});
     return NextResponse.json({ ok: true });
   }
 
@@ -96,12 +120,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       await ref.update(
         sanitizeForFirestore({ estado: 'en_camino', updatedAt: FieldValue.serverTimestamp() })
       );
+      void sendFCMToUser(clienteId, 'Tu mandado va en camino', 'El motorizado está realizando tu mandado.', {
+        tipo: 'mandado',
+        mandadoId: id,
+        estado: 'en_camino',
+      }).catch(() => {});
       return NextResponse.json({ ok: true });
     }
     if (next === 'completado' && (estadoActual === 'asignado' || estadoActual === 'en_camino')) {
       await ref.update(
         sanitizeForFirestore({ estado: 'completado', updatedAt: FieldValue.serverTimestamp() })
       );
+      void sendFCMToUser(clienteId, 'Mandado completado', 'Tu mandado fue marcado como completado.', {
+        tipo: 'mandado',
+        mandadoId: id,
+        estado: 'completado',
+      }).catch(() => {});
+      void sendFCMToRole('central', 'Mandado completado', descripcion, {
+        tipo: 'mandado',
+        mandadoId: id,
+        estado: 'completado',
+      }).catch(() => {});
       return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ error: 'Transición no válida' }, { status: 400 });

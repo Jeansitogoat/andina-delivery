@@ -6,10 +6,10 @@ export const mandadoPostSchema = z.object({
   descripcion: z.string().min(3).max(500),
   desdeTexto: z.string().min(3).max(500),
   hastaTexto: z.string().min(3).max(500),
-  desdeLat: z.number().min(-90).max(90).nullable().optional(),
-  desdeLng: z.number().min(-180).max(180).nullable().optional(),
-  hastaLat: z.number().min(-90).max(90).nullable().optional(),
-  hastaLng: z.number().min(-180).max(180).nullable().optional(),
+  desdeLat: z.number().finite().min(-90).max(90),
+  desdeLng: z.number().finite().min(-180).max(180),
+  hastaLat: z.number().finite().min(-90).max(90),
+  hastaLng: z.number().finite().min(-180).max(180),
   clienteTelefono: z.string().max(20).optional().default(''),
 });
 

@@ -20,6 +20,8 @@ import {
   Package,
   Plus,
   ExternalLink,
+  AlertTriangle,
+  LocateFixed,
 } from 'lucide-react';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
@@ -96,7 +98,15 @@ export default function CheckoutPage() {
   );
   // Caché en memoria: evita refetch a /api/locales/[id] si ya cargamos el local en esta sesión
   const menuCacheRef = useRef<Map<string, { local: unknown; menu: Array<{ id: string; name: string; price: number; shipping?: number }> }>>(new Map());
-  const { direccionEntregar, direcciones, selectedId, direccionEntregarLatLng, userLocationLatLng, addDireccion } = useAddresses();
+  const {
+    direccionEntregar,
+    direcciones,
+    selectedId,
+    direccionEntregarLatLng,
+    userLocationLatLng,
+    requestUserLocation,
+    addDireccion,
+  } = useAddresses();
   const { getTarifaEnvioPorDistancia, porParadaAdicional, tarifaMinima } = useTarifasEnvio();
   const [pageVisible, setPageVisible] = useState(false);
   const [showAgregarDireccion, setShowAgregarDireccion] = useState(false);
@@ -115,6 +125,12 @@ export default function CheckoutPage() {
   const [isOrdering, setIsOrdering] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [showModalUbicacion, setShowModalUbicacion] = useState(false);
+  const [showAlertaDistancia, setShowAlertaDistancia] = useState(false);
+  /** Delivery: sin permiso GPS — bloqueo estricto hasta obtener coordenadas del dispositivo. */
+  const [showModalGpsObligatorio, setShowModalGpsObligatorio] = useState(false);
+  const [gpsRequestPending, setGpsRequestPending] = useState(false);
+  /** Tras confirmar el modal de distancia en esta sesión; se resetea al cambiar dirección seleccionada. */
+  const distanceAlertBypassRef = useRef(false);
   const [envioTarifaPrev, setEnvioTarifaPrev] = useState<number | null>(null);
   const [tarifaAjustada, setTarifaAjustada] = useState(false);
   /** Datos de transferencia al entrar a comprobante (persistidos para no depender del carrito tras clearCart) */
@@ -275,7 +291,11 @@ export default function CheckoutPage() {
     localesCoordsParaCobertura.length > 0 &&
     localesCoordsParaCobertura.some((l) => haversineKm(direccionEntregarLatLng.lat, direccionEntregarLatLng.lng, l.lat, l.lng) > 10);
 
-  const puedePedir = allLoaded && user && !authLoading && !isOrdering && !necesitaDireccion && !necesitaCoords && !fueraZonaEntrega;
+  /** CEO: en delivery el GPS del dispositivo es obligatorio antes de confirmar pedido. */
+  const faltaGpsDispositivo = !isPickup && !userLocationLatLng;
+
+  const puedePedir =
+    allLoaded && user && !authLoading && !isOrdering && !necesitaDireccion && !necesitaCoords && !fueraZonaEntrega;
 
   /* Detectar "Tarifa ajustada por distancia" al cambiar dirección */
   useEffect(() => {
@@ -289,6 +309,16 @@ export default function CheckoutPage() {
       setTarifaAjustada(false);
     }
   }, [envioTarifa, envioTarifaPrev, isPickup]);
+
+  useEffect(() => {
+    distanceAlertBypassRef.current = false;
+  }, [selectedId, direccionEntregarLatLng?.lat, direccionEntregarLatLng?.lng]);
+
+  useEffect(() => {
+    if (showModalGpsObligatorio && userLocationLatLng) {
+      setShowModalGpsObligatorio(false);
+    }
+  }, [showModalGpsObligatorio, userLocationLatLng]);
 
   const handleOrder = async () => {
     if (!allLoaded || stopsData.length === 0) return;
@@ -311,6 +341,32 @@ export default function CheckoutPage() {
       setAuthError('Debes iniciar sesión para realizar el pedido.');
       return;
     }
+
+    /* Barrera 1 (hard): delivery exige coordenadas del dispositivo — sin POST si no hay GPS. */
+    if (!isPickup && !userLocationLatLng) {
+      setShowModalGpsObligatorio(true);
+      return;
+    }
+
+    /* Barrera 2 (soft): usuario lejos de la dirección de entrega (> 1,5 km). */
+    if (
+      !isPickup &&
+      userLocationLatLng &&
+      direccionEntregarLatLng &&
+      !distanceAlertBypassRef.current
+    ) {
+      const kmUserVsEntrega = haversineKm(
+        userLocationLatLng.lat,
+        userLocationLatLng.lng,
+        direccionEntregarLatLng.lat,
+        direccionEntregarLatLng.lng
+      );
+      if (kmUserVsEntrega > 1.5) {
+        setShowAlertaDistancia(true);
+        return;
+      }
+    }
+
     setIsOrdering(true);
 
     try {
@@ -1369,6 +1425,11 @@ export default function CheckoutPage() {
               Fuera de zona de entrega.
             </p>
           )}
+          {faltaGpsDispositivo && (
+            <p className="text-rojo-andino text-sm font-semibold mb-3 text-center">
+              El envío a domicilio exige tu ubicación en tiempo real. Pulsa Pedir: si aún no diste permiso, te pediremos activar el GPS.
+            </p>
+          )}
           <LoadingButton
             type="button"
             onClick={handleOrder}
@@ -1385,6 +1446,106 @@ export default function CheckoutPage() {
           </LoadingButton>
         </div>
       </div>
+
+      {showModalGpsObligatorio && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="gps-requerido-titulo"
+          aria-describedby="gps-requerido-desc"
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-rojo-andino/30 animate-fade-in text-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-full bg-rojo-andino/10 flex items-center justify-center mx-auto mb-4 ring-4 ring-rojo-andino/15">
+              <LocateFixed className="w-8 h-8 text-rojo-andino" />
+            </div>
+            <h2 id="gps-requerido-titulo" className="font-black text-xl text-gray-900 mb-3">
+              Ubicación Requerida
+            </h2>
+            <p id="gps-requerido-desc" className="text-sm text-gray-700 mb-6 leading-relaxed text-left">
+              Para garantizar tu entrega y asignar al repartidor, necesitamos acceso a tu ubicación. Por favor, permite el acceso en tu navegador o dispositivo para continuar.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                disabled={gpsRequestPending || (typeof navigator !== 'undefined' && !navigator.geolocation)}
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && !navigator.geolocation) {
+                    showToast({
+                      type: 'error',
+                      message: 'Tu navegador no permite geolocalización. Prueba con otro navegador o actualiza la página.',
+                    });
+                    return;
+                  }
+                  setGpsRequestPending(true);
+                  requestUserLocation({
+                    onSuccess: () => {
+                      setGpsRequestPending(false);
+                      setShowModalGpsObligatorio(false);
+                    },
+                    onDenied: () => {
+                      setGpsRequestPending(false);
+                      showToast({
+                        type: 'error',
+                        message: 'No pudimos obtener tu ubicación. Revisa permisos del navegador o del sistema.',
+                      });
+                    },
+                  });
+                }}
+                className="w-full py-3.5 rounded-2xl bg-rojo-andino text-white font-bold text-sm hover:bg-rojo-andino/90 transition-colors shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {gpsRequestPending ? 'Solicitando ubicación…' : 'Permitir acceso a la ubicación'}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/carrito')}
+                className="w-full py-3 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50"
+              >
+                Volver al carrito
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAlertaDistancia && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-amber-400 animate-fade-in text-center overflow-hidden">
+            <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4 ring-4 ring-amber-200/80">
+              <AlertTriangle className="w-8 h-8 text-amber-600" />
+            </div>
+            <p className="text-base text-gray-900 font-semibold mb-6 leading-relaxed">
+              Parece que estás muy lejos de la dirección seleccionada. ¿Es un pedido para alguien más?
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  distanceAlertBypassRef.current = true;
+                  setShowAlertaDistancia(false);
+                  void handleOrder();
+                }}
+                className="w-full py-3.5 rounded-2xl bg-rojo-andino text-white font-bold text-sm hover:bg-rojo-andino/90 transition-colors shadow-lg"
+              >
+                Sí, es para alguien más
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAlertaDistancia(false);
+                  setShowModalUbicacion(true);
+                }}
+                className="w-full py-3.5 rounded-2xl border-2 border-gray-300 text-gray-800 font-semibold text-sm hover:bg-gray-50 transition-colors"
+              >
+                No, cambiar dirección
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModalUbicacion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

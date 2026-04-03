@@ -4,6 +4,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { revalidatePath } from 'next/cache';
 import { configTarifasPatchSchema } from '@/lib/schemas/configTarifas';
+import { validateTarifaTiers } from '@/lib/tarifas-validacion';
 
 const DOC_ID = 'tarifasEnvio';
 
@@ -74,13 +75,18 @@ export async function PATCH(request: Request) {
 
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
     if (Array.isArray(bodyData.tiers) && bodyData.tiers.length > 0) {
-      updates.tiers = bodyData.tiers
+      const sorted = bodyData.tiers
         .map((t) => ({ kmMax: t.kmMax ?? null, tarifa: Number(t.tarifa) }))
         .sort((a, b) => {
           if (a.kmMax == null) return 1;
           if (b.kmMax == null) return -1;
           return a.kmMax - b.kmMax;
         });
+      const v = validateTarifaTiers(sorted);
+      if (!v.ok) {
+        return NextResponse.json({ error: v.error }, { status: 400 });
+      }
+      updates.tiers = sorted;
     }
     if (typeof bodyData.porParadaAdicional === 'number' && !Number.isNaN(bodyData.porParadaAdicional) && bodyData.porParadaAdicional >= 0) {
       updates.porParadaAdicional = bodyData.porParadaAdicional;

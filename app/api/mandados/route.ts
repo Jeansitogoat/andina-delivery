@@ -4,6 +4,9 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
 import { mandadoPostSchema } from '@/lib/schemas/mandado';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
+import { haversineKm, getTarifaEnvioPorDistancia } from '@/lib/geo';
+import { getTarifasEnvioTiersAdmin } from '@/lib/tarifas-config-server';
+import { sendFCMToRole } from '@/lib/fcm-send-server';
 
 /** POST /api/mandados — crea mandado (solo cliente). Escritura vía Admin SDK. */
 export async function POST(request: Request) {
@@ -38,6 +41,13 @@ export async function POST(request: Request) {
     (typeof u?.email === 'string' ? u.email.split('@')[0] : '') ||
     'Cliente';
 
+  const tiers = await getTarifasEnvioTiersAdmin();
+  const kmRaw = haversineKm(b.desdeLat, b.desdeLng, b.hastaLat, b.hastaLng);
+  const distanciaKm = Math.round(kmRaw * 1000) / 1000;
+  const tarifaEnvio = getTarifaEnvioPorDistancia(distanciaKm, tiers);
+  const pagoRider = tarifaEnvio;
+  const retencionCentral = 0;
+
   const ref = db.collection('mandados').doc();
   const hora = new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
 
@@ -51,10 +61,14 @@ export async function POST(request: Request) {
       descripcion: b.descripcion.trim(),
       desdeTexto: b.desdeTexto.trim(),
       hastaTexto: b.hastaTexto.trim(),
-      desdeLat: typeof b.desdeLat === 'number' ? b.desdeLat : null,
-      desdeLng: typeof b.desdeLng === 'number' ? b.desdeLng : null,
-      hastaLat: typeof b.hastaLat === 'number' ? b.hastaLat : null,
-      hastaLng: typeof b.hastaLng === 'number' ? b.hastaLng : null,
+      desdeLat: b.desdeLat,
+      desdeLng: b.desdeLng,
+      hastaLat: b.hastaLat,
+      hastaLng: b.hastaLng,
+      distanciaKm,
+      tarifaEnvio,
+      pagoRider,
+      retencionCentral,
       estado: 'pendiente',
       riderId: null,
       riderNombre: null,
@@ -64,6 +78,13 @@ export async function POST(request: Request) {
       updatedAt: FieldValue.serverTimestamp(),
     })
   );
+
+  void sendFCMToRole(
+    'central',
+    'Nuevo mandado',
+    `${String(clienteNombre).slice(0, 40)}: ${b.descripcion.trim().slice(0, 80)}`,
+    { tipo: 'mandado', mandadoId: ref.id }
+  ).catch(() => {});
 
   return NextResponse.json({ id: ref.id });
 }

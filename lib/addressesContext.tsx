@@ -23,6 +23,8 @@ type AddressesContextType = {
   direccionEntregarLatLng: { lat: number; lng: number } | null;
   /** Ubicación actual del dispositivo (si el usuario dio permiso). Fallback para distancia si no hay dirección con coords. */
   userLocationLatLng: { lat: number; lng: number } | null;
+  /** Vuelve a solicitar GPS (p. ej. tras denegar permiso). maximumAge 0 para lectura fresca. */
+  requestUserLocation: (options?: { onSuccess?: () => void; onDenied?: () => void }) => void;
   addDireccion: (_d: Omit<DireccionGuardada, 'id'>) => void;
   updateDirecciones: (_dirs: DireccionGuardada[]) => void;
   setPrincipal: (_id: string) => void;
@@ -165,6 +167,28 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     );
   }, [pathname]);
 
+  const requestUserLocation = useCallback((options?: { onSuccess?: () => void; onDenied?: () => void }) => {
+    if (typeof window === 'undefined' || !navigator?.geolocation) {
+      options?.onDenied?.();
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (typeof latitude === 'number' && typeof longitude === 'number' && !Number.isNaN(latitude) && !Number.isNaN(longitude)) {
+          setUserLocationLatLng({ lat: latitude, lng: longitude });
+          options?.onSuccess?.();
+        } else {
+          options?.onDenied?.();
+        }
+      },
+      () => {
+        options?.onDenied?.();
+      },
+      { timeout: 20000, maximumAge: 0, enableHighAccuracy: true }
+    );
+  }, []);
+
   const scheduleSaveAddresses = useCallback(
     (dirs: DireccionGuardada[]) => {
       if (!user?.uid) {
@@ -278,6 +302,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     direccionEntregar,
     direccionEntregarLatLng,
     userLocationLatLng,
+    requestUserLocation,
     addDireccion,
     updateDirecciones,
     setPrincipal,

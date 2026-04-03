@@ -47,6 +47,7 @@ import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { useToast } from '@/lib/ToastContext';
 import { LoadingButton } from '@/components/LoadingButton';
 import { normalizePhoneForWhatsApp, formatWhatsAppLink } from '@/lib/utils/phone';
+import { formatDistanceKm } from '@/lib/geo';
 import KpiCard from '@/components/ui/KpiCard';
 
 function mapEstado(estadoPedido: string): EstadoCarrera {
@@ -874,6 +875,16 @@ export default function PanelRiderPage() {
                     <p className="text-xs text-gray-600 mt-1">
                       <span className="text-rider-700 font-semibold">B</span> {m.hastaTexto}
                     </p>
+                    {m.pagoRider != null || m.tarifaEnvio != null ? (
+                      <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-100">
+                        <p className="text-[11px] font-bold text-amber-900">
+                          Ref. pago carrera ${(m.pagoRider ?? m.tarifaEnvio ?? 0).toFixed(2)}
+                        </p>
+                        {m.distanciaKm != null ? (
+                          <p className="text-[10px] text-gray-600">{formatDistanceKm(m.distanciaKm)}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="flex flex-wrap gap-2 mt-3">
                       <a
                         href={

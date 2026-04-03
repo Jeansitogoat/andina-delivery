@@ -174,19 +174,7 @@ export default function Home() {
     });
   }, [category, showAllCategories]);
 
-  // Primera visita: redirigir a login si nunca ha visitado (opcional; checkout exige sesión igualmente)
-  useEffect(() => {
-    if (typeof window === 'undefined' || authLoading) return;
-    let visitado: string | null = null;
-    try {
-      visitado = localStorage.getItem('andina_visitado');
-    } catch {
-      /* Silencioso en móvil (modo privado, WebView, etc.) */
-    }
-    if (!visitado && !user) {
-      router.replace('/auth');
-    }
-  }, [router, authLoading, user]);
+  // Primera visita → /auth: lo gestiona AuthSplashGate (evita flash de locales antes del login).
 
   // Redirigir local y maestro a su panel (rider y central pueden quedarse para pedir)
   useEffect(() => {

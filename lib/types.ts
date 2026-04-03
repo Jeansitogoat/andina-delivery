@@ -167,6 +167,14 @@ export interface MandadoCentral {
   estado: EstadoMandado;
   riderId: string | null;
   riderNombre: string | null;
+  /** Distancia A→B en km (Haversine) si hay coords; si no, null. */
+  distanciaKm?: number | null;
+  /** Tarifa de carrera según tabla de envío (mismos tiers que restaurantes). */
+  tarifaEnvio?: number | null;
+  /** Reparto: monto estimado para el rider (MVP: igual a tarifaEnvio). */
+  pagoRider?: number | null;
+  /** Reparto: retención central (MVP: 0). */
+  retencionCentral?: number | null;
   timestamp: number;
   hora?: string;
   updatedAt?: number;
