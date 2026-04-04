@@ -151,6 +151,9 @@ export default function AuthPage() {
   }
 
   function mensajeErrorFirebase(err: unknown): string {
+    if (err instanceof Error && err.message && err.message.includes('celular')) {
+      return err.message;
+    }
     const e = err as { code?: string; message?: string };
     const code = e?.code ?? '';
     const msg = String(e?.message ?? '').toLowerCase();
@@ -245,8 +248,8 @@ export default function AuthPage() {
       setErrorForm('La contraseña debe tener al menos 6 caracteres');
       return;
     }
-    if (!registro.nombres.trim() || !registro.correo.trim()) {
-      setErrorForm('Nombre y correo son obligatorios');
+    if (!registro.nombres.trim() || !registro.correo.trim() || !registro.celular.trim()) {
+      setErrorForm('Nombre, correo y celular son obligatorios');
       return;
     }
     registrandoRef.current = true;
@@ -256,6 +259,7 @@ export default function AuthPage() {
         email: registro.correo.trim(),
         password: registro.contraseña,
         displayName: registro.nombres.trim(),
+        telefono: registro.celular.trim(),
         rol: 'rider' as const,
       };
       try {
@@ -449,6 +453,21 @@ export default function AuthPage() {
                     placeholder="tu@correo.com"
                     className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation"
                     required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Celular</label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <input
+                    type="tel"
+                    value={registro.celular}
+                    onChange={(e) => setRegistro((r) => ({ ...r, celular: e.target.value }))}
+                    placeholder="09X XXX XXXX"
+                    className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 focus:shadow-sm transition-all text-base touch-manipulation"
+                    required
+                    autoComplete="tel"
                   />
                 </div>
               </div>

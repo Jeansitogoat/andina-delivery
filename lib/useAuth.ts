@@ -161,12 +161,16 @@ export function useAuth() {
       rol?: UserRole;
       localId?: string;
     }): Promise<AndinaUser> => {
+      const rol: UserRole = params.rol ?? 'cliente';
+      if (rol === 'rider' && !params.telefono?.trim()) {
+        throw new Error('El celular es obligatorio para registrarte como rider.');
+      }
+
       // 1. Crear usuario en Auth
       const auth = getFirebaseAuth();
       const cred = await createUserWithEmailAndPassword(auth, params.email, params.password);
       const user = cred.user;
       const db = getFirestoreDb();
-      const rol: UserRole = params.rol ?? 'cliente';
 
       const telefonoTrim = params.telefono?.trim() || null;
       const andinaUser: AndinaUser = {
