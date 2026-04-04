@@ -10,6 +10,7 @@ import { pedidoPostSchema } from '@/lib/schemas/pedido';
 import { buildOrderMoney, getOrderMoney, resolveIvaConfig } from '@/lib/order-money';
 import { getMenuFromFirestore } from '@/lib/locales-firestore';
 import { computeSubtotalFromItemsCart } from '@/lib/pedido-precios-server';
+import { formatTimeEcuador } from '@/lib/dateEcuador';
 
 const TOTAL_PEDIDO_TOLERANCE = 0.01;
 
@@ -410,7 +411,7 @@ export async function POST(request: Request) {
       subtotalConIva: orderMoney.subtotalConIva,
       estado: 'confirmado',
       riderId: null,
-      hora: ahora.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }),
+      hora: formatTimeEcuador(ahora),
       timestamp: ahora.getTime(),
       distancia: '—',
       localId,

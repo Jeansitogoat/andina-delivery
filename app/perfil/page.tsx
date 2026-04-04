@@ -24,27 +24,37 @@ import { getFirestoreDb } from '@/lib/firebase/client';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { useToast } from '@/lib/ToastContext';
+import {
+  dateKeyEcuador,
+  formatTimeEcuador,
+  formatWeekdayDayEcuador,
+} from '@/lib/dateEcuador';
 
 type TabPerfil = 'historial' | 'direcciones' | 'cuenta';
 
 function formatFecha(timestamp: number): string {
   const d = new Date(timestamp);
-  const now = new Date();
-  const hoy = now.toDateString() === d.toDateString();
-  const ayer = new Date(now);
-  ayer.setDate(ayer.getDate() - 1);
-  const fueAyer = ayer.toDateString() === d.toDateString();
-  const time = d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
-  if (hoy) return `Hoy · ${time}`;
-  if (fueAyer) return `Ayer · ${time}`;
-  const day = d.toLocaleDateString('es', { weekday: 'short', day: 'numeric' });
+  const hoyKey = dateKeyEcuador(Date.now());
+  const dKey = dateKeyEcuador(d);
+  const ayerMs = Date.now() - 86400000;
+  const ayerKey = dateKeyEcuador(ayerMs);
+  const time = formatTimeEcuador(d);
+  if (dKey === hoyKey) return `Hoy · ${time}`;
+  if (dKey === ayerKey) return `Ayer · ${time}`;
+  const day = formatWeekdayDayEcuador(d);
   return `${day} · ${time}`;
 }
 
 function mapEstadoToHistorial(estado: string): PedidoHistorial['estado'] {
   if (estado === 'entregado') return 'entregado';
   if (estado === 'en_camino' || estado === 'asignado') return 'en_camino';
-  if (estado === 'cancelado' || estado === 'cancelado_local' || estado === 'cancelado_cliente') return 'cancelado';
+  if (
+    estado === 'cancelado' ||
+    estado === 'cancelado_local' ||
+    estado === 'cancelado_cliente' ||
+    estado === 'cancelado_central'
+  )
+    return 'cancelado';
   return 'preparando';
 }
 

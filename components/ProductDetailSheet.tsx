@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { X, Plus, Minus, Flame, ShoppingBag } from 'lucide-react';
+import { X, Plus, Minus, Flame } from 'lucide-react';
 import type { MenuItem } from '@/lib/data';
 import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import type { AddItemOptions } from '@/lib/cartContext';
@@ -34,7 +34,7 @@ export default function ProductDetailSheet({
   const [note, setNote] = useState('');
   const [visible, setVisible] = useState(false);
   const [selectedVariationIndex, setSelectedVariationIndex] = useState<number | null>(null);
-  const [selectedComplementos, setSelectedComplementos] = useState<Record<string, string>>({});
+  const [selectedComplementos, setSelectedComplementos] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     if (item) {
@@ -67,7 +67,12 @@ export default function ProductDetailSheet({
   const variacionValid = !hasVariaciones || selectedVariationIndex != null;
   const complementosValid =
     !hasComplementos ||
-    (item?.complementos?.every((g) => selectedComplementos[g.groupLabel]?.trim()) ?? true);
+    (item?.complementos?.every((g) => {
+      const maxSel = g.maxSelections ?? 1;
+      const arr = selectedComplementos[g.groupLabel] ?? [];
+      if (maxSel <= 1) return arr.length === 1 && Boolean(arr[0]?.trim());
+      return arr.length >= 1 && arr.length <= maxSel;
+    }) ?? true);
   const canAdd = variacionValid && complementosValid;
 
   const buildOptions = (): AddItemOptions | undefined => {
@@ -78,7 +83,14 @@ export default function ProductDetailSheet({
       opts.variationName = selectedVariation.name;
       opts.variationPrice = selectedVariation.price;
     }
-    if (Object.keys(selectedComplementos).length > 0) opts.complementSelections = { ...selectedComplementos };
+    if (hasComplementos && item.complementos) {
+      const raw: Record<string, string[]> = {};
+      for (const g of item.complementos) {
+        const arr = selectedComplementos[g.groupLabel] ?? [];
+        if (arr.length > 0) raw[g.groupLabel] = [...arr];
+      }
+      if (Object.keys(raw).length > 0) opts.complementSelections = raw;
+    }
     return Object.keys(opts).length > 0 ? opts : undefined;
   };
 
@@ -99,6 +111,7 @@ export default function ProductDetailSheet({
   if (!item) return null;
 
   const totalText = hasVariaciones && !selectedVariation ? '—' : `$${(effectivePrice * qty).toFixed(2)}`;
+  const hasHeroImage = Boolean(getSafeImageSrc(item.image));
 
   return (
     <>
@@ -125,9 +138,8 @@ export default function ProductDetailSheet({
 
         {/* Scroll area */}
         <div className="overflow-y-auto flex-1">
-          {/* Imagen - object-cover + overflow padre recorta a la curva del sheet */}
-          <div className="relative w-full bg-gray-100 overflow-hidden" style={{ aspectRatio: '4/3' }}>
-            {getSafeImageSrc(item.image) ? (
+          {hasHeroImage ? (
+            <div className="relative w-full bg-gray-100 overflow-hidden" style={{ aspectRatio: '4/3' }}>
               <Image
                 src={getSafeImageSrc(item.image)!}
                 alt={item.name}
@@ -137,29 +149,42 @@ export default function ProductDetailSheet({
                 priority
                 unoptimized={shouldBypassImageOptimizer(item.image)}
               />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                <ShoppingBag className="w-16 h-16 text-gray-300" />
-              </div>
-            )}
-            {item.bestseller && (
-              <span className="absolute top-4 left-4 flex items-center gap-1.5 bg-rojo-andino text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg">
-                <Flame className="w-3.5 h-3.5" />
-                Más pedido
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={handleClose}
-              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center transition-colors backdrop-blur-sm"
-              aria-label="Cerrar"
-            >
-              <X className="w-5 h-5 text-white" />
-            </button>
-          </div>
+              {item.bestseller && (
+                <span className="absolute top-4 left-4 flex items-center gap-1.5 bg-rojo-andino text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg">
+                  <Flame className="w-3.5 h-3.5" />
+                  Más pedido
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleClose}
+                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center transition-colors backdrop-blur-sm"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+          ) : (
+            <div className="relative flex items-center justify-end px-5 pt-2 pb-1">
+              {item.bestseller && (
+                <span className="absolute left-5 top-2 flex items-center gap-1.5 bg-rojo-andino text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-sm">
+                  <Flame className="w-3.5 h-3.5" />
+                  Más pedido
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleClose}
+                className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5 text-gray-700" />
+              </button>
+            </div>
+          )}
 
           {/* Contenido */}
-          <div className="px-5 pt-5 pb-4">
+          <div className={`px-5 pb-4 ${hasHeroImage ? 'pt-5' : 'pt-2'}`}>
             {cerrado && (cerradoMensaje || cerradoAbreA) && (
               <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
                 {cerradoMensaje && <p className="font-semibold text-amber-900 text-sm">{cerradoMensaje}</p>}
@@ -208,35 +233,61 @@ export default function ProductDetailSheet({
             {/* Complementos — Lista de selección */}
             {hasComplementos && item.complementos && (
               <div className="mt-5 space-y-4">
-                {item.complementos.map((g) => (
-                  <div
-                    key={g.groupLabel}
-                    className="p-4 rounded-3xl overflow-hidden bg-gray-50/70 border border-gray-100"
-                  >
-                    <p className="font-semibold text-gray-800 text-sm mb-3">{g.groupLabel}</p>
-                    <div className="space-y-2">
-                      {g.options.map((opt) => (
-                        <label
-                          key={opt}
-                          className={`flex items-center gap-3 px-4 py-3 rounded-2xl border cursor-pointer transition-colors ${
-                            selectedComplementos[g.groupLabel] === opt
-                              ? 'border-rojo-andino bg-rojo-andino/5'
-                              : 'border-gray-200 bg-white hover:bg-gray-50'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={`complement-${g.groupLabel}`}
-                            checked={selectedComplementos[g.groupLabel] === opt}
-                            onChange={() => setSelectedComplementos((prev) => ({ ...prev, [g.groupLabel]: opt }))}
-                            className="w-4 h-4 text-rojo-andino border-gray-300 focus:ring-rojo-andino"
-                          />
-                          <span className="text-sm font-medium text-gray-900">{opt}</span>
-                        </label>
-                      ))}
+                {item.complementos.map((g) => {
+                  const maxSel = g.maxSelections ?? 1;
+                  const picked = selectedComplementos[g.groupLabel] ?? [];
+                  const sub =
+                    maxSel > 1 ? `Elige hasta ${maxSel}` : 'Elige una opción';
+                  return (
+                    <div
+                      key={g.groupLabel}
+                      className="p-4 rounded-3xl overflow-hidden bg-gray-50/70 border border-gray-100"
+                    >
+                      <p className="font-semibold text-gray-800 text-sm mb-0.5">{g.groupLabel}</p>
+                      <p className="text-xs text-gray-500 mb-3">{sub}</p>
+                      <div className="space-y-2">
+                        {g.options.map((opt) => {
+                          const checked =
+                            maxSel <= 1 ? picked[0] === opt : picked.includes(opt);
+                          return (
+                            <label
+                              key={opt}
+                              className={`flex items-center gap-3 px-4 py-3 rounded-2xl border cursor-pointer transition-colors ${
+                                checked
+                                  ? 'border-rojo-andino bg-rojo-andino/5'
+                                  : 'border-gray-200 bg-white hover:bg-gray-50'
+                              }`}
+                            >
+                              <input
+                                type={maxSel <= 1 ? 'radio' : 'checkbox'}
+                                name={maxSel <= 1 ? `complement-${g.groupLabel}` : undefined}
+                                checked={checked}
+                                onChange={() => {
+                                  if (maxSel <= 1) {
+                                    setSelectedComplementos((prev) => ({
+                                      ...prev,
+                                      [g.groupLabel]: [opt],
+                                    }));
+                                  } else {
+                                    setSelectedComplementos((prev) => {
+                                      const cur = [...(prev[g.groupLabel] ?? [])];
+                                      const ix = cur.indexOf(opt);
+                                      if (ix >= 0) cur.splice(ix, 1);
+                                      else if (cur.length < maxSel) cur.push(opt);
+                                      return { ...prev, [g.groupLabel]: cur };
+                                    });
+                                  }
+                                }}
+                                className="w-4 h-4 text-rojo-andino border-gray-300 focus:ring-rojo-andino rounded"
+                              />
+                              <span className="text-sm font-medium text-gray-900">{opt}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

@@ -528,14 +528,15 @@ function ProductRow({
   onAdd: () => void;
   onRemove: () => void;
 }) {
+  const hasImg = Boolean(getSafeImageSrc(item.image));
+
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-4 cursor-pointer hover:bg-gray-50/80 transition-colors ${
+      className={`flex items-start gap-3 px-4 py-4 cursor-pointer hover:bg-gray-50/80 transition-colors ${
         !isLast ? 'border-b border-gray-50' : ''
       }`}
       onClick={onOpen}
     >
-      {/* Texto */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
           {item.bestseller && (
@@ -552,59 +553,58 @@ function ProductRow({
         <p className="font-bold text-gray-900 text-sm mt-1.5">${displayPrice.toFixed(2)}</p>
       </div>
 
-      {/* Imagen + controles */}
-      <div className="relative flex-shrink-0">
-        <div className="relative w-24 h-24 rounded-2xl overflow-hidden bg-gray-100 shadow-sm">
-          {getSafeImageSrc(item.image) ? (
-            <Image
-              src={getSafeImageSrc(item.image)!}
-              alt={item.name}
-              fill
-              className="object-cover"
-              sizes="96px"
-              unoptimized={shouldBypassImageOptimizer(item.image)}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <ShoppingBag className="w-8 h-8 text-gray-300" />
-            </div>
-          )}
+      {hasImg ? (
+        <div className="relative w-24 h-24 rounded-2xl overflow-hidden bg-gray-100 shadow-sm flex-shrink-0">
+          <Image
+            src={getSafeImageSrc(item.image)!}
+            alt={item.name}
+            fill
+            className="object-cover"
+            sizes="96px"
+            unoptimized={shouldBypassImageOptimizer(item.image)}
+          />
         </div>
-        {/* Controles de cantidad */}
-        <div
-          className="absolute -bottom-2 -right-2 flex items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {inCart > 0 ? (
-            <div className="flex items-center gap-1 bg-white rounded-xl shadow-lg border border-gray-100 px-1 py-0.5">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                className="w-6 h-6 rounded-lg bg-rojo-andino/10 text-rojo-andino flex items-center justify-center hover:bg-rojo-andino/20 transition-colors active:scale-90"
-              >
-                <Minus className="w-3 h-3" />
-              </button>
-              <span className="font-black text-gray-900 text-xs w-4 text-center">{inCart}</span>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); if (!cerrado) onAdd(); }}
-                disabled={cerrado}
-                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors active:scale-90 ${cerrado ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-rojo-andino text-white hover:bg-rojo-andino/90'}`}
-              >
-                <Plus className="w-3 h-3" />
-              </button>
-            </div>
-          ) : (
+      ) : null}
+
+      <div className="flex-shrink-0 self-center pt-0.5" onClick={(e) => e.stopPropagation()}>
+        {inCart > 0 ? (
+          <div className="flex items-center gap-1 bg-white rounded-xl shadow-lg border border-gray-100 px-1 py-0.5">
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); if (!cerrado) onOpen(); }}
-              disabled={cerrado}
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-lg transition-all active:scale-90 ${cerrado ? 'bg-gray-200 text-gray-400 cursor-not-allowed hover:scale-100' : 'bg-rojo-andino text-white hover:bg-rojo-andino/90 hover:scale-110'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+              className="w-6 h-6 rounded-lg bg-rojo-andino/10 text-rojo-andino flex items-center justify-center hover:bg-rojo-andino/20 transition-colors active:scale-90"
             >
-              <Plus className="w-4 h-4" />
+              <Minus className="w-3 h-3" />
             </button>
-          )}
-        </div>
+            <span className="font-black text-gray-900 text-xs w-4 text-center">{inCart}</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!cerrado) onAdd();
+              }}
+              disabled={cerrado}
+              className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors active:scale-90 ${cerrado ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-rojo-andino text-white hover:bg-rojo-andino/90'}`}
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!cerrado) onOpen();
+            }}
+            disabled={cerrado}
+            className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-lg transition-all active:scale-90 ${cerrado ? 'bg-gray-200 text-gray-400 cursor-not-allowed hover:scale-100' : 'bg-rojo-andino text-white hover:bg-rojo-andino/90 hover:scale-110'}`}
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -34,15 +34,48 @@ export async function sendNotification({ target, title, body, data, uid }: SendN
   }
 }
 
+/** Ruta relativa para abrir seguimiento desde payload FCM (`data`). */
+export function getFcmDeepLinkPath(data?: Record<string, string | undefined> | null): string | null {
+  if (!data) return null;
+  const mid = typeof data.mandadoId === 'string' ? data.mandadoId.trim() : '';
+  if (mid) return `/mandado/${encodeURIComponent(mid)}`;
+  const pid = typeof data.pedidoId === 'string' ? data.pedidoId.trim() : '';
+  if (pid) return `/pedido/${encodeURIComponent(pid)}`;
+  return null;
+}
+
 /**
- * Muestra una notificación local en el navegador (para demo).
- * Solo tiene efecto si el usuario ya dio permiso de notificaciones.
+ * Notificación local en primer plano; opcionalmente navega al hacer clic (pedido / mandado).
  */
-export function showLocalNotification(title: string, body: string): void {
+export function showLocalNotification(
+  title: string,
+  body: string,
+  data?: Record<string, string | undefined> | null
+): void {
   try {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, { body });
+    if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+      return;
     }
+    const tag =
+      (typeof data?.mandadoId === 'string' && data.mandadoId.trim()) ||
+      (typeof data?.pedidoId === 'string' && data.pedidoId.trim()) ||
+      'andina-fcm';
+    const nav = getFcmDeepLinkPath(data ?? undefined);
+    const n = new Notification(title, {
+      body,
+      tag,
+      data: data ? { ...data } : undefined,
+    });
+    n.onclick = () => {
+      try {
+        window.focus();
+        if (nav) {
+          window.location.assign(nav);
+        }
+      } finally {
+        n.close();
+      }
+    };
   } catch {
     // Ignorar
   }

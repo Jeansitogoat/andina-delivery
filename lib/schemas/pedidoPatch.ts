@@ -14,7 +14,13 @@ const ESTADOS_PEDIDO = [
   'cancelado_central',
 ] as const;
 
-const ACCIONES_PEDIDO = ['cancelar', 'rechazar_carrera', 'avanzar_estado', 'solicitar_rider'] as const;
+const ACCIONES_PEDIDO = [
+  'cancelar',
+  'rechazar_carrera',
+  'avanzar_estado',
+  'solicitar_rider',
+  'rechazar_central',
+] as const;
 
 const pedidoPatchBaseSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, { error: 'Estado de pedido no válido' }).optional(),
@@ -22,6 +28,8 @@ const pedidoPatchBaseSchema = z.object({
   propina: z.number().min(0).optional(),
   accion: z.enum(ACCIONES_PEDIDO, { error: 'Acción no válida' }).optional(),
   motivo: z.string().max(500, 'El motivo no puede superar 500 caracteres').optional(),
+  /** Solo central/maestro: archivar en vista del panel (no borra el pedido) */
+  ocultoCentral: z.boolean().optional(),
   paymentConfirmed: z.boolean().optional(),
   comprobanteBase64: z.string().max(500_000, 'El comprobante es demasiado grande').nullable().optional(),
   comprobanteFileName: z.string().max(200).nullable().optional(),
@@ -31,7 +39,7 @@ const pedidoPatchBaseSchema = z.object({
 
 /** Si `accion` es cancelar, `motivo` (→ motivoCancelacion en Firestore) es obligatorio. */
 export const pedidoPatchSchema = pedidoPatchBaseSchema.superRefine((data, ctx) => {
-  if (data.accion === 'cancelar') {
+  if (data.accion === 'cancelar' || data.accion === 'rechazar_central') {
     const m = typeof data.motivo === 'string' ? data.motivo.trim() : '';
     if (!m) {
       ctx.addIssue({

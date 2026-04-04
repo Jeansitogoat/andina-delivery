@@ -25,6 +25,7 @@ import {
   ShoppingBag,
   LogOut,
   Trash2,
+  Archive,
   DollarSign,
   Truck,
   UserCircle,
@@ -86,6 +87,7 @@ const ESTADO_PEDIDO_CONFIG: Record<EstadoPedido, { label: string; color: string;
   entregado:       { label: 'Entregado',         color: 'text-green-600',  bg: 'bg-green-50 border-green-200' },
   cancelado_local: { label: 'Cancelado por local', color: 'text-red-600',  bg: 'bg-red-50 border-red-200' },
   cancelado_cliente: { label: 'Cancelado por cliente', color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
+  cancelado_central: { label: 'Rechazado por Central', color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
 };
 
 /** Sin rider y (estado clásico o pedida anticipada con transporte). */
@@ -99,10 +101,28 @@ function solicitudRiderPendiente(p: PedidoCentral): boolean {
 }
 
 function visibleEnPanelCentral(p: PedidoCentral): boolean {
+  if (p.ocultoCentral) return false;
   const e = p.estado;
   if (e === 'asignado' || e === 'en_camino' || e === 'entregado') return true;
   if (e === 'esperando_rider') return true;
+  if (e === 'cancelado_local' || e === 'cancelado_cliente' || e === 'cancelado_central') return true;
   return solicitudRiderPendiente(p);
+}
+
+const ESTADOS_PEDIDO_TERMINAL_ARCHIVO: EstadoPedido[] = [
+  'entregado',
+  'cancelado_local',
+  'cancelado_cliente',
+  'cancelado_central',
+];
+
+function pedidoPuedeRechazarCentral(estado: EstadoPedido): boolean {
+  return !(
+    estado === 'entregado' ||
+    estado === 'cancelado_local' ||
+    estado === 'cancelado_cliente' ||
+    estado === 'cancelado_central'
+  );
 }
 
 /** Orden y badges: anticipada se muestra como “esperando rider”. */
@@ -186,6 +206,11 @@ export default function PanelCentralPage() {
   const [loadingLimpiar, setLoadingLimpiar] = useState(false);
 
   const [eliminarPedidoId, setEliminarPedidoId] = useState<string | null>(null);
+  const [rechazoCentralModal, setRechazoCentralModal] = useState<
+    null | { tipo: 'pedido' | 'mandado'; id: string }
+  >(null);
+  const [motivoRechazoCentral, setMotivoRechazoCentral] = useState('');
+  const [centralActionKey, setCentralActionKey] = useState<string | null>(null);
 
   const { showToast: showGlobalToast } = useToast();
   const { config: andinaConfig, refreshConfig } = useAndinaConfig();
@@ -351,7 +376,9 @@ export default function PanelCentralPage() {
     const unsubMandados = onSnapshot(
       qMandados,
       (snap) => {
-        const incoming = snap.docs.map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>));
+        const incoming = snap.docs
+          .map((d) => docToMandadoCentral(d.id, d.data() as Record<string, unknown>))
+          .filter((m) => !m.ocultoCentral);
         setMandados(incoming);
         const ids = new Set(incoming.map((m) => m.id));
         if (!mandadosInicializadoRef.current) {
@@ -381,7 +408,7 @@ export default function PanelCentralPage() {
       (snap) => {
         const list = snap.docs
           .map((d) => docToPedidoCentral(d.id, d.data() as Record<string, unknown>))
-          .filter((p) => p.deliveryType !== "pickup");
+          .filter((p) => p.deliveryType !== "pickup" && !p.ocultoCentral);
         const pedidosCentral = list
           .filter(visibleEnPanelCentral)
           .sort((a, b) => effectiveSortTs(b) - effectiveSortTs(a));
@@ -581,6 +608,7 @@ export default function PanelCentralPage() {
       entregado: 'entregado',
       cancelado_local: 'cancelado_local',
       cancelado_cliente: 'cancelado_cliente',
+      cancelado_central: 'cancelado_central',
     };
     const nuevoEstado = siguiente[pedido.estado];
     if (nuevoEstado === pedido.estado) return;
@@ -628,6 +656,108 @@ export default function PanelCentralPage() {
     } else {
       const err = await res.json().catch(() => ({})) as { error?: string };
       showGlobalToast({ type: 'error', message: err.error ?? 'No se pudo eliminar el pedido.' });
+    }
+  }
+
+  async function rechazarPedidoCentralApi(pedidoId: string, motivo: string) {
+    const tok = await getIdToken();
+    if (!tok) return;
+    const key = `rechazo_pedido_${pedidoId}`;
+    setCentralActionKey(key);
+    try {
+      const res = await fetch(`/api/pedidos/${encodeURIComponent(pedidoId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ accion: 'rechazar_central', motivo }),
+      });
+      if (res.ok) {
+        setPedidos((prev) =>
+          prev.map((p) =>
+            p.id === pedidoId ? { ...p, estado: 'cancelado_central', motivoCancelacion: motivo } : p
+          )
+        );
+        setPedidoSeleccionado((cur) =>
+          cur?.id === pedidoId ? { ...cur, estado: 'cancelado_central', motivoCancelacion: motivo } : cur
+        );
+        showToast('Pedido rechazado');
+        setRechazoCentralModal(null);
+        setMotivoRechazoCentral('');
+      } else {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        showGlobalToast({ type: 'error', message: err.error ?? 'No se pudo rechazar.' });
+      }
+    } finally {
+      setCentralActionKey(null);
+    }
+  }
+
+  async function archivarPedidoCentralApi(pedidoId: string) {
+    const tok = await getIdToken();
+    if (!tok) return;
+    const key = `arch_pedido_${pedidoId}`;
+    setCentralActionKey(key);
+    try {
+      const res = await fetch(`/api/pedidos/${encodeURIComponent(pedidoId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ ocultoCentral: true }),
+      });
+      if (res.ok) {
+        setPedidos((prev) => prev.filter((p) => p.id !== pedidoId));
+        setPedidoSeleccionado(null);
+        showToast('Pedido archivado');
+      } else {
+        showGlobalToast({ type: 'error', message: 'No se pudo archivar.' });
+      }
+    } finally {
+      setCentralActionKey(null);
+    }
+  }
+
+  async function rechazarMandadoCentralApi(mandadoId: string, motivo: string) {
+    const tok = await getIdToken();
+    if (!tok) return;
+    setCentralActionKey(`rechazo_mandado_${mandadoId}`);
+    try {
+      const res = await fetch(`/api/mandados/${encodeURIComponent(mandadoId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ accion: 'rechazar_central', motivo }),
+      });
+      if (res.ok) {
+        setMandados((prev) => prev.filter((m) => m.id !== mandadoId));
+        setMandadoSeleccionado(null);
+        showToast('Mandado rechazado');
+        setRechazoCentralModal(null);
+        setMotivoRechazoCentral('');
+      } else {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        showGlobalToast({ type: 'error', message: err.error ?? 'No se pudo rechazar.' });
+      }
+    } finally {
+      setCentralActionKey(null);
+    }
+  }
+
+  async function archivarMandadoCentralApi(mandadoId: string) {
+    const tok = await getIdToken();
+    if (!tok) return;
+    setCentralActionKey(`arch_mandado_${mandadoId}`);
+    try {
+      const res = await fetch(`/api/mandados/${encodeURIComponent(mandadoId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ ocultoCentral: true }),
+      });
+      if (res.ok) {
+        setMandados((prev) => prev.filter((m) => m.id !== mandadoId));
+        setMandadoSeleccionado(null);
+        showToast('Mandado archivado');
+      } else {
+        showGlobalToast({ type: 'error', message: 'No se pudo archivar.' });
+      }
+    } finally {
+      setCentralActionKey(null);
     }
   }
 
@@ -682,7 +812,11 @@ export default function PanelCentralPage() {
   }), [pedidos, busqueda, filtroEstado]);
 
   const pedidosActivos = useMemo(() => pedidosFiltrados.filter(
-    (p) => p.estado !== 'entregado' && p.estado !== 'cancelado_local' && p.estado !== 'cancelado_cliente'
+    (p) =>
+      p.estado !== 'entregado' &&
+      p.estado !== 'cancelado_local' &&
+      p.estado !== 'cancelado_cliente' &&
+      p.estado !== 'cancelado_central'
   ), [pedidosFiltrados]);
   const mandadosFiltrados = useMemo(
     () => filtrarMandadosPanelCentral(mandados, busqueda, filtroEstado),
@@ -693,7 +827,11 @@ export default function PanelCentralPage() {
     [pedidosActivos, mandadosFiltrados]
   );
   const pedidosHistorial = useMemo(() => pedidosFiltrados.filter(
-    (p) => p.estado === 'entregado' || p.estado === 'cancelado_local' || p.estado === 'cancelado_cliente'
+    (p) =>
+      p.estado === 'entregado' ||
+      p.estado === 'cancelado_local' ||
+      p.estado === 'cancelado_cliente' ||
+      p.estado === 'cancelado_central'
   ), [pedidosFiltrados]);
 
   if (loading || !user || (user.rol !== 'central' && user.rol !== 'maestro')) {
@@ -1286,6 +1424,57 @@ export default function PanelCentralPage() {
           </div>
         )}
 
+        {rechazoCentralModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+              <h2 className="font-black text-gray-900 text-lg mb-2">
+                {rechazoCentralModal.tipo === 'pedido' ? 'Rechazar pedido' : 'Rechazar mandado'}
+              </h2>
+              <p className="text-sm text-gray-600 mb-3">Indica el motivo (visible para el cliente).</p>
+              <textarea
+                value={motivoRechazoCentral}
+                onChange={(e) => setMotivoRechazoCentral(e.target.value)}
+                rows={4}
+                className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-red-400"
+                placeholder="Motivo del rechazo..."
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRechazoCentralModal(null);
+                    setMotivoRechazoCentral('');
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                >
+                  Cancelar
+                </button>
+                <LoadingButton
+                  type="button"
+                  loading={
+                    !!centralActionKey &&
+                    (centralActionKey.startsWith('rechazo_pedido_') ||
+                      centralActionKey.startsWith('rechazo_mandado_'))
+                  }
+                  disabled={!motivoRechazoCentral.trim()}
+                  onClick={() => {
+                    const m = motivoRechazoCentral.trim();
+                    if (!m) return;
+                    if (rechazoCentralModal.tipo === 'pedido') {
+                      void rechazarPedidoCentralApi(rechazoCentralModal.id, m);
+                    } else {
+                      void rechazarMandadoCentralApi(rechazoCentralModal.id, m);
+                    }
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  Rechazar
+                </LoadingButton>
+              </div>
+            </div>
+          </div>
+        )}
+
         {eliminarPedidoId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
@@ -1447,6 +1636,34 @@ export default function PanelCentralPage() {
                     </div>
                   );
                 })()}
+                {mandadoSeleccionado.motivoCancelacion ? (
+                  <div className="rounded-2xl border border-red-100 bg-red-50/80 p-3 text-sm text-red-900">
+                    <span className="font-bold">Motivo: </span>
+                    {mandadoSeleccionado.motivoCancelacion}
+                  </div>
+                ) : null}
+                {mandadoSeleccionado.estado !== 'completado' && mandadoSeleccionado.estado !== 'cancelado' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRechazoCentralModal({ tipo: 'mandado', id: mandadoSeleccionado.id });
+                      setMotivoRechazoCentral('');
+                    }}
+                    className="w-full py-3 rounded-2xl border-2 border-red-200 bg-white text-red-700 font-bold hover:bg-red-50 flex items-center justify-center gap-2 transition-colors"
+                  >
+                    Rechazar (Central)
+                  </button>
+                ) : null}
+                <LoadingButton
+                  type="button"
+                  loading={centralActionKey === `arch_mandado_${mandadoSeleccionado.id}`}
+                  disabled={!!centralActionKey}
+                  onClick={() => archivarMandadoCentralApi(mandadoSeleccionado.id)}
+                  className="w-full py-3 rounded-2xl border border-gray-200 bg-gray-50 text-gray-800 font-bold hover:bg-gray-100 flex items-center justify-center gap-2"
+                >
+                  <Archive className="w-5 h-5" />
+                  Archivar (ocultar de Central)
+                </LoadingButton>
                 {mandadoSeleccionado.estado === 'pendiente' && !mandadoSeleccionado.riderId ? (
                   <button
                     type="button"
@@ -1641,6 +1858,36 @@ export default function PanelCentralPage() {
                 })()}
 
                 <div className="space-y-2 pt-1">
+                  {pedidoSeleccionado.motivoCancelacion ? (
+                    <div className="rounded-2xl border border-red-100 bg-red-50/80 p-3 text-sm text-red-900">
+                      <span className="font-bold">Motivo: </span>
+                      {pedidoSeleccionado.motivoCancelacion}
+                    </div>
+                  ) : null}
+                  {pedidoPuedeRechazarCentral(pedidoSeleccionado.estado) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRechazoCentralModal({ tipo: 'pedido', id: pedidoSeleccionado.id });
+                        setMotivoRechazoCentral('');
+                      }}
+                      className="w-full py-3 rounded-2xl border-2 border-red-200 bg-white text-red-700 font-bold hover:bg-red-50 flex items-center justify-center gap-2 transition-colors"
+                    >
+                      Rechazar (Central)
+                    </button>
+                  )}
+                  {ESTADOS_PEDIDO_TERMINAL_ARCHIVO.includes(pedidoSeleccionado.estado) && (
+                    <LoadingButton
+                      type="button"
+                      loading={centralActionKey === `arch_pedido_${pedidoSeleccionado.id}`}
+                      disabled={!!centralActionKey}
+                      onClick={() => archivarPedidoCentralApi(pedidoSeleccionado.id)}
+                      className="w-full py-3 rounded-2xl border border-gray-200 bg-gray-50 text-gray-800 font-bold hover:bg-gray-100 flex items-center justify-center gap-2"
+                    >
+                      <Archive className="w-5 h-5" />
+                      Archivar (ocultar de Central)
+                    </LoadingButton>
+                  )}
                   {solicitudRiderPendiente(pedidoSeleccionado) && (
                     <button
                       type="button"

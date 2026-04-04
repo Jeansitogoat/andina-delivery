@@ -26,5 +26,8 @@ export function docToMandadoCentral(id: string, data: DocumentData | Record<stri
     timestamp: typeof d.timestamp === 'number' ? d.timestamp : 0,
     hora: typeof d.hora === 'string' ? d.hora : undefined,
     updatedAt: typeof d.updatedAt === 'number' ? d.updatedAt : undefined,
+    motivoCancelacion:
+      typeof d.motivoCancelacion === 'string' ? d.motivoCancelacion : null,
+    ocultoCentral: d.ocultoCentral === true,
   };
 }

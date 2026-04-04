@@ -1,10 +1,14 @@
 import { z } from 'zod';
 
+const horarioTurnoSchema = z.object({
+  desde: z.string(),
+  hasta: z.string(),
+});
+
 const horarioSchema = z.object({
   dia: z.string(),
   abierto: z.boolean(),
-  desde: z.string(),
-  hasta: z.string(),
+  turnos: z.array(horarioTurnoSchema).min(1).max(2),
 });
 
 // Fase 1: codigoBase64/codigoMimeType reemplazados por codigoUrl (downloadURL de Firebase Storage).

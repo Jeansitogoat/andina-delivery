@@ -17,6 +17,7 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { Local, MenuItem, HorarioItem } from '@/lib/data';
+import { horariosFromFirestore } from '@/lib/data';
 import {
   getLegacyTypeFromDiscoveryCategory,
   mapLegacyTypeToDiscoveryCategory,
@@ -36,7 +37,7 @@ function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<strin
 }
 
 function docToLocal(data: Record<string, unknown>, id: string): Local {
-  const horarios = Array.isArray(data.horarios) ? (data.horarios as HorarioItem[]) : undefined;
+  const horarios = horariosFromFirestore(data.horarios);
   const typeArr = Array.isArray(data.type) ? (data.type as string[]) : ['Restaurantes'];
   const rawCategorias = Array.isArray(data.categorias) ? (data.categorias as string[]) : [];
   const categoriasFromFirestore = rawCategorias.length > 0;
@@ -95,7 +96,15 @@ function docToMenuItem(data: Record<string, unknown>, id: string): MenuItem {
     tieneVariaciones: Boolean(data.tieneVariaciones),
     variaciones: Array.isArray(data.variaciones) ? (data.variaciones as MenuItem['variaciones']) : undefined,
     tieneComplementos: Boolean(data.tieneComplementos),
-    complementos: Array.isArray(data.complementos) ? (data.complementos as MenuItem['complementos']) : undefined,
+    complementos: Array.isArray(data.complementos)
+      ? (data.complementos as MenuItem['complementos'])?.map((g) => ({
+          ...g,
+          maxSelections:
+            typeof (g as { maxSelections?: unknown }).maxSelections === 'number'
+              ? Math.max(1, Math.floor((g as { maxSelections: number }).maxSelections))
+              : undefined,
+        }))
+      : undefined,
   };
 }
 
@@ -112,6 +121,23 @@ export async function getLocalesFromFirestore(): Promise<{ locales: Local[] }> {
     locales.push(docToLocal(data, d.id));
   });
   return { locales };
+}
+
+let localesListCache: { at: number; locales: Local[] } | null = null;
+const LOCALES_LIST_CACHE_TTL_MS = 60_000;
+
+/**
+ * Misma lectura que getLocalesFromFirestore con caché en memoria del proceso (p. ej. varias rutas API en la misma ventana).
+ * Reduce lecturas repetidas de la colección `locales` en panel maestro / stats.
+ */
+export async function getLocalesFromFirestoreCached(): Promise<{ locales: Local[] }> {
+  const now = Date.now();
+  if (localesListCache && now - localesListCache.at < LOCALES_LIST_CACHE_TTL_MS) {
+    return { locales: localesListCache.locales };
+  }
+  const fresh = await getLocalesFromFirestore();
+  localesListCache = { at: now, locales: fresh.locales };
+  return fresh;
 }
 
 /** Filtro discovery Home: `array-contains` en Firestore + locales legacy sin `categorias` persistido. */

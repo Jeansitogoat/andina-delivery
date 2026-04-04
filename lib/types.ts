@@ -7,7 +7,8 @@ export type EstadoPedido =
   | 'en_camino'
   | 'entregado'
   | 'cancelado_local'
-  | 'cancelado_cliente';
+  | 'cancelado_cliente'
+  | 'cancelado_central';
 
 /** Logística / rider: independiente del estado de cocina (preparando / listo). */
 export type EstadoTransportePedido = 'pendiente' | 'buscando_rider';
@@ -57,6 +58,8 @@ export interface PedidoCentral {
   telefonoLocal?: string | null;
   /** Motivo de cancelación (cliente o local), texto libre */
   motivoCancelacion?: string | null;
+  /** Ocultar en panel Central (archivo lógico; no borra el documento) */
+  ocultoCentral?: boolean;
   codigoVerificacion?: string;
   propina?: number;
   /** Multi-stop: identificador comÃºn del batch */
@@ -84,7 +87,7 @@ export interface PedidoCentral {
       note?: string;
       variationName?: string;
       variationPrice?: number;
-      complementSelections?: Record<string, string>;
+      complementSelections?: Record<string, string | string[]>;
       displayLabel?: string;
     }[];
   };
@@ -178,6 +181,8 @@ export interface MandadoCentral {
   timestamp: number;
   hora?: string;
   updatedAt?: number;
+  motivoCancelacion?: string | null;
+  ocultoCentral?: boolean;
 }
 
 /** Vista unificada para paneles Central/Rider (sin migración de base de datos). */

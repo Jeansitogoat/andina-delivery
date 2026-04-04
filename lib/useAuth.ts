@@ -12,6 +12,7 @@ import {
 import {
   doc,
   getDoc,
+  onSnapshot,
   setDoc,
   serverTimestamp,
   type DocumentData,
@@ -49,15 +50,8 @@ interface UseAuthState {
   loading: boolean;
 }
 
-async function ensureUserDocument(firebaseUser: User): Promise<AndinaUser> {
-  const db = getFirestoreDb();
-  const ref = doc(db, 'users', firebaseUser.uid);
-  const snap = await getDoc(ref);
-
-  let data: DocumentData | undefined = snap.data();
-
-  if (!snap.exists()) {
-    // No crear el doc aquí: registerWithEmail lo crea con rol y displayName correctos.
+function mapFirestoreDataToAndinaUser(firebaseUser: User, data: DocumentData | undefined): AndinaUser {
+  if (!data) {
     return {
       uid: firebaseUser.uid,
       email: firebaseUser.email,
@@ -71,7 +65,7 @@ async function ensureUserDocument(firebaseUser: User): Promise<AndinaUser> {
   const riderStatus: RiderStatus | undefined = data?.riderStatus;
   const rawEstado = data?.estadoRider as string | undefined;
   const estadoRider = (rawEstado === 'ausente' ? 'disponible' : rawEstado) as 'disponible' | 'fuera_servicio' | undefined;
-  const andinaUser: AndinaUser = {
+  return {
     uid: firebaseUser.uid,
     email: firebaseUser.email,
     displayName: data?.displayName ?? firebaseUser.displayName,
@@ -83,8 +77,16 @@ async function ensureUserDocument(firebaseUser: User): Promise<AndinaUser> {
     estadoRider: rol === 'rider' ? (estadoRider ?? 'disponible') : undefined,
     ratingPromedio: data?.ratingPromedio != null ? Number(data.ratingPromedio) : null,
   };
+}
 
-  return andinaUser;
+async function ensureUserDocument(firebaseUser: User): Promise<AndinaUser> {
+  const db = getFirestoreDb();
+  const ref = doc(db, 'users', firebaseUser.uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    return mapFirestoreDataToAndinaUser(firebaseUser, undefined);
+  }
+  return mapFirestoreDataToAndinaUser(firebaseUser, snap.data());
 }
 
 export function useAuth() {
@@ -118,6 +120,26 @@ export function useAuth() {
 
     return () => unsub();
   }, []);
+
+  /** Actualiza perfil (p. ej. riderStatus) sin recargar cuando Central cambia el documento en Firestore. */
+  useEffect(() => {
+    const uid = state.user?.uid;
+    if (!uid) return;
+    const auth = getFirebaseAuth();
+    const db = getFirestoreDb();
+    const unsub = onSnapshot(doc(db, 'users', uid), (snap) => {
+      const fu = auth.currentUser;
+      if (!fu || fu.uid !== uid) return;
+      if (!snap.exists()) return;
+      const andinaUser = mapFirestoreDataToAndinaUser(fu, snap.data());
+      lastAndinaUserRef.current = andinaUser;
+      setState((s) => {
+        if (s.user?.uid !== uid) return s;
+        return { ...s, user: andinaUser };
+      });
+    });
+    return () => unsub();
+  }, [state.user?.uid]);
 
   const loginWithEmail = useCallback(
     async (email: string, password: string): Promise<AndinaUser> => {

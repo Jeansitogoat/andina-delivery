@@ -331,9 +331,11 @@ export async function setupFCMForegroundListener(): Promise<() => void> {
       const messaging = getMessaging(app);
       const unsubscribe = onMessage(messaging, (payload) => {
         if (!shouldProcessForegroundPayload(payload)) return;
-        const title = payload.notification?.title ?? (payload.data as Record<string, string> | undefined)?.title ?? 'Andina Delivery';
-        const body = payload.notification?.body ?? (payload.data as Record<string, string> | undefined)?.body ?? '';
-        showLocalNotification(title, body);
+        const dataRaw = payload.data as Record<string, string> | undefined;
+        const title =
+          payload.notification?.title ?? dataRaw?.title ?? 'Andina Delivery';
+        const body = payload.notification?.body ?? dataRaw?.body ?? '';
+        showLocalNotification(title, body, dataRaw);
       });
       foregroundListenerUnsubscribe = () => {
         unsubscribe();

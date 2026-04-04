@@ -30,7 +30,7 @@ import {
 } from '@/lib/passwordChangeHelpers';
 import { ensureFCMServiceWorkerReady } from '@/lib/fcm-client';
 import { useNotifications } from '@/lib/useNotifications';
-import type { Local } from '@/lib/data';
+import type { Local, HorarioItem } from '@/lib/data';
 import { compressImage } from '@/lib/compressImage';
 import { getSafeImageSrc, normalizeDataUrl, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { uploadLocalLogo, uploadLocalCover, uploadLocalQr } from '@/lib/storageUpload';
@@ -43,14 +43,14 @@ import {
 
 
 
-const HORARIOS_DEFAULT = [
-  { dia: 'Lunes', abierto: true, desde: '09:00', hasta: '22:00' },
-  { dia: 'Martes', abierto: true, desde: '09:00', hasta: '22:00' },
-  { dia: 'Miércoles', abierto: true, desde: '09:00', hasta: '22:00' },
-  { dia: 'Jueves', abierto: true, desde: '09:00', hasta: '22:00' },
-  { dia: 'Viernes', abierto: true, desde: '09:00', hasta: '23:00' },
-  { dia: 'Sábado', abierto: true, desde: '10:00', hasta: '23:00' },
-  { dia: 'Domingo', abierto: false, desde: '10:00', hasta: '22:00' },
+const HORARIOS_DEFAULT: HorarioItem[] = [
+  { dia: 'Lunes', abierto: true, turnos: [{ desde: '09:00', hasta: '22:00' }] },
+  { dia: 'Martes', abierto: true, turnos: [{ desde: '09:00', hasta: '22:00' }] },
+  { dia: 'Miércoles', abierto: true, turnos: [{ desde: '09:00', hasta: '22:00' }] },
+  { dia: 'Jueves', abierto: true, turnos: [{ desde: '09:00', hasta: '22:00' }] },
+  { dia: 'Viernes', abierto: true, turnos: [{ desde: '09:00', hasta: '23:00' }] },
+  { dia: 'Sábado', abierto: true, turnos: [{ desde: '10:00', hasta: '23:00' }] },
+  { dia: 'Domingo', abierto: false, turnos: [{ desde: '10:00', hasta: '22:00' }] },
 ];
 
 export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: string }> }) {
@@ -324,9 +324,34 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  function setHorarioHora(index: number, campo: 'desde' | 'hasta', valor: string) {
+  function setHorarioTurnoField(
+    index: number,
+    turnIdx: 0 | 1,
+    campo: 'desde' | 'hasta',
+    valor: string
+  ) {
     setHorarios((prev) =>
-      prev.map((h, i) => (i === index ? { ...h, [campo]: valor } : h))
+      prev.map((h, i) => {
+        if (i !== index) return h;
+        const t = [...(h.turnos?.length ? h.turnos : [{ desde: '09:00', hasta: '22:00' }])];
+        while (t.length <= turnIdx) t.push({ desde: '18:00', hasta: '22:00' });
+        t[turnIdx] = { ...t[turnIdx], [campo]: valor };
+        return { ...h, turnos: t.slice(0, 2) };
+      })
+    );
+  }
+
+  function toggleSegundoTurno(index: number) {
+    setHorarios((prev) =>
+      prev.map((h, i) => {
+        if (i !== index) return h;
+        const t = [...(h.turnos?.length ? h.turnos : [{ desde: '09:00', hasta: '22:00' }])];
+        if (t.length > 1) return { ...h, turnos: [t[0]] };
+        return {
+          ...h,
+          turnos: [t[0], { desde: '18:00', hasta: '22:00' }],
+        };
+      })
     );
   }
 
@@ -607,20 +632,50 @@ export default function PanelPerfilIdPage({ params }: { params: Promise<{ id: st
                         <span className="text-xs text-gray-600">Abierto</span>
                       </label>
                       {h.abierto && (
-                        <div className="flex items-center gap-1 text-xs">
-                          <input
-                            type="time"
-                            value={h.desde}
-                            onChange={(e) => setHorarioHora(index, 'desde', e.target.value)}
-                            className="w-20 py-1 px-2 rounded-lg border border-gray-200"
-                          />
-                          <span className="text-gray-400">-</span>
-                          <input
-                            type="time"
-                            value={h.hasta}
-                            onChange={(e) => setHorarioHora(index, 'hasta', e.target.value)}
-                            className="w-20 py-1 px-2 rounded-lg border border-gray-200"
-                          />
+                        <div className="flex flex-col items-end gap-2 text-xs max-w-[min(100%,280px)]">
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            <span className="text-gray-500 w-12 shrink-0">1.ª</span>
+                            <input
+                              type="time"
+                              value={h.turnos[0]?.desde ?? '09:00'}
+                              onChange={(e) => setHorarioTurnoField(index, 0, 'desde', e.target.value)}
+                              className="w-20 py-1 px-2 rounded-lg border border-gray-200"
+                            />
+                            <span className="text-gray-400">-</span>
+                            <input
+                              type="time"
+                              value={h.turnos[0]?.hasta ?? '22:00'}
+                              onChange={(e) => setHorarioTurnoField(index, 0, 'hasta', e.target.value)}
+                              className="w-20 py-1 px-2 rounded-lg border border-gray-200"
+                            />
+                          </div>
+                          <label className="flex items-center gap-1.5 cursor-pointer text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={(h.turnos?.length ?? 0) > 1}
+                              onChange={() => toggleSegundoTurno(index)}
+                              className="rounded border-gray-300 text-rojo-andino focus:ring-rojo-andino"
+                            />
+                            Segundo turno
+                          </label>
+                          {(h.turnos?.length ?? 0) > 1 && (
+                            <div className="flex items-center gap-1 flex-wrap justify-end">
+                              <span className="text-gray-500 w-12 shrink-0">2.ª</span>
+                              <input
+                                type="time"
+                                value={h.turnos[1]?.desde ?? '18:00'}
+                                onChange={(e) => setHorarioTurnoField(index, 1, 'desde', e.target.value)}
+                                className="w-20 py-1 px-2 rounded-lg border border-gray-200"
+                              />
+                              <span className="text-gray-400">-</span>
+                              <input
+                                type="time"
+                                value={h.turnos[1]?.hasta ?? '22:00'}
+                                onChange={(e) => setHorarioTurnoField(index, 1, 'hasta', e.target.value)}
+                                className="w-20 py-1 px-2 rounded-lg border border-gray-200"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

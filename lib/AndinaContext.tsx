@@ -4,10 +4,10 @@ import React, {
   createContext,
   useContext,
   useState,
-  useCallback,
   useEffect,
   useMemo,
 } from 'react';
+import useSWR from 'swr';
 import type {
   ConfigTarifas,
   BannerItemPublic,
@@ -111,55 +111,50 @@ async function fetchAndinaConfig(localesCategoryFilter: string | null): Promise<
 }
 
 export function AndinaProvider({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<AndinaConfigValue>(DEFAULT_CONFIG);
-  const [localesLight, setLocalesLight] = useState<LocaleLightHome[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [localesCategoryFilter, setLocalesCategoryFilter] = useState<string | null>(null);
-  const hasLocalesRef = React.useRef(0);
+  const [seedLocales] = useState<LocaleLightHome[]>(() =>
+    typeof window !== 'undefined' ? readStoredLocales() : []
+  );
 
-  const load = useCallback(async () => {
-    if (hasLocalesRef.current === 0) setLoading(true);
-    setError(false);
-    try {
-      const { config: cfg, localesLight: locs } = await fetchAndinaConfig(localesCategoryFilter);
-      setConfig(cfg);
-      setLocalesLight(locs);
+  const swrKey = ['andina-config', localesCategoryFilter ?? 'all'] as const;
+  const { data, error, isLoading, mutate } = useSWR(
+    swrKey,
+    () => fetchAndinaConfig(localesCategoryFilter),
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60_000,
+      keepPreviousData: true,
+    }
+  );
+
+  useEffect(() => {
+    if (data?.localesLight?.length) {
       try {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(locs));
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data.localesLight));
       } catch {
         /* storage lleno o privado */
       }
-      setLoading(false);
-      setError(false);
-    } catch {
-      setLoading(false);
-      setError(true);
     }
-  }, [localesCategoryFilter]);
+  }, [data?.localesLight]);
 
-  useEffect(() => {
-    const stored = readStoredLocales();
-    if (stored.length > 0) {
-      hasLocalesRef.current = stored.length;
-      setLocalesLight(stored);
-      setLoading(false);
-    }
-    load();
-  }, [load]);
-
-  hasLocalesRef.current = localesLight.length;
+  const config = data?.config ?? DEFAULT_CONFIG;
+  const localesLight =
+    data?.localesLight && data.localesLight.length > 0 ? data.localesLight : seedLocales;
+  const loading = isLoading && !data;
+  const fetchError = Boolean(error);
 
   const value = useMemo<AndinaState>(
     () => ({
       config,
       localesLight,
       loading,
-      error,
-      refreshConfig: load,
+      error: fetchError,
+      refreshConfig: async () => {
+        await mutate();
+      },
       setLocalesCategoryFilter,
     }),
-    [config, localesLight, loading, error, load]
+    [config, localesLight, loading, fetchError, mutate]
   );
 
   return (

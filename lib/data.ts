@@ -8,6 +8,8 @@ export interface MenuItemVariation {
 export interface MenuItemComplementGroup {
   groupLabel: string;
   options: string[];
+  /** Cuántas opciones puede elegir el cliente (1 = una sola; >1 = hasta N). Por defecto 1. */
+  maxSelections?: number;
 }
 
 export interface MenuItem {
@@ -47,7 +49,58 @@ export interface TransferenciaLocal {
   codigoMimeType?: string;
 }
 
-export type HorarioItem = { dia: string; abierto: boolean; desde: string; hasta: string };
+export type HorarioTurno = { desde: string; hasta: string };
+
+/** Horario por día: uno o dos turnos. Legacy en Firestore puede traer solo `desde`/`hasta`. */
+export type HorarioItem = {
+  dia: string;
+  abierto: boolean;
+  turnos: HorarioTurno[];
+  /** @deprecated Preferir `turnos`. Se mantiene al leer documentos antiguos. */
+  desde?: string;
+  hasta?: string;
+};
+
+/** Obtiene 1–2 turnos por día; compat con documentos que solo tienen desde/hasta. */
+export function normalizeHorarioTurnos(h: HorarioItem): HorarioTurno[] {
+  if (Array.isArray(h.turnos) && h.turnos.length > 0) {
+    return h.turnos
+      .slice(0, 2)
+      .map((t) => ({
+        desde: String(t.desde ?? '09:00').trim() || '09:00',
+        hasta: String(t.hasta ?? '22:00').trim() || '22:00',
+      }));
+  }
+  if (h.desde && h.hasta) {
+    return [{ desde: h.desde.trim(), hasta: h.hasta.trim() }];
+  }
+  return [{ desde: '09:00', hasta: '22:00' }];
+}
+
+/** Normaliza el array `horarios` leído de Firestore (turnos o legacy desde/hasta). */
+export function horariosFromFirestore(raw: unknown): HorarioItem[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: HorarioItem[] = [];
+  for (const item of raw) {
+    const o = item as Record<string, unknown>;
+    const dia = String(o.dia ?? '');
+    const abierto = Boolean(o.abierto);
+    if (Array.isArray(o.turnos) && o.turnos.length > 0) {
+      const turnos = (o.turnos as { desde?: string; hasta?: string }[])
+        .slice(0, 2)
+        .map((t) => ({
+          desde: String(t.desde ?? '09:00'),
+          hasta: String(t.hasta ?? '22:00'),
+        }));
+      out.push({ dia, abierto, turnos });
+      continue;
+    }
+    const desde = o.desde != null ? String(o.desde) : '09:00';
+    const hasta = o.hasta != null ? String(o.hasta) : '22:00';
+    out.push({ dia, abierto, turnos: [{ desde, hasta }], desde, hasta });
+  }
+  return out;
+}
 
 export interface Local {
   id: string;

@@ -24,6 +24,7 @@ import {
   LocateFixed,
 } from 'lucide-react';
 import { useCart } from '@/lib/useCart';
+import { complementSelectionsDisplay } from '@/lib/complementSelections';
 import { useAuth } from '@/lib/useAuth';
 import { usePendingRiderClientBlock } from '@/lib/usePendingRiderClientBlock';
 import { useAddresses } from '@/lib/addressesContext';
@@ -174,7 +175,7 @@ export default function CheckoutPage() {
     let cancelled = false;
 
     function buildEnrichedItems(
-      stop: { localId: string; items: Array<{ id: string; qty: number; note?: string; variationName?: string; variationPrice?: number; complementSelections?: Record<string, string> }> },
+      stop: { localId: string; items: Array<{ id: string; qty: number; note?: string; variationName?: string; variationPrice?: number; complementSelections?: Record<string, string | string[]> }> },
       menu: Array<{ id: string; name: string; price: number }>
     ): EnrichedCheckoutItem[] {
       return stop.items
@@ -182,7 +183,7 @@ export default function CheckoutPage() {
           const item = menu.find((i) => i.id === c.id);
           if (!item) return null;
           const unitPrice = typeof c.variationPrice === 'number' && !Number.isNaN(c.variationPrice) ? c.variationPrice : item.price;
-          const compText = c.complementSelections && Object.keys(c.complementSelections).length > 0 ? Object.values(c.complementSelections).join(', ') : '';
+          const compText = complementSelectionsDisplay(c.complementSelections);
           const displayName = [item.name, c.variationName ? `(${c.variationName})` : '', compText ? ` · ${compText}` : ''].filter(Boolean).join(' ');
           return { ...item, price: unitPrice, qty: c.qty, displayName } as EnrichedCheckoutItem;
         })
@@ -233,7 +234,7 @@ export default function CheckoutPage() {
             const item = menu.find((i) => i.id === c.id);
             if (!item) return null;
             const unitPrice = typeof c.variationPrice === 'number' && !Number.isNaN(c.variationPrice) ? c.variationPrice : item.price;
-            const compText = c.complementSelections && Object.keys(c.complementSelections).length > 0 ? Object.values(c.complementSelections).join(', ') : '';
+            const compText = complementSelectionsDisplay(c.complementSelections);
             const displayName = [item.name, c.variationName ? `(${c.variationName})` : '', compText ? ` · ${compText}` : ''].filter(Boolean).join(' ');
             return { ...item, price: unitPrice, qty: c.qty, displayName } as EnrichedCheckoutItem;
           })
@@ -510,10 +511,10 @@ export default function CheckoutPage() {
                     note?: string;
                     variationName?: string;
                     variationPrice?: number;
-                    complementSelections?: Record<string, string>;
+                    complementSelections?: Record<string, string | string[]>;
                   };
                   const name = menu.find((m) => m.id === i.id)?.name ?? i.id;
-                  const compText = i.complementSelections && Object.keys(i.complementSelections).length > 0 ? Object.values(i.complementSelections).join(', ') : '';
+                  const compText = complementSelectionsDisplay(i.complementSelections);
                   const displayLabel = [name, i.variationName ? `(${i.variationName})` : '', compText ? ` - ${compText}` : ''].filter(Boolean).join(' ');
                   return {
                     id: i.id,
@@ -754,10 +755,10 @@ export default function CheckoutPage() {
                     note?: string;
                     variationName?: string;
                     variationPrice?: number;
-                    complementSelections?: Record<string, string>;
+                    complementSelections?: Record<string, string | string[]>;
                   };
                   const name = menu.find((m) => m.id === i.id)?.name ?? i.id;
-                  const compText = i.complementSelections && Object.keys(i.complementSelections).length > 0 ? Object.values(i.complementSelections).join(', ') : '';
+                  const compText = complementSelectionsDisplay(i.complementSelections);
                   const displayLabel = [name, i.variationName ? `(${i.variationName})` : '', compText ? ` - ${compText}` : ''].filter(Boolean).join(' ');
                   return {
                     id: i.id,

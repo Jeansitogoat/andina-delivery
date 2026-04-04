@@ -31,6 +31,7 @@ import PasswordInput from '@/components/PasswordInput';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
+import { formatDateShortEcuador, formatDateTimeEcuador } from '@/lib/dateEcuador';
 import CampoUbicacionConMapa from '@/components/CampoUbicacionConMapa';
 import { useAndinaConfig } from '@/lib/AndinaContext';
 import { formatWhatsAppLink } from '@/lib/utils/phone';
@@ -1090,12 +1091,7 @@ export default function PanelMaestroPage() {
           {lastFcmSync && (
             <p className="mt-3 text-[11px] text-gray-400">
               Última sincronización de notificaciones:{' '}
-              {lastFcmSync.toLocaleString('es-EC', {
-                hour: '2-digit',
-                minute: '2-digit',
-                day: '2-digit',
-                month: '2-digit',
-              })}
+              {formatDateTimeEcuador(lastFcmSync)}
             </p>
           )}
         </section>
@@ -1249,7 +1245,7 @@ export default function PanelMaestroPage() {
                                   <div className="min-w-0">
                                     <span className="font-mono text-gray-600">{c.pedidoId}</span>
                                     <span className="text-gray-400 ml-2">
-                                      {new Date(c.fecha).toLocaleDateString('es')}
+                                      {formatDateShortEcuador(new Date(c.fecha))}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -1368,7 +1364,7 @@ export default function PanelMaestroPage() {
                 </div>
                 {configTransferencia.programStartDate && (
                   <p className="text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2">
-                    El programa inicia el {new Date(configTransferencia.programStartDate + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}. Ciclo {configTransferencia.cycleDays === 7 ? 'semanal' : configTransferencia.cycleDays === 15 ? 'quincenal' : 'mensual'}.
+                    El programa inicia el {formatDateShortEcuador(new Date(configTransferencia.programStartDate + 'T12:00:00'))}. Ciclo {configTransferencia.cycleDays === 7 ? 'semanal' : configTransferencia.cycleDays === 15 ? 'quincenal' : 'mensual'}.
                   </p>
                 )}
                 <button
@@ -1588,7 +1584,7 @@ export default function PanelMaestroPage() {
                           </button>
                         </div>
                         <p className="text-[10px] text-gray-400">
-                          {new Date(sol.createdAt).toLocaleString()}
+                          {formatDateTimeEcuador(new Date(sol.createdAt))}
                         </p>
                       </div>
                     ))}

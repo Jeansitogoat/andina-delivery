@@ -121,7 +121,8 @@ export default function PanelRiderPage() {
   const { user, loading, logout } = useAuth();
   useNotifications('rider');
   const [carreras, setCarreras] = useState<CarreraRider[]>([]);
-  const [historialHoy, setHistorialHoy] = useState<CarreraRider[]>([]);
+  /** Últimos entregados desde Firestore (sin filtrar por fecha; el filtro es en cliente). */
+  const [historialEntregadosRaw, setHistorialEntregadosRaw] = useState<CarreraRider[]>([]);
   const [tab, setTab] = useState<'activas' | 'historial'>('activas');
   const [filtroHistorial, setFiltroHistorial] = useState<'hoy' | 'semana' | 'mes'>('hoy');
   const [carreraActiva, setCarreraActiva] = useState<CarreraRider | null>(null);
@@ -161,6 +162,17 @@ export default function PanelRiderPage() {
     (list: CarreraRider[]) => list.filter((c) => !c.clienteId || c.clienteId !== user?.uid),
     [user?.uid]
   );
+
+  const historialHoy = useMemo(() => {
+    const now = Date.now();
+    const hoyInicio = new Date();
+    hoyInicio.setHours(0, 0, 0, 0);
+    const hoyTs = hoyInicio.getTime();
+    const semanaAtras = now - 7 * 24 * 60 * 60 * 1000;
+    const mesAtras = now - 30 * 24 * 60 * 60 * 1000;
+    const desde = filtroHistorial === 'mes' ? mesAtras : filtroHistorial === 'semana' ? semanaAtras : hoyTs;
+    return historialEntregadosRaw.filter((c) => (c.timestamp ?? 0) >= desde);
+  }, [historialEntregadosRaw, filtroHistorial]);
 
   /* Sincronizar miEstado con user.estadoRider y con carreras activas (ocupado) */
   useEffect(() => {
@@ -265,14 +277,7 @@ export default function PanelRiderPage() {
       const list = filtrarPedidosPropios(
         snap.docs.map((d) => docToCarrera({ id: d.id, data: () => d.data() }))
       );
-      const now = Date.now();
-      const hoyInicio = new Date();
-      hoyInicio.setHours(0, 0, 0, 0);
-      const hoyTs = hoyInicio.getTime();
-      const semanaAtras = now - 7 * 24 * 60 * 60 * 1000;
-      const mesAtras = now - 30 * 24 * 60 * 60 * 1000;
-      const desde = filtroHistorial === 'mes' ? mesAtras : filtroHistorial === 'semana' ? semanaAtras : hoyTs;
-      setHistorialHoy(list.filter((c) => (c.timestamp ?? 0) >= desde));
+      setHistorialEntregadosRaw(list);
     }, () => {
       showGlobalToast({ type: 'error', message: 'Error al cargar historial. Recarga la página.' });
     });
@@ -282,8 +287,7 @@ export default function PanelRiderPage() {
       unsubActivas();
       unsubHistorial();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, user?.rol, filtroHistorial, filtrarPedidosPropios]);
+  }, [user?.uid, user?.rol, filtrarPedidosPropios, showGlobalToast]);
 
   /* Carga inicial desde API (solo una vez al montar o al detectar sesión inválida).
      El estado en tiempo real lo mantiene onSnapshot; este fetch es solo el seed inicial. */
@@ -303,8 +307,8 @@ export default function PanelRiderPage() {
       const carrerasFiltradas = filtrarPedidosPropios(Array.isArray(data.carreras) ? data.carreras : []);
       const historialFiltrado = filtrarPedidosPropios(Array.isArray(data.historial) ? data.historial : []);
       // Solo poblar si onSnapshot todavía no llegó datos (evitar sobreescritura con data más vieja)
-      setCarreras((prev) => prev.length === 0 ? carrerasFiltradas : prev);
-      setHistorialHoy((prev) => prev.length === 0 ? historialFiltrado : prev);
+      setCarreras((prev) => (prev.length === 0 ? carrerasFiltradas : prev));
+      setHistorialEntregadosRaw((prev) => (prev.length === 0 ? historialFiltrado : prev));
     } catch {
       // silencioso
     }

@@ -16,7 +16,7 @@ export interface CartState {
       note?: string;
       variationName?: string;
       variationPrice?: number;
-      complementSelections?: Record<string, string>;
+      complementSelections?: Record<string, string | string[]>;
     }>;
   }>;
 }

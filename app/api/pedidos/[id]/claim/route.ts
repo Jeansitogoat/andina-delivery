@@ -3,7 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import { isRateLimited } from '@/lib/rateLimit';
-import { getRiderDisplayNameForPedido } from '@/lib/rider-profile-admin';
+import { getRiderProfileForPedidoAssignment } from '@/lib/rider-profile-admin';
 
 /** POST /api/pedidos/[id]/claim → rider reclama un pedido nocturno si no tiene riderId asignado. */
 export async function POST(
@@ -29,7 +29,8 @@ export async function POST(
     const { id } = await params;
     const db = getAdminFirestore();
     const ref = db.collection('pedidos').doc(id);
-    const riderNombre = await getRiderDisplayNameForPedido(db, auth.uid);
+    const riderProf = await getRiderProfileForPedidoAssignment(db, auth.uid);
+    const riderNombre = riderProf.displayName;
 
     const result = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -49,6 +50,8 @@ export async function POST(
         riderId: auth.uid,
         estado: 'asignado',
         riderNombre,
+        riderRatingSnapshot: riderProf.riderRatingSnapshot,
+        riderPhotoURLSnapshot: riderProf.riderPhotoURLSnapshot,
         updatedAt: FieldValue.serverTimestamp(),
       });
       return { status: 200 as const, body: { ok: true } };

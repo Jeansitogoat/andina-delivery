@@ -32,7 +32,7 @@ function estadoLabel(e: EstadoMandado): { title: string; sub: string; step: numb
     case 'pendiente':
       return { title: 'Buscando socio', sub: 'Central asignará un motorizado a tu mandado.', step: 1 };
     case 'asignado':
-      return { title: 'Socio asignado', sub: 'Tu mandado tiene rider. En breve va en camino.', step: 2 };
+      return { title: 'Asignado', sub: 'Tu mandado tiene rider. En breve va en camino.', step: 2 };
     case 'en_camino':
       return { title: 'En camino', sub: 'El motorizado está realizando tu mandado.', step: 3 };
     case 'completado':
@@ -156,6 +156,20 @@ export default function MandadoSeguimientoPage({
             <h2 className="text-center font-black text-xl text-gray-900 mb-1">{cfg.title}</h2>
             <p className="text-center text-sm text-gray-600 mb-6">{cfg.sub}</p>
 
+            {mandado.estado === 'cancelado' ? (
+              <div
+                className="rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 mb-6 shadow-sm"
+                role="status"
+              >
+                <p className="font-medium leading-snug">
+                  Orden cancelada:{' '}
+                  {mandado.motivoCancelacion?.trim()
+                    ? mandado.motivoCancelacion.trim()
+                    : 'Contacta a soporte para más información.'}
+                </p>
+              </div>
+            ) : null}
+
             {mandado.estado !== 'cancelado' ? (
               <div className="mb-8">
                 <SeguimientoStepper
@@ -217,7 +231,7 @@ export default function MandadoSeguimientoPage({
                   <Truck className="w-5 h-5 text-rojo-andino" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-gray-900">Cía. Virgen de la Merced</p>
+                  <p className="text-sm font-bold text-gray-900">Repartidor</p>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {mandado.riderNombre} ·{' '}
                     {mandado.estado === 'en_camino' ? 'En camino' : 'Asignado'}

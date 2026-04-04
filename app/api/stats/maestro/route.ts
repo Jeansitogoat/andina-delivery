@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { requireAuth } from '@/lib/api-auth';
-import { getLocalesFromFirestore } from '@/lib/locales-firestore';
+import { getLocalesFromFirestoreCached } from '@/lib/locales-firestore';
 
 interface ComisionDoc {
   id: string;
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
   try {
     const db = getAdminFirestore();
-    const snap = await db.collection('comisiones').orderBy('fecha', 'desc').limit(500).get();
+    const snap = await db.collection('comisiones').orderBy('fecha', 'desc').limit(300).get();
 
     const comisiones: ComisionDoc[] = snap.docs.map((d) => {
       const data = d.data();
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
       v.total = Math.round(v.total * 100) / 100;
     }
 
-    const fromFirestore = await getLocalesFromFirestore();
+    const fromFirestore = await getLocalesFromFirestoreCached();
     const localesMap: Record<string, string> = {};
     fromFirestore.locales.forEach((loc) => {
       localesMap[loc.id] = loc.name;

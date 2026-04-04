@@ -1,7 +1,11 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { getFirestoreDb } from '@/lib/firebase/client';
+import { useAuth } from '@/lib/useAuth';
+import { getOrderMoney } from '@/lib/order-money';
 import {
   CheckCircle2,
   Clock,
@@ -39,6 +43,7 @@ import {
   pasoStepper4ComidaDelivery,
   pasoStepper4ComidaPickup,
 } from '@/lib/seguimiento-mapa';
+import { formatEcuador } from '@/lib/dateEcuador';
 
 /* ─────────────── tipos ─────────────── */
 interface EstadoPedido {
@@ -107,6 +112,14 @@ const ESTADOS: EstadoPedido[] = [
     color: 'text-red-600',
     bgColor: 'bg-red-500',
   },
+  {
+    id: 'cancelado_central',
+    label: 'Pedido cancelado',
+    sublabel: 'La operación canceló este pedido',
+    icono: <XCircle className="w-5 h-5" />,
+    color: 'text-red-600',
+    bgColor: 'bg-red-500',
+  },
 ];
 
 const ESTADOS_PICKUP: EstadoPedido[] = [
@@ -116,6 +129,7 @@ const ESTADOS_PICKUP: EstadoPedido[] = [
   { id: 'entregado', label: 'Retirado', sublabel: 'Que lo disfrutes.', icono: <CheckCircle2 className="w-5 h-5" />, color: 'text-purple-600', bgColor: 'bg-purple-500' },
   { id: 'cancelado_local', label: 'Pedido cancelado', sublabel: 'El negocio canceló este pedido.', icono: <XCircle className="w-5 h-5" />, color: 'text-red-600', bgColor: 'bg-red-500' },
   { id: 'cancelado_cliente', label: 'Cancelado por ti', sublabel: 'Cancelaste este pedido.', icono: <XCircle className="w-5 h-5" />, color: 'text-red-600', bgColor: 'bg-red-500' },
+  { id: 'cancelado_central', label: 'Pedido cancelado', sublabel: 'La operación canceló este pedido.', icono: <XCircle className="w-5 h-5" />, color: 'text-red-600', bgColor: 'bg-red-500' },
 ];
 
 const INDICE_ESTADO: Record<string, number> = {
@@ -126,6 +140,7 @@ const INDICE_ESTADO: Record<string, number> = {
   entregado: 4,
   cancelado_local: 5,
   cancelado_cliente: 6,
+  cancelado_central: 7,
 };
 
 const INDICE_ESTADO_PICKUP: Record<string, number> = {
@@ -135,6 +150,7 @@ const INDICE_ESTADO_PICKUP: Record<string, number> = {
   entregado: 3,
   cancelado_local: 4,
   cancelado_cliente: 5,
+  cancelado_central: 6,
 };
 
 export default function SeguimientoPedidoPage({
@@ -144,6 +160,7 @@ export default function SeguimientoPedidoPage({
 }) {
   const router = useRouter();
   const { id } = use(params);
+  const { user, loading: authLoading } = useAuth();
   const { permission, requestPermission, loading: notifLoading, isSupported } = useNotifications('user');
 
   /* ── estado desde API (tiempo real) ── */
@@ -163,6 +180,7 @@ export default function SeguimientoPedidoPage({
   const [riderRating, setRiderRating] = useState<number | null>(null);
 
   function mapApiEstadoToUI(estado: string, isPickup: boolean): string {
+    if (estado === 'cancelado_central') return 'cancelado_central';
     if (estado === 'cancelado_cliente') return 'cancelado_cliente';
     if (estado === 'cancelado_local') return 'cancelado_local';
     if (estado === 'entregado') return 'entregado';
@@ -192,6 +210,7 @@ export default function SeguimientoPedidoPage({
   const [pedidoTotalRef, setPedidoTotalRef] = useState(0);
   const [telefonoLocalRef, setTelefonoLocalRef] = useState<string | null>(null);
   const [motivoCancelacionApi, setMotivoCancelacionApi] = useState<string | null>(null);
+  const [pedidoTimestampMs, setPedidoTimestampMs] = useState<number | null>(null);
   const [transporteCoordinaCentral, setTransporteCoordinaCentral] = useState(false);
   /** Desglose para mostrar total a pagar (productos, IVA, envío, costo servicio, propina). */
   const [pagoDetalle, setPagoDetalle] = useState<{
@@ -208,108 +227,48 @@ export default function SeguimientoPedidoPage({
   const { showToast } = useToast();
 
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const prevUiEstadoRef = useRef<string>('');
 
-  /* Polling: estado del pedido desde API cada 6 s (incluye codigo, paymentMethod, paymentConfirmed). Requiere auth; 401/403 → redirigir a Home. */
-  const fetchEstado = useCallback(async (isFirstLoad: boolean) => {
-    if (isFirstLoad) {
-      setLoading(true);
-      setFetchError(null);
-    }
-    try {
-      const token = await getIdToken();
-      const headers: HeadersInit = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(`/api/pedidos/${id}`, { headers });
-      if (res.status === 401 || res.status === 403) {
-        router.replace('/?modo=cliente');
-        return;
-      }
-      if (res.status === 404) {
-        setLoading(false);
-        setFetchError('No encontramos este pedido. Revisa el número e intenta de nuevo.');
-        return;
-      }
-      if (!res.ok) {
-        setLoading(false);
-        setFetchError('No pudimos cargar el pedido. Revisa tu conexión e intenta de nuevo.');
-        return;
-      }
-      const data = await res.json() as {
-        estado?: string;
-        transporte?: 'pendiente' | 'buscando_rider';
-        riderNombre?: string;
-        riderRating?: number;
-        codigoVerificacion?: string;
-        paymentMethod?: 'efectivo' | 'transferencia';
-        paymentConfirmed?: boolean;
-        deliveryType?: 'delivery' | 'pickup';
-        restaurante?: string;
-        restauranteDireccion?: string;
-        total?: number;
-        totalCliente?: number;
-        subtotalBase?: number;
-        subtotalConIva?: number;
-        ivaAmount?: number;
-        ivaEnabled?: boolean;
-        costoEnvio?: number;
-        serviceCost?: number;
-        serviceFee?: number;
-        propina?: number;
-        telefonoLocal?: string | null;
-        motivoCancelacion?: string | null;
-      };
+  useEffect(() => {
+    prevUiEstadoRef.current = '';
+  }, [id]);
+
+  /** Actualiza UI desde el documento Firestore `pedidos/{id}` (misma forma que la API). */
+  const applyPedidoFromFirestore = useCallback(
+    (data: Record<string, unknown>, options?: { showRatingToast?: boolean }) => {
+      const money = getOrderMoney(data);
+      const rawEstado = (data.estado as string) || 'confirmado';
       const isPickup = data.deliveryType === 'pickup';
-      const rawEstado = data.estado || 'confirmado';
       const uiEstado = mapApiEstadoToUI(rawEstado, isPickup);
-      setLoading(false);
-      setFetchError(null);
+      const transporte = data.transporte === 'buscando_rider' ? 'buscando_rider' : 'pendiente';
+
       setEstadoActual(uiEstado);
       setTransporteCoordinaCentral(
-        !isPickup &&
-          data.transporte === 'buscando_rider' &&
-          (rawEstado === 'preparando' || rawEstado === 'listo')
+        !isPickup && transporte === 'buscando_rider' && (rawEstado === 'preparando' || rawEstado === 'listo')
       );
-      if (data.deliveryType) setDeliveryType(data.deliveryType);
-      if (data.restaurante) setRestauranteNombre(data.restaurante);
-      if (data.restauranteDireccion) setRestauranteDireccion(data.restauranteDireccion);
-      if (data.riderNombre) setRiderNombre(data.riderNombre);
-      if (data.riderRating != null) setRiderRating(data.riderRating);
-      if (data.codigoVerificacion) setCodigoVerificacion(data.codigoVerificacion);
-      if (data.paymentMethod) setPaymentMethod(data.paymentMethod);
-      if (data.paymentConfirmed !== undefined) setPaymentConfirmed(data.paymentConfirmed);
-      const t =
-        typeof data.totalCliente === 'number' && !Number.isNaN(data.totalCliente)
-          ? data.totalCliente
-          : typeof data.total === 'number' && !Number.isNaN(data.total)
-            ? data.total
-            : 0;
-      setPedidoTotalRef(t);
-      const subB =
-        typeof data.subtotalBase === 'number' && !Number.isNaN(data.subtotalBase) ? data.subtotalBase : 0;
-      const subIva =
-        typeof data.subtotalConIva === 'number' && !Number.isNaN(data.subtotalConIva)
-          ? data.subtotalConIva
-          : subB;
-      const ivaAmt =
-        typeof data.ivaAmount === 'number' && !Number.isNaN(data.ivaAmount) ? data.ivaAmount : 0;
-      const envio =
-        typeof data.costoEnvio === 'number' && !Number.isNaN(data.costoEnvio)
-          ? data.costoEnvio
-          : typeof data.serviceCost === 'number' && !Number.isNaN(data.serviceCost)
-            ? data.serviceCost
-            : 0;
-      const fee =
-        typeof data.serviceFee === 'number' && !Number.isNaN(data.serviceFee) ? data.serviceFee : 0;
-      const tip = typeof data.propina === 'number' && !Number.isNaN(data.propina) ? data.propina : 0;
+      setDeliveryType(isPickup ? 'pickup' : 'delivery');
+      if (typeof data.restaurante === 'string') setRestauranteNombre(data.restaurante);
+      if (typeof data.restauranteDireccion === 'string') setRestauranteDireccion(data.restauranteDireccion);
+      if (typeof data.riderNombre === 'string') setRiderNombre(data.riderNombre);
+      if (Object.prototype.hasOwnProperty.call(data, 'riderRatingSnapshot')) {
+        const rs = data.riderRatingSnapshot;
+        setRiderRating(rs == null || rs === '' ? null : Number(rs));
+      }
+      if (typeof data.codigoVerificacion === 'string') setCodigoVerificacion(data.codigoVerificacion);
+      if (data.paymentMethod === 'transferencia' || data.paymentMethod === 'efectivo') {
+        setPaymentMethod(data.paymentMethod);
+      }
+      setPaymentConfirmed(data.paymentConfirmed !== false);
+      setPedidoTotalRef(money.totalCliente);
       setPagoDetalle({
-        subtotalBase: subB,
-        ivaAmount: ivaAmt,
-        ivaEnabled: Boolean(data.ivaEnabled),
-        subtotalConIva: subIva,
-        costoEnvio: envio,
-        serviceFee: fee,
-        propina: tip,
-        totalCliente: t,
+        subtotalBase: money.subtotalBase,
+        ivaAmount: money.ivaAmount,
+        ivaEnabled: money.ivaEnabled,
+        subtotalConIva: money.subtotalConIva,
+        costoEnvio: money.costoEnvio,
+        serviceFee: money.serviceFee,
+        propina: money.propina,
+        totalCliente: money.totalCliente,
       });
       setTelefonoLocalRef(
         typeof data.telefonoLocal === 'string' && data.telefonoLocal.trim()
@@ -321,23 +280,74 @@ export default function SeguimientoPedidoPage({
           ? data.motivoCancelacion.trim()
           : null
       );
+      let tsMs: number | null = null;
+      const rawTs = data.timestamp;
+      if (typeof rawTs === 'number' && !Number.isNaN(rawTs)) {
+        tsMs = rawTs;
+      } else if (
+        rawTs &&
+        typeof rawTs === 'object' &&
+        'toMillis' in rawTs &&
+        typeof (rawTs as { toMillis: () => number }).toMillis === 'function'
+      ) {
+        tsMs = (rawTs as { toMillis: () => number }).toMillis();
+      }
+      if (tsMs != null) setPedidoTimestampMs(tsMs);
+
       if (uiEstado === 'en_camino') setTiempoRestante((t) => Math.max(0, t > 15 ? 15 : t));
+      const showRating =
+        options?.showRatingToast ??
+        (uiEstado === 'entregado' && prevUiEstadoRef.current !== 'entregado');
       if (uiEstado === 'entregado') {
         setTiempoRestante(0);
-        setTimeout(() => setMostrarRating(true), 1200);
+        if (showRating) {
+          setTimeout(() => setMostrarRating(true), 1200);
+        }
       }
-    } catch {
-      setLoading(false);
-      setFetchError('No pudimos cargar el pedido. Revisa tu conexión e intenta de nuevo.');
-    }
-  }, [id, router]);
+      prevUiEstadoRef.current = uiEstado;
+    },
+    []
+  );
 
   useEffect(() => {
-    fetchEstado(true);
-    const interval = paymentMethod === 'transferencia' && !paymentConfirmed ? 3000 : 8000;
-    const t = setInterval(() => fetchEstado(false), interval);
-    return () => clearInterval(t);
-  }, [fetchEstado, paymentMethod, paymentConfirmed, retryTrigger]);
+    if (authLoading) return;
+    if (!user) {
+      router.replace(`/auth?redirect=/pedido/${encodeURIComponent(id)}`);
+      return;
+    }
+
+    setLoading(true);
+    setFetchError(null);
+    const db = getFirestoreDb();
+    const ref = doc(db, 'pedidos', id);
+
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) {
+          setLoading(false);
+          setFetchError('No encontramos este pedido. Revisa el número e intenta de nuevo.');
+          return;
+        }
+        const data = snap.data() as Record<string, unknown>;
+        if (user.rol === 'cliente' && data.clienteId !== user.uid) {
+          setLoading(false);
+          setFetchError('No tienes acceso a este pedido.');
+          return;
+        }
+        applyPedidoFromFirestore(data);
+        setLoading(false);
+        setFetchError(null);
+      },
+      (err) => {
+        console.error('[pedido] onSnapshot', err);
+        setLoading(false);
+        setFetchError('No pudimos cargar el pedido. Revisa tu conexión e intenta de nuevo.');
+      }
+    );
+
+    return () => unsub();
+  }, [authLoading, user, id, router, retryTrigger, applyPedidoFromFirestore]);
 
   /* cuenta regresiva cuando está en camino */
   useEffect(() => {
@@ -350,7 +360,12 @@ export default function SeguimientoPedidoPage({
   const estadosParaMostrar = isPickup ? ESTADOS_PICKUP : ESTADOS;
   const indiceParaMostrar = isPickup ? INDICE_ESTADO_PICKUP : INDICE_ESTADO;
   const idxActual = indiceParaMostrar[estadoActual] ?? 0;
-  const estadoCancelado = estadoActual === 'cancelado_local' || estadoActual === 'cancelado_cliente';
+  const estadoCancelado =
+    estadoActual === 'cancelado_local' ||
+    estadoActual === 'cancelado_cliente' ||
+    estadoActual === 'cancelado_central';
+  const mostrarAlertaMotivoOperacion =
+    estadoActual === 'cancelado_local' || estadoActual === 'cancelado_central';
 
   /* copiar código */
   function copiarCodigo() {
@@ -446,11 +461,13 @@ export default function SeguimientoPedidoPage({
               <Receipt className="w-5 h-5 text-rojo-andino flex-shrink-0" />
               <h3 className="font-bold text-gray-900 text-sm">Total a pagar</h3>
             </div>
-            <p className="text-xs text-gray-500 mb-3 leading-snug">
-              {deliveryType === 'pickup'
-                ? ''
-                : ''}
-            </p>
+            {pedidoTimestampMs != null ? (
+              <p className="text-xs text-gray-500 mb-3 leading-snug">
+                Pedido realizado:{' '}
+                <span className="font-medium text-gray-700">{formatEcuador(pedidoTimestampMs)}</span>
+                <span className="text-gray-400"> · Hora Ecuador (Piñas)</span>
+              </p>
+            ) : null}
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
                 <dt className="text-gray-600">Productos (menú)</dt>
@@ -541,11 +558,6 @@ export default function SeguimientoPedidoPage({
           </div>
           <h2 className="font-black text-xl mb-1">{estadosParaMostrar[idxActual]?.label ?? '—'}</h2>
           <p className="text-white/80 text-sm">{estadosParaMostrar[idxActual]?.sublabel ?? ''}</p>
-          {estadoCancelado && motivoCancelacionApi && (
-            <p className="text-white/95 text-sm mt-3 font-medium text-left max-w-sm mx-auto leading-snug">
-              Motivo: {motivoCancelacionApi}
-            </p>
-          )}
 
           {tiempoRestanteMostrar > 0 && estadoActual !== 'entregado' && !estadoCancelado && (
             <div className="mt-4 bg-white/20 rounded-2xl px-5 py-2.5 inline-flex items-center gap-2">
@@ -568,6 +580,20 @@ export default function SeguimientoPedidoPage({
             </button>
           )}
         </div>
+
+        {mostrarAlertaMotivoOperacion ? (
+          <div
+            className="rounded-2xl border border-red-200/70 bg-red-50/90 px-4 py-3 text-sm text-red-950 shadow-sm"
+            role="status"
+          >
+            <p className="font-medium leading-snug">
+              Orden cancelada:{' '}
+              {motivoCancelacionApi?.trim()
+                ? motivoCancelacionApi.trim()
+                : 'Contacta a soporte para más información.'}
+            </p>
+          </div>
+        ) : null}
 
         {transporteCoordinaCentral && !estadoCancelado && (
           <div className="rounded-2xl border border-blue-100 bg-blue-50/90 px-4 py-3 text-left">
@@ -933,7 +959,6 @@ export default function SeguimientoPedidoPage({
                     if (res.ok) {
                       setShowCancelModal(false);
                       setCancelMotivoCliente('');
-                      await fetchEstado(false);
                       showToast({ type: 'success', message: 'Pedido cancelado' });
                     } else {
                       const d = await res.json().catch(() => ({}));

@@ -6,7 +6,9 @@ export const itemsCartItemSchema = z.object({
   note: z.string().optional(),
   variationName: z.string().optional(),
   variationPrice: z.number().optional(),
-  complementSelections: z.record(z.string(), z.string()).optional(),
+  complementSelections: z
+    .record(z.string(), z.union([z.string(), z.array(z.string())]))
+    .optional(),
   displayLabel: z.string().optional(),
 });
 

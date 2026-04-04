@@ -206,6 +206,14 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   /** true solo cuando la API confirmó hasCurrentToken para el token de este dispositivo. */
   const serverTokenRegisteredRef = useRef(false);
   const refreshStatusInFlightRef = useRef(false);
+  /** Si cambia el rol FCM efectivo (p. ej. rider pending→approved: user→rider), hay que volver a POST /register. */
+  const prevFcmRoleRef = useRef<NotificationRole | null>(null);
+  useEffect(() => {
+    if (prevFcmRoleRef.current !== null && prevFcmRoleRef.current !== fcmRole) {
+      lastRegisteredTokenRef.current = null;
+    }
+    prevFcmRoleRef.current = fcmRole;
+  }, [fcmRole]);
 
   const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${fcmRole}` : TOKEN_KEY_PREFIX;
   const pendingKey = typeof window !== 'undefined' ? `${PENDING_REGISTER_KEY}${fcmRole}` : PENDING_REGISTER_KEY;

@@ -47,5 +47,8 @@ export function docToPedidoCentral(id: string, data: Record<string, unknown>): P
     serviceCost: typeof data.serviceCost === 'number' ? data.serviceCost : undefined,
     costoEnvio: typeof data.costoEnvio === 'number' ? data.costoEnvio : undefined,
     serviceFee: typeof data.serviceFee === 'number' ? data.serviceFee : undefined,
+    motivoCancelacion:
+      typeof data.motivoCancelacion === 'string' ? data.motivoCancelacion : undefined,
+    ocultoCentral: data.ocultoCentral === true,
   };
 }

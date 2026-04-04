@@ -16,6 +16,7 @@ import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm } from '@/lib/geo';
 import { getIdToken } from '@/lib/authToken';
 import { resolveIvaConfig } from '@/lib/order-money';
+import { complementSelectionsDisplay } from '@/lib/complementSelections';
 
 type EnrichedCartItem = {
   id: string;
@@ -26,7 +27,7 @@ type EnrichedCartItem = {
   note?: string;
   variationName?: string;
   variationPrice?: number;
-  complementSelections?: Record<string, string>;
+  complementSelections?: Record<string, string | string[]>;
 };
 
 type StopData = {
@@ -305,9 +306,7 @@ export default function CarritoPage() {
             <div className="card-elevated overflow-hidden shadow-softlg">
               <div className="divide-y divide-gray-50">
                 {stop.enrichedItems.map((item) => {
-                  const compText = item.complementSelections && Object.keys(item.complementSelections).length > 0
-                    ? Object.values(item.complementSelections).join(', ')
-                    : '';
+                  const compText = complementSelectionsDisplay(item.complementSelections);
                   const displayLabel = [item.name, item.variationName ? `(${item.variationName})` : '', compText ? ` · ${compText}` : ''].filter(Boolean).join(' ');
                   const options = (item.variationName || item.complementSelections) ? {
                     variationName: item.variationName,

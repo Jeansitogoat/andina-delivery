@@ -43,6 +43,7 @@ import { useAuth } from '@/lib/useAuth';
 import { getIdToken } from '@/lib/authToken';
 import type { Local } from '@/lib/data';
 import type { EstadoPedido, EstadoTransportePedido } from '@/lib/types';
+import { formatTimeEcuador } from '@/lib/dateEcuador';
 import ModalCerrarSesion from '@/components/panel/ModalCerrarSesion';
 import SkeletonListaPedidos from '@/components/SkeletonListaPedidos';
 import { isNightMode } from '@/lib/time';
@@ -753,7 +754,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
             {local.cerradoHasta && new Date(local.cerradoHasta).getTime() > Date.now() ? (
               <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
                 <span className="text-sm font-semibold text-amber-900">
-                  Ocupado hasta {new Date(local.cerradoHasta).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}
+                  Ocupado hasta {formatTimeEcuador(new Date(local.cerradoHasta))}
                 </span>
                 <LoadingButton
                   type="button"

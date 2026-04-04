@@ -5,12 +5,13 @@ import { getDoc, doc } from 'firebase/firestore';
 import { getFirestoreDb } from '@/lib/firebase/client';
 import { useAuth } from '@/lib/useAuth';
 import { saveCart, type CartState } from '@/lib/cartFirestore';
+import { complementSelectionsKey, normalizeComplementSelections } from '@/lib/complementSelections';
 
 /** Opciones al agregar un producto con variaciones/complementos */
 export interface AddItemOptions {
   variationName?: string;
   variationPrice?: number;
-  complementSelections?: Record<string, string>;
+  complementSelections?: Record<string, string | string[]>;
 }
 
 export interface CartItem {
@@ -19,7 +20,7 @@ export interface CartItem {
   note?: string;
   variationName?: string;
   variationPrice?: number;
-  complementSelections?: Record<string, string>;
+  complementSelections?: Record<string, string | string[]>;
 }
 
 export interface CartStop {
@@ -31,21 +32,27 @@ export type { CartState };
 
 const STORAGE_KEY = 'andina_cart';
 
-/** Compara complementSelections de forma estable (claves ordenadas) */
-function complementSelectionsKey(sel?: Record<string, string>): string {
-  if (!sel || Object.keys(sel).length === 0) return '';
-  return JSON.stringify(
-    Object.keys(sel)
-      .sort()
-      .reduce((acc, k) => ({ ...acc, [k]: sel[k] }), {} as Record<string, string>)
-  );
-}
-
 /** Dos ítems son la misma línea si coinciden id, variationName y complementSelections */
 function sameCartLine(a: CartItem, b: CartItem): boolean {
   if (a.id !== b.id) return false;
   if ((a.variationName ?? '') !== (b.variationName ?? '')) return false;
   return complementSelectionsKey(a.complementSelections) === complementSelectionsKey(b.complementSelections);
+}
+
+function migrateCartItem(item: CartItem): CartItem {
+  const cs = item.complementSelections;
+  if (!cs) return item;
+  const n = normalizeComplementSelections(cs);
+  return n ? { ...item, complementSelections: n as Record<string, string | string[]> } : { ...item, complementSelections: undefined };
+}
+
+function migrateCartState(state: CartState): CartState {
+  return {
+    stops: state.stops.map((s) => ({
+      ...s,
+      items: s.items.map(migrateCartItem),
+    })),
+  };
 }
 
 function loadCartFromStorage(): CartState {
@@ -54,7 +61,7 @@ function loadCartFromStorage(): CartState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { stops: [] };
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed.stops)) return parsed as CartState;
+    if (Array.isArray(parsed.stops)) return migrateCartState(parsed as CartState);
     if (parsed.localId && Array.isArray(parsed.items)) {
       return { stops: parsed.items.length > 0 ? [{ localId: parsed.localId, items: parsed.items }] : [] };
     }
@@ -109,7 +116,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const data = snap.data();
         const c = data?.cart;
         if (c && Array.isArray(c.stops)) {
-          setCart(c as CartState);
+          setCart(migrateCartState(c as CartState));
         } else {
           setCart({ stops: [] });
         }
@@ -128,7 +135,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const data = snap.data();
         const c = data?.cart;
         if (c && Array.isArray(c.stops)) {
-          setCart(c as CartState);
+          setCart(migrateCartState(c as CartState));
         } else {
           setCart({ stops: [] });
         }
@@ -229,7 +236,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           note,
           variationName: options?.variationName,
           variationPrice: options?.variationPrice,
-          complementSelections: options?.complementSelections,
+          complementSelections: normalizeComplementSelections(options?.complementSelections),
         };
         const existing = baseStop.items.find((i) => sameCartLine(i, candidate));
         const newItems = existing
@@ -261,7 +268,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                     id: itemId,
                     qty: 0,
                     variationName: options?.variationName,
-                    complementSelections: options?.complementSelections,
+                    complementSelections: normalizeComplementSelections(options?.complementSelections),
                   })
                 )
               );
@@ -271,7 +278,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           id: itemId,
           qty: 0,
           variationName: options?.variationName,
-          complementSelections: options?.complementSelections,
+          complementSelections: normalizeComplementSelections(options?.complementSelections),
         };
         const existing = stop.items.find((i) => sameCartLine(i, target));
         if (!existing) return prev;
@@ -344,7 +351,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         id: itemId,
         qty: 0,
         variationName: options?.variationName,
-        complementSelections: options?.complementSelections,
+        complementSelections: normalizeComplementSelections(options?.complementSelections),
       };
       updateCart((prev) => ({
         stops: prev.stops.map((s) => {

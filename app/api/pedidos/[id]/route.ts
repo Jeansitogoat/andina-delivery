@@ -3,17 +3,23 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireAuth } from '@/lib/api-auth';
 import type { PedidoCentral } from '@/lib/types';
-import { sendFCMToUser, sendFCMToRole } from '@/lib/fcm-send-server';
+import { sendFCMToUser, sendFCMToRole, sendFCMToRider } from '@/lib/fcm-send-server';
 import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { pedidoPatchSchema } from '@/lib/schemas/pedidoPatch';
 import { applyDeliveredOrderAggregates } from '@/lib/local-stats-aggregates';
 import { calcularComision, calcularNetoLocal } from '@/lib/commissions';
 import { getOrderMoney } from '@/lib/order-money';
-import { getRiderDisplayNameForPedido } from '@/lib/rider-profile-admin';
+import { getRiderProfileForPedidoAssignment } from '@/lib/rider-profile-admin';
 
 const RENOTIFY_COOLDOWN_MS = 3 * 60 * 1000;
 
-const PEDIDO_TERMINAL_SIN_ASIGNAR: string[] = ['entregado', 'cancelado_local', 'cancelado_cliente'];
+const PEDIDO_TERMINAL_SIN_ASIGNAR: string[] = [
+  'entregado',
+  'cancelado_local',
+  'cancelado_cliente',
+  'cancelado_central',
+  'cancelado_rider',
+];
 
 type PedidoConRider = PedidoCentral & { riderRating?: number | null };
 
@@ -122,18 +128,28 @@ export async function GET(
     };
     let pedido: PedidoConRider & PedidoPublico = pedidoBase;
     if (data.riderId) {
-      const riderSnap = await db.collection('users').doc(data.riderId as string).get();
-      if (riderSnap.exists) {
-        const riderData = riderSnap.data()!;
-        const denorm =
-          typeof pedidoBase.riderNombre === 'string' && pedidoBase.riderNombre.trim()
-            ? pedidoBase.riderNombre.trim()
-            : '';
+      const denorm =
+        typeof pedidoBase.riderNombre === 'string' && pedidoBase.riderNombre.trim()
+          ? pedidoBase.riderNombre.trim()
+          : '';
+      const hasRatingSnapshot = Object.prototype.hasOwnProperty.call(data, 'riderRatingSnapshot');
+      if (hasRatingSnapshot) {
+        const snapVal = data.riderRatingSnapshot;
         pedido = {
           ...pedidoBase,
-          riderNombre: denorm || riderData.displayName || riderData.email || 'Rider',
-          riderRating: riderData.ratingPromedio != null ? Number(riderData.ratingPromedio) : null,
+          riderNombre: denorm || 'Rider',
+          riderRating: snapVal == null || snapVal === '' ? null : Number(snapVal),
         };
+      } else {
+        const riderSnap = await db.collection('users').doc(data.riderId as string).get();
+        if (riderSnap.exists) {
+          const riderData = riderSnap.data()!;
+          pedido = {
+            ...pedidoBase,
+            riderNombre: denorm || riderData.displayName || riderData.email || 'Rider',
+            riderRating: riderData.ratingPromedio != null ? Number(riderData.ratingPromedio) : null,
+          };
+        }
       }
     }
     return NextResponse.json(pedido);
@@ -176,6 +192,75 @@ export async function PATCH(
 
     const data = snap.data()!;
     const pedidoLocalId = data.localId ?? null;
+
+    const isCentralOrMaestroPatch = auth.rol === 'central' || auth.rol === 'maestro';
+
+    if (isCentralOrMaestroPatch && body.ocultoCentral !== undefined) {
+      await ref.update(
+        sanitizeForFirestore({
+          ocultoCentral: body.ocultoCentral,
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (isCentralOrMaestroPatch && body.accion === 'rechazar_central') {
+      const estadoActual = (data.estado as string) || 'confirmado';
+      const terminales = [
+        'entregado',
+        'cancelado_local',
+        'cancelado_cliente',
+        'cancelado_central',
+        'cancelado_rider',
+      ];
+      if (terminales.includes(estadoActual)) {
+        return NextResponse.json(
+          { error: 'No se puede rechazar este pedido en su estado actual' },
+          { status: 400 }
+        );
+      }
+      const motivoTrim =
+        typeof body.motivo === 'string' ? body.motivo.trim().slice(0, 500) : '';
+      if (!motivoTrim) {
+        return NextResponse.json({ error: 'Debes indicar el motivo de rechazo' }, { status: 400 });
+      }
+      const riderIdPrev = (data.riderId as string) || null;
+      const updatesRechazo: Record<string, unknown> = {
+        estado: 'cancelado_central',
+        motivoCancelacion: motivoTrim,
+        canceladoPor: 'central',
+        canceladoPorUid: auth.uid,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (riderIdPrev) {
+        updatesRechazo.riderId = null;
+        updatesRechazo.riderNombre = null;
+      }
+      await ref.update(sanitizeForFirestore(updatesRechazo));
+      const clienteIdRechazo = data.clienteId ?? null;
+      const motivoCorto =
+        motivoTrim.length > 120 ? `${motivoTrim.slice(0, 117)}...` : motivoTrim;
+      if (clienteIdRechazo && typeof clienteIdRechazo === 'string') {
+        try {
+          await sendFCMToUser(clienteIdRechazo, 'Pedido rechazado', `Motivo: ${motivoCorto}`, {
+            pedidoId: id,
+          });
+        } catch {
+          // ignorar
+        }
+      }
+      if (riderIdPrev) {
+        try {
+          await sendFCMToRider(riderIdPrev, 'Carrera cancelada por Central', motivoCorto, {
+            pedidoId: id,
+          });
+        } catch {
+          // ignorar
+        }
+      }
+      return NextResponse.json({ ok: true, cancelado: true });
+    }
 
     if (auth.rol === 'cliente') {
       const accion = typeof body.accion === 'string' ? body.accion.trim() : '';
@@ -440,8 +525,10 @@ export async function PATCH(
         return NextResponse.json({ ok: true, alreadyAssigned: true });
       }
 
-      const riderNombre = await getRiderDisplayNameForPedido(db, riderIdInBody);
       const estadoAsignacion = body.estado ?? 'asignado';
+      const riderProfile = await getRiderProfileForPedidoAssignment(db, riderIdInBody);
+      const riderNombre = riderProfile.displayName;
+      const { riderRatingSnapshot, riderPhotoURLSnapshot } = riderProfile;
 
       try {
         await db.runTransaction(async (tx) => {
@@ -466,6 +553,8 @@ export async function PATCH(
             riderNombre,
             estado: estadoAsignacion,
             updatedAt: FieldValue.serverTimestamp(),
+            riderRatingSnapshot,
+            riderPhotoURLSnapshot,
           };
           if (body.propina !== undefined) patch.propina = body.propina;
           tx.update(ref, sanitizeForFirestore(patch));
@@ -503,6 +592,21 @@ export async function PATCH(
           // ignorar
         }
       }
+      const nombreLocalRaw =
+        (typeof data.restaurante === 'string' && data.restaurante.trim()) ||
+        (typeof data.nombreLocal === 'string' && data.nombreLocal.trim()) ||
+        'el local';
+      const nombreLocalCorto = nombreLocalRaw.slice(0, 80);
+      try {
+        await sendFCMToRider(
+          riderIdInBody,
+          '¡Nueva carrera asignada!',
+          `Tienes un pedido de ${nombreLocalCorto}`,
+          { pedidoId: id, tipo: 'pedido' }
+        );
+      } catch {
+        // ignorar
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -511,9 +615,14 @@ export async function PATCH(
     if (body.riderId !== undefined) {
       updates.riderId = body.riderId;
       if (typeof body.riderId === 'string' && body.riderId.trim()) {
-        updates.riderNombre = await getRiderDisplayNameForPedido(db, body.riderId.trim());
+        const rp = await getRiderProfileForPedidoAssignment(db, body.riderId.trim());
+        updates.riderNombre = rp.displayName;
+        updates.riderRatingSnapshot = rp.riderRatingSnapshot;
+        updates.riderPhotoURLSnapshot = rp.riderPhotoURLSnapshot;
       } else {
         updates.riderNombre = null;
+        updates.riderRatingSnapshot = null;
+        updates.riderPhotoURLSnapshot = null;
       }
     }
     if (body.propina !== undefined) updates.propina = body.propina;

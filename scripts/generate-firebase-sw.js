@@ -116,9 +116,13 @@ function attachMessaging() {
 
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
-  var path = (event.notification.data && event.notification.data.pedidoId)
-    ? '/pedido/' + event.notification.data.pedidoId
-    : '/';
+  var d = (event.notification.data && event.notification.data) || {};
+  var path = '/';
+  if (d.mandadoId) {
+    path = '/mandado/' + d.mandadoId;
+  } else if (d.pedidoId) {
+    path = '/pedido/' + d.pedidoId;
+  }
   var fullUrl = new URL(path, self.registration.scope).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {

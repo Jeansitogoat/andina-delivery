@@ -1,8 +1,11 @@
 /**
- * Determina si un local está abierto ahora según horarios y cerradoHasta (ocupado).
- * Pensado para zona Ecuador (navegador en local).
+ * Determina si un local está abierto ahora según horarios (1–2 turnos/día) y cerradoHasta (ocupado).
+ * Usa la hora local del entorno (`Date` del navegador o servidor). Para mostrar horas al usuario,
+ * preferir `lib/dateEcuador` (America/Guayaquil). Si hace falta alinear cálculo y UI, derivar
+ * minutos del día en Ecuador con `Intl` y pasar un `Date` coherente aquí.
  */
 import type { Local, HorarioItem } from '@/lib/data';
+import { normalizeHorarioTurnos } from '@/lib/data';
 
 const DIA_NAMES: Record<number, string> = {
   0: 'Domingo',
@@ -32,6 +35,12 @@ function parseTimeHHMM(hhmm: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
+/** Primer horario de apertura del día (primer turno). */
+function primeraAperturaDia(entry: HorarioItem): string {
+  const turnos = normalizeHorarioTurnos(entry);
+  return turnos[0]?.desde ?? '09:00';
+}
+
 function getSiguienteDiaAbierto(
   horarios: HorarioItem[],
   fromDayIndex: number
@@ -43,7 +52,7 @@ function getSiguienteDiaAbierto(
     if (entry?.abierto) {
       return {
         dia: diaNombre,
-        desde: entry.desde,
+        desde: primeraAperturaDia(entry),
         esHoy: nextIndex === fromDayIndex,
       };
     }
@@ -112,41 +121,68 @@ export function getEstadoAbierto(local: LocalParaEstadoAbierto, now: Date = new 
     };
   }
 
-  const desde = parseTimeHHMM(hoy.desde);
-  const hasta = parseTimeHHMM(hoy.hasta);
+  const turnos = normalizeHorarioTurnos(hoy)
+    .map((t) => ({
+      desde: parseTimeHHMM(t.desde),
+      hasta: parseTimeHHMM(t.hasta),
+      desdeStr: t.desde,
+      hastaStr: t.hasta,
+    }))
+    .sort((a, b) => a.desde - b.desde);
 
-  if (minutosAhora < desde) {
+  if (turnos.length === 0) {
+    return { abierto: true, motivo: null, mensaje: 'Abierto', cierraA: undefined };
+  }
+
+  for (let i = 0; i < turnos.length; i++) {
+    const { desde, hasta, hastaStr } = turnos[i];
+    if (minutosAhora >= desde && minutosAhora < hasta) {
+      return {
+        abierto: true,
+        motivo: null,
+        mensaje: 'Abierto',
+        cierraA: `Cierra a las ${hastaStr}`,
+      };
+    }
+  }
+
+  if (minutosAhora < turnos[0].desde) {
     return {
       abierto: false,
       motivo: 'horario',
       mensaje: 'Cerrado ahora',
-      abreA: `Abre hoy a las ${hoy.desde}`,
+      abreA: `Abre hoy a las ${turnos[0].desdeStr}`,
     };
   }
-  if (minutosAhora >= hasta) {
-    const siguiente = getSiguienteDiaAbierto(horarios, dayIndex);
-    if (siguiente) {
+
+  for (let i = 0; i < turnos.length - 1; i++) {
+    const finActual = turnos[i].hasta;
+    const inicioSig = turnos[i + 1].desde;
+    if (minutosAhora >= finActual && minutosAhora < inicioSig) {
       return {
         abierto: false,
         motivo: 'horario',
-        mensaje: 'Cerrado por hoy',
-        abreA: siguiente.esHoy
-          ? `Abre mañana a las ${siguiente.desde}`
-          : `Abre el ${siguiente.dia} a las ${siguiente.desde}`,
+        mensaje: 'Cerrado ahora',
+        abreA: `Abre hoy a las ${turnos[i + 1].desdeStr}`,
       };
     }
+  }
+
+  const siguiente = getSiguienteDiaAbierto(horarios, dayIndex);
+  if (siguiente) {
     return {
       abierto: false,
       motivo: 'horario',
       mensaje: 'Cerrado por hoy',
+      abreA: siguiente.esHoy
+        ? `Abre mañana a las ${siguiente.desde}`
+        : `Abre el ${siguiente.dia} a las ${siguiente.desde}`,
     };
   }
-
   return {
-    abierto: true,
-    motivo: null,
-    mensaje: 'Abierto',
-    cierraA: `Cierra a las ${hoy.hasta}`,
+    abierto: false,
+    motivo: 'horario',
+    mensaje: 'Cerrado por hoy',
   };
 }
 

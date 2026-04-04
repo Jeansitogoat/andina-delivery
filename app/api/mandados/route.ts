@@ -7,6 +7,7 @@ import { sanitizeForFirestore } from '@/lib/firestoreUtils';
 import { haversineKm, getTarifaEnvioPorDistancia } from '@/lib/geo';
 import { getTarifasEnvioTiersAdmin } from '@/lib/tarifas-config-server';
 import { sendFCMToRole } from '@/lib/fcm-send-server';
+import { formatTimeEcuador } from '@/lib/dateEcuador';
 
 /** POST /api/mandados — crea mandado (solo cliente). Escritura vía Admin SDK. */
 export async function POST(request: Request) {
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   const retencionCentral = 0;
 
   const ref = db.collection('mandados').doc();
-  const hora = new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+  const hora = formatTimeEcuador(new Date());
 
   await ref.set(
     sanitizeForFirestore({

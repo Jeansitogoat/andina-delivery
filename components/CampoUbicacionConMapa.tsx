@@ -4,6 +4,14 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { MapPin, ExternalLink } from 'lucide-react';
 
+/** Nominatim: min lon, max lat, max lon, min lat — área Piñas / sur de El Oro. */
+const NOMINATIM_VIEWBOX_PINAS = '-79.78,-3.62,-79.58,-3.74';
+
+const NOMINATIM_HEADERS = {
+  'Accept-Language': 'es',
+  'User-Agent': 'AndinaDelivery/1.0 (contact: https://andina-delivery.web.app)',
+} as const;
+
 const MapPicker = dynamic(() => import('./usuario/MapPicker'), { ssr: false });
 
 type Props = {
@@ -36,6 +44,7 @@ export default function CampoUbicacionConMapa({
   const [lng, setLng] = useState<number | null>(initialLng ?? null);
   const [buscando, setBuscando] = useState(false);
   const [mostrarMapa, setMostrarMapa] = useState(initialLat == null && initialLng == null);
+  const [sugerencias, setSugerencias] = useState<Array<{ lat: number; lng: number; label: string }>>([]);
 
   useEffect(() => {
     if (initialLat != null && initialLng != null) {
@@ -50,24 +59,59 @@ export default function CampoUbicacionConMapa({
     window.open(`https://www.google.com/maps/search/?api=1&query=${q}`, '_blank');
   }
 
+  function aplicarResultado(latNum: number, lngNum: number, displayName?: string) {
+    setLat(latNum);
+    setLng(lngNum);
+    onCoordsChange?.(latNum, lngNum);
+    if (displayName) onChange(String(displayName).trim());
+    setMostrarMapa(true);
+    setSugerencias([]);
+  }
+
   async function buscarEnMapa() {
     const q = value.trim() || 'Piñas, El Oro, Ecuador';
     if (!q) return;
     setBuscando(true);
+    setSugerencias([]);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,
-        { headers: { 'Accept-Language': 'es' } }
-      );
-      const data = await res.json();
-      if (Array.isArray(data) && data[0]) {
-        const { lat: newLat, lon: newLon, display_name } = data[0];
-        const latNum = parseFloat(newLat);
-        const lngNum = parseFloat(newLon);
-        setLat(latNum);
-        setLng(lngNum);
-        onCoordsChange?.(latNum, lngNum);
-        if (display_name) onChange(String(display_name).trim());
+      const params = new URLSearchParams({
+        q,
+        format: 'json',
+        limit: '8',
+        countrycodes: 'ec',
+        addressdetails: '1',
+        viewbox: NOMINATIM_VIEWBOX_PINAS,
+        bounded: '1',
+      });
+      let res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        headers: NOMINATIM_HEADERS,
+      });
+      let data: Array<{ lat: string; lon: string; display_name?: string }> = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        const fallback = new URLSearchParams({
+          q,
+          format: 'json',
+          limit: '8',
+          countrycodes: 'ec',
+          addressdetails: '1',
+        });
+        res = await fetch(`https://nominatim.openstreetmap.org/search?${fallback.toString()}`, {
+          headers: NOMINATIM_HEADERS,
+        });
+        data = await res.json();
+      }
+      if (!Array.isArray(data) || data.length === 0) return;
+
+      const mapped = data.map((row) => ({
+        lat: parseFloat(row.lat),
+        lng: parseFloat(row.lon),
+        label: String(row.display_name ?? '').trim() || `${row.lat}, ${row.lon}`,
+      })).filter((r) => !Number.isNaN(r.lat) && !Number.isNaN(r.lng));
+
+      if (mapped.length === 1) {
+        aplicarResultado(mapped[0].lat, mapped[0].lng, mapped[0].label);
+      } else {
+        setSugerencias(mapped);
         setMostrarMapa(true);
       }
     } catch {
@@ -115,6 +159,21 @@ export default function CampoUbicacionConMapa({
       <p className="text-xs text-gray-400">
         Usa el ícono de ubicación para buscar y marcar en el mapa. El de enlace abre Google Maps.
       </p>
+      {sugerencias.length > 1 ? (
+        <ul className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 max-h-48 overflow-y-auto text-sm">
+          {sugerencias.map((s, i) => (
+            <li key={`${s.lat},${s.lng},${i}`}>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2.5 hover:bg-amber-50/80 text-gray-800"
+                onClick={() => aplicarResultado(s.lat, s.lng, s.label)}
+              >
+                {s.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {mostrarMapa && (
         <div className="pt-2">
           <MapPicker

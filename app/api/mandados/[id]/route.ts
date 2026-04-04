@@ -10,7 +10,9 @@ type PatchBody = {
   estado?: EstadoMandado;
   riderId?: string | null;
   riderNombre?: string | null;
-  accion?: 'cancelar_cliente';
+  accion?: 'cancelar_cliente' | 'rechazar_central';
+  motivo?: string;
+  ocultoCentral?: boolean;
 };
 
 const ACTIVOS: EstadoMandado[] = ['pendiente', 'asignado', 'en_camino'];
@@ -82,6 +84,61 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   if (isCentral(auth.rol)) {
+    if (body.ocultoCentral !== undefined) {
+      await ref.update(
+        sanitizeForFirestore({
+          ocultoCentral: body.ocultoCentral,
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.accion === 'rechazar_central') {
+      const motivoTrim =
+        typeof body.motivo === 'string' ? body.motivo.trim().slice(0, 500) : '';
+      if (!motivoTrim) {
+        return NextResponse.json({ error: 'Debes indicar el motivo de rechazo' }, { status: 400 });
+      }
+      if (estadoActual === 'completado' || estadoActual === 'cancelado') {
+        return NextResponse.json(
+          { error: 'No se puede rechazar este mandado en su estado actual' },
+          { status: 400 }
+        );
+      }
+      await ref.update(
+        sanitizeForFirestore({
+          estado: 'cancelado',
+          motivoCancelacion: motivoTrim,
+          canceladoPor: 'central',
+          canceladoPorUid: auth.uid,
+          riderId: null,
+          riderNombre: null,
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+      );
+      const motivoCorto =
+        motivoTrim.length > 120 ? `${motivoTrim.slice(0, 117)}...` : motivoTrim;
+      void sendFCMToUser(clienteId, 'Mandado rechazado', `Motivo: ${motivoCorto}`, {
+        tipo: 'mandado',
+        mandadoId: id,
+        estado: 'cancelado',
+      }).catch(() => {});
+      if (riderActual) {
+        void sendFCMToRider(riderActual, 'Mandado cancelado por Central', motivoCorto, {
+          tipo: 'mandado',
+          mandadoId: id,
+          estado: 'cancelado',
+        }).catch(() => {});
+      }
+      void sendFCMToRole('central', 'Mandado rechazado por Central', descripcion, {
+        tipo: 'mandado',
+        mandadoId: id,
+        estado: 'cancelado',
+      }).catch(() => {});
+      return NextResponse.json({ ok: true, cancelado: true });
+    }
+
     const riderId = typeof body.riderId === 'string' ? body.riderId.trim() : '';
     const riderNombre = typeof body.riderNombre === 'string' ? body.riderNombre.trim().slice(0, 120) : '';
     if (!riderId || !riderNombre) {
@@ -172,6 +229,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         mandadoId: id,
         estado: 'en_camino',
       }).catch(() => {});
+      const riderNombre =
+        typeof data.riderNombre === 'string' && data.riderNombre.trim()
+          ? data.riderNombre.trim().slice(0, 80)
+          : 'Rider';
+      void sendFCMToRole(
+        'central',
+        'Mandado en camino',
+        `Mandado #${id} ya está en camino con el Rider ${riderNombre}`,
+        {
+          tipo: 'mandado',
+          mandadoId: id,
+          estado: 'en_camino',
+        }
+      ).catch(() => {});
       return NextResponse.json({ ok: true });
     }
     if (next === 'completado' && (estadoActual === 'asignado' || estadoActual === 'en_camino')) {
