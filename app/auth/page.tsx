@@ -590,20 +590,6 @@ export default function AuthPage() {
           >
             Iniciar sesión
           </button>
-          <button
-            type="button"
-            onClick={() => redirigirPorRol('rider')}
-            className="w-full mt-3 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-semibold hover:bg-gray-50"
-          >
-            Ir al panel de riders
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/?modo=cliente')}
-            className="w-full mt-3 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-semibold hover:bg-gray-50"
-          >
-            Volver al inicio
-          </button>
         </div>
       </main>
     );

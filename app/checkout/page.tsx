@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
+import { usePendingRiderClientBlock } from '@/lib/usePendingRiderClientBlock';
 import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm, formatDistanceKm } from '@/lib/geo';
@@ -86,6 +87,7 @@ function ComprobantePreview({ file }: { file: File }) {
 }
 
 export default function CheckoutPage() {
+  usePendingRiderClientBlock();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { cart, hydrated, clearCart } = useCart();

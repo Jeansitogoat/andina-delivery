@@ -36,6 +36,7 @@ import SkeletonLocales from '@/components/SkeletonLocales';
 import LocalLogo from '@/components/LocalLogo';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
+import { usePendingRiderClientBlock } from '@/lib/usePendingRiderClientBlock';
 import { useAndinaConfig } from '@/lib/AndinaContext';
 import { useAddresses } from '@/lib/addressesContext';
 import { useFullScreenModal } from '@/lib/FullScreenModalContext';
@@ -97,6 +98,7 @@ function getDiscoveryKeysFromLocales(
 
 
 export default function Home() {
+  usePendingRiderClientBlock();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();

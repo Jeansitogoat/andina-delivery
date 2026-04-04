@@ -4,18 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { Bell, X, Download } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
+import { getIdToken } from '@/lib/authToken';
 import { useNotifications, isWebPushEnvironment } from '@/lib/useNotifications';
+import { effectiveNotificationRole } from '@/lib/fcmEffectiveRole';
+import { useGeolocationPermission } from '@/lib/useGeolocationPermission';
+import { isPostLoginWizardClearForBanners } from '@/lib/permWizardBanner';
 import { getFCMTokenWithRetry } from '@/lib/fcm-client';
 import type { NotificationRole } from '@/lib/useNotifications';
 import { useLaunchCount, isBackupLaunchEligible } from '@/lib/launchCount';
-
-const ROLE_MAP: Record<string, NotificationRole> = {
-  cliente: 'user',
-  central: 'central',
-  rider: 'rider',
-  local: 'local',
-  maestro: 'central',
-};
 
 const DISMISS_KEY = 'andina_notif_prompt_dismissed';
 const DISMISS_DAYS = 7;
@@ -53,14 +49,15 @@ export default function NotificationPromptBanner() {
   const launchCount = useLaunchCount();
   const backupOk = isBackupLaunchEligible(launchCount);
   const { user, loading: authLoading } = useAuth();
-  const role = user ? (ROLE_MAP[user.rol] ?? 'user') : 'user';
+  const role: NotificationRole = user ? effectiveNotificationRole(user) : 'user';
+  const geoState = useGeolocationPermission();
   const { permission, requestPermission, loading: notifLoading, isSupported, error: notifError, registerToken } =
     useNotifications(role);
   const [dismissed, setDismissed] = useState(false);
   const [ready, setReady] = useState(false);
   const [pwa, setPwa] = useState(false);
+  const [permWizardDone, setPermWizardDone] = useState(false);
   const lastRetryAt = useRef(0);
-  const autoRequestDone = useRef(false);
   const RETRY_THROTTLE_MS = 90_000;
 
   useEffect(() => {
@@ -78,17 +75,18 @@ export default function NotificationPromptBanner() {
     setReady(true);
   }, []);
 
-  /* Solicitud automática una vez tras login (cliente). */
   useEffect(() => {
-    if (!user || user.rol !== 'cliente') return;
-    if (!isSupported) return;
-    if (permission !== 'default') return;
-    if (autoRequestDone.current) return;
-    autoRequestDone.current = true;
-    void requestPermission();
-  }, [user, isSupported, permission, requestPermission]);
+    const sync = () => {
+      setPermWizardDone(
+        isPostLoginWizardClearForBanners(user?.uid ?? null, geoState, permission, user?.rol)
+      );
+    };
+    sync();
+    window.addEventListener('andina-perm-wizard-done', sync);
+    return () => window.removeEventListener('andina-perm-wizard-done', sync);
+  }, [user?.uid, user?.rol, geoState, permission]);
 
-  // Reintentar registro del token cuando ya hay permiso y usuario logueado (crítico para iOS).
+  // Si el dispositivo ya tiene permiso pero el token actual no está en el servidor, registrar (p. ej. iOS).
   useEffect(() => {
     if (!user || permission !== 'granted') return;
     const now = Date.now();
@@ -97,15 +95,24 @@ export default function NotificationPromptBanner() {
     let cancelled = false;
     (async () => {
       const token = await getFCMTokenWithRetry();
-      if (cancelled) return;
-      if (token) {
-        await registerToken(token);
-      }
+      if (cancelled || !token) return;
+      const idTok = await getIdToken();
+      if (!idTok || cancelled) return;
+      const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(role)}`, {
+        headers: {
+          Authorization: `Bearer ${idTok}`,
+          'x-fcm-token': token,
+        },
+      });
+      if (!res.ok || cancelled) return;
+      const data = (await res.json()) as { hasCurrentToken?: boolean | null };
+      if (data.hasCurrentToken === true) return;
+      await registerToken(token);
     })();
     return () => {
       cancelled = true;
     };
-  }, [user, permission, registerToken]);
+  }, [user, permission, registerToken, role]);
 
   const inPanel = pathname?.startsWith('/panel') ?? false;
   const show =
@@ -114,6 +121,7 @@ export default function NotificationPromptBanner() {
     !authLoading &&
     user &&
     user.rol === 'cliente' &&
+    permWizardDone &&
     !inPanel &&
     isSupported &&
     permission !== 'granted' &&

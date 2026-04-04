@@ -556,47 +556,59 @@ export default function PanelRiderPage() {
   if (user.rol === 'rider' && user.riderStatus !== 'approved') {
     const status = user.riderStatus ?? 'pending';
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center">
-          {status === 'pending' && (
-            <>
-              <Clock className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-              <h1 className="font-black text-xl text-gray-900 mb-2">Central todavía no valida tus credenciales</h1>
-              <p className="text-gray-600">
-                Tu cuenta está pendiente de aprobación por parte de <strong>{CENTRAL_NAME}</strong>.
-              </p>
-              <p className="text-sm text-gray-500 mt-4">
-                Cuando te aprueben podrás usar el panel de riders. Te notificaremos cuando esté listo.
-              </p>
-            </>
-          )}
-          {status === 'rejected' && (
-            <>
-              <X className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h1 className="font-black text-xl text-gray-900 mb-2">Solicitud rechazada</h1>
-              <p className="text-gray-600">
-                Tu solicitud para ser rider no fue aprobada. Contacta a <strong>{CENTRAL_NAME}</strong> si tienes dudas.
-              </p>
-            </>
-          )}
-          {status === 'suspended' && (
-            <>
-              <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-              <h1 className="font-black text-xl text-gray-900 mb-2">Cuenta suspendida</h1>
-              <p className="text-gray-600">
-                Tu cuenta de rider está suspendida. Contacta a <strong>{CENTRAL_NAME}</strong> para más información.
-              </p>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => router.push('/?modo=cliente')}
-            className="mt-8 w-full py-3 rounded-2xl bg-gray-900 text-white font-bold"
-          >
-            Volver al inicio
-          </button>
-        </div>
-      </main>
+      <>
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
+          <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center">
+            {status === 'pending' && (
+              <>
+                <Clock className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                <h1 className="font-black text-xl text-gray-900 mb-2">Central todavía no valida tus credenciales</h1>
+                <p className="text-gray-600">
+                  Tu cuenta está pendiente de aprobación por parte de <strong>{CENTRAL_NAME}</strong>.
+                </p>
+                <p className="text-sm text-gray-500 mt-4">
+                  Cuando te aprueben podrás usar el panel de riders. Te notificaremos cuando esté listo.
+                </p>
+              </>
+            )}
+            {status === 'rejected' && (
+              <>
+                <X className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                <h1 className="font-black text-xl text-gray-900 mb-2">Solicitud rechazada</h1>
+                <p className="text-gray-600">
+                  Tu solicitud para ser rider no fue aprobada. Contacta a <strong>{CENTRAL_NAME}</strong> si tienes dudas.
+                </p>
+              </>
+            )}
+            {status === 'suspended' && (
+              <>
+                <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                <h1 className="font-black text-xl text-gray-900 mb-2">Cuenta suspendida</h1>
+                <p className="text-gray-600">
+                  Tu cuenta de rider está suspendida. Contacta a <strong>{CENTRAL_NAME}</strong> para más información.
+                </p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowLogoutModal(true)}
+              className="mt-8 w-full py-3 rounded-2xl border-2 border-red-200 text-red-600 font-bold hover:bg-red-50 flex items-center justify-center gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Cerrar sesión
+            </button>
+          </div>
+        </main>
+        <ModalCerrarSesion
+          open={showLogoutModal}
+          onClose={() => setShowLogoutModal(false)}
+          onConfirm={() => {
+            setShowLogoutModal(false);
+            void logout().then(() => router.replace('/auth'));
+          }}
+          descripcion="Podrás volver a iniciar sesión cuando corresponda."
+        />
+      </>
     );
   }
 

@@ -511,7 +511,7 @@ export default function PerfilPage() {
               <div className="px-4 py-4 border-b border-gray-50">
                 <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                   <Bell className="w-4 h-4 text-gray-500" />
-                  Notificaciones
+                  Notificaciones de este dispositivo
                 </p>
                 {permission !== 'granted' && !optedOut && isSupported && !isWebPushEnvironment() && (
                   <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">

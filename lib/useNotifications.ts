@@ -8,7 +8,8 @@ import {
 } from '@/lib/fcm-client';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseAuth } from '@/lib/firebase/client';
-import { useAuth, type AndinaUser } from '@/lib/useAuth';
+import { useAuth } from '@/lib/useAuth';
+import { effectiveNotificationRole } from '@/lib/fcmEffectiveRole';
 
 /** PWA instalada (atajo desde pantalla de inicio). */
 export function isFCMPWA(): boolean {
@@ -152,13 +153,6 @@ function classifyRegisterError(status: number, errorMsg: string): RegisterErrorT
   return 'unknown';
 }
 
-function fcmRoleFromProfile(u: AndinaUser): NotificationRole {
-  if (u.rol === 'local') return 'local';
-  if (u.rol === 'rider') return 'rider';
-  if (u.rol === 'central' || u.rol === 'maestro') return 'central';
-  return 'user';
-}
-
 export function useNotifications(role: NotificationRole, options?: { localId?: string }) {
   const { user, loading: authLoading } = useAuth();
 
@@ -172,7 +166,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
     }
     if (user.rol === 'local') return 'local';
     if (routedAsLocal) return 'local';
-    return fcmRoleFromProfile(user);
+    return effectiveNotificationRole(user);
   }, [authLoading, user, role, options?.localId]);
 
   const effectiveLocalId = useMemo(() => {
@@ -201,7 +195,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   const pendingRegisterRef = useRef<boolean>(false);
   const [pendingRegister, setPendingRegisterUi] = useState(false);
   const [resyncing, setResyncing] = useState(false);
-  /** null = sin comprobar; true/false según /api/fcm/status (y coincidencia con token local si existe). */
+  /** null = sin comprobar o error de red; true solo si permiso granted y hasCurrentToken; false si este dispositivo no está en el servidor. */
   const [serverTokenRegistered, setServerTokenRegistered] = useState<boolean | null>(null);
   const registerInFlightRef = useRef(false);
   /** Tras POST /register OK, evita ráfagas automáticas mientras status/index convergen. */
@@ -209,8 +203,9 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   /** Evita varias carreras raceGetFCMToken en paralelo (visibility + efecto + online). */
   const syncTokenInFlightRef = useRef(false);
   const lastVisibilityFcmSyncRef = useRef(0);
-  /** Copia del último serverTokenRegistered para decisiones en callbacks async sin cerrar sobre estado viejo. */
+  /** true solo cuando la API confirmó hasCurrentToken para el token de este dispositivo. */
   const serverTokenRegisteredRef = useRef(false);
+  const refreshStatusInFlightRef = useRef(false);
 
   const storageKey = typeof window !== 'undefined' ? `${TOKEN_KEY_PREFIX}${fcmRole}` : TOKEN_KEY_PREFIX;
   const pendingKey = typeof window !== 'undefined' ? `${PENDING_REGISTER_KEY}${fcmRole}` : PENDING_REGISTER_KEY;
@@ -298,42 +293,35 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
       setServerTokenRegistered(null);
       return;
     }
-    const idToken = await getIdToken();
-    if (!idToken) {
-      setServerTokenRegistered(null);
-      return;
-    }
-    const stored = readStoredToken() ?? '';
-    const data =
-      stored.length > 0
-        ? await fetchFcmStatusProbe(fcmRole, idToken, stored)
-        : await (async () => {
-            const ctl = new AbortController();
-            const timer = setTimeout(() => ctl.abort(), FCM_STATUS_PROBE_MS);
-            try {
-              const res = await fetch(`/api/fcm/status?role=${encodeURIComponent(fcmRole)}`, {
-                headers: { Authorization: `Bearer ${idToken}` },
-                signal: ctl.signal,
-              });
-              if (!res.ok) return null;
-              return (await res.json().catch(() => ({}))) as {
-                hasToken?: boolean;
-                hasCurrentToken?: boolean | null;
-              };
-            } catch {
-              return null;
-            } finally {
-              clearTimeout(timer);
-            }
-          })();
-    if (!data) {
-      setServerTokenRegistered(null);
-      return;
-    }
-    if (stored && typeof data.hasCurrentToken === 'boolean') {
-      setServerTokenRegistered(data.hasCurrentToken);
-    } else {
-      setServerTokenRegistered(Boolean(data.hasToken));
+    if (refreshStatusInFlightRef.current) return;
+    refreshStatusInFlightRef.current = true;
+    try {
+      const idToken = await getIdToken();
+      if (!idToken) {
+        setServerTokenRegistered(null);
+        return;
+      }
+      let deviceToken = (readStoredToken() ?? '').trim();
+      if (!deviceToken) {
+        const r = await raceGetFCMToken(FCM_GET_TOKEN_BUDGET_MS);
+        deviceToken = (r.token ?? '').trim();
+      }
+      if (!deviceToken) {
+        setServerTokenRegistered(false);
+        return;
+      }
+      const data = await fetchFcmStatusProbe(fcmRole, idToken, deviceToken);
+      if (!data) {
+        setServerTokenRegistered(null);
+        return;
+      }
+      if (typeof data.hasCurrentToken === 'boolean') {
+        setServerTokenRegistered(data.hasCurrentToken);
+      } else {
+        setServerTokenRegistered(false);
+      }
+    } finally {
+      refreshStatusInFlightRef.current = false;
     }
   }, [permission, optedOut, fcmRole, readStoredToken, registrationAllowed]);
 
@@ -474,9 +462,16 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
   );
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    const sync = () => {
       setPermission((Notification.permission as NotificationPermission) ?? 'default');
-    }
+    };
+    sync();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
   useEffect(() => {
@@ -515,7 +510,7 @@ export function useNotifications(role: NotificationRole, options?: { localId?: s
             }
           } else if (serverTokenRegisteredRef.current) {
             console.warn(
-              '[FCM] Sync en segundo plano: no hubo token local a tiempo; el servidor puede tener un token viejo. Si no llegan notificaciones, en Perfil del local usen «Re-sincronizar dispositivo».'
+              '[FCM] Sync: getToken tardó y no hay caché local; este dispositivo ya constaba registrado. Si fallan los avisos, usen «Re-sincronizar dispositivo» en Perfil.'
             );
             return;
           } else {

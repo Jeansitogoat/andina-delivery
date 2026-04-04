@@ -10,6 +10,7 @@ import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl
 import { useCart } from '@/lib/useCart';
 import type { CartItem } from '@/lib/cartContext';
 import { useAuth } from '@/lib/useAuth';
+import { usePendingRiderClientBlock } from '@/lib/usePendingRiderClientBlock';
 import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { haversineKm } from '@/lib/geo';
@@ -37,6 +38,7 @@ type StopData = {
 };
 
 export default function CarritoPage() {
+  usePendingRiderClientBlock();
   const router = useRouter();
   const { user } = useAuth();
   const { cart, hydrated, addItem, removeItem, clearCart, saving } = useCart();

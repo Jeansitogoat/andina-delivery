@@ -17,6 +17,7 @@ import { PWAInstallPromptProvider } from '@/components/PWAInstallPromptProvider'
 import PWAInstallBanner from '@/components/PWAInstallBanner';
 import NotificationPromptBanner from '@/components/NotificationPromptBanner';
 import NotificationShield from '@/components/NotificationShield';
+import PostLoginPermissionsWizard from '@/components/PostLoginPermissionsWizard';
 import LocationBackupBanner from '@/components/LocationBackupBanner';
 
 export const metadata: Metadata = {
@@ -65,6 +66,7 @@ export default function RootLayout({
                     <PWAInstallBanner />
                     <NotificationPromptBanner />
                     <NotificationShield />
+                    <PostLoginPermissionsWizard />
                     <LocationBackupBanner />
                   </FullScreenModalProvider>
                 </CartProvider>

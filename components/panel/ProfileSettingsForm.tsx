@@ -7,7 +7,7 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth';
-import { Lock, Loader2, User as UserIcon, Phone } from 'lucide-react';
+import { Lock, Loader2, User as UserIcon, Phone, Bell } from 'lucide-react';
 import PasswordInput from '@/components/PasswordInput';
 import { getIdToken } from '@/lib/authToken';
 import { getFirebaseAuth } from '@/lib/firebase/client';
@@ -48,6 +48,7 @@ export default function ProfileSettingsForm({
     requestPermission,
     reintentarRegistro,
     resincronizarNotificaciones,
+    desactivar,
     loading: notifLoading,
     error: notifError,
     pendingRegister: notifPendingRegister,
@@ -55,6 +56,7 @@ export default function ProfileSettingsForm({
     serverTokenRegistered,
     refreshServerTokenStatus,
     isSupported,
+    optedOut,
   } = useNotifications(notificationRole);
   const [displayName, setDisplayName] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -239,8 +241,8 @@ export default function ProfileSettingsForm({
       {notificationRole !== 'user' && (
         <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 p-4 pb-2">
-            <Phone className="w-4 h-4 text-rojo-andino" />
-            <span className="font-semibold text-gray-900">Estado del dispositivo</span>
+            <Bell className="w-4 h-4 text-rojo-andino" />
+            <span className="font-semibold text-gray-900">Notificaciones de este dispositivo</span>
           </div>
           <div className="px-4 pb-4 space-y-3">
             <p className="text-sm text-gray-600">
@@ -267,19 +269,31 @@ export default function ProfileSettingsForm({
             {!isSupported && (
               <p className="text-sm text-amber-700">Este navegador no soporta notificaciones push.</p>
             )}
-            <button
-              type="button"
-              disabled={syncingDevice || notifLoading}
-              onClick={() => void syncCurrentDevice()}
-              className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-70"
-            >
-              {syncingDevice ? 'Sincronizando...' : 'Sincronizar dispositivo'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={syncingDevice || notifLoading}
+                onClick={() => void syncCurrentDevice()}
+                className="flex-1 min-w-[140px] py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-70"
+              >
+                {syncingDevice ? 'Sincronizando...' : 'Sincronizar ahora'}
+              </button>
+              {permission === 'granted' && !optedOut && (
+                <button
+                  type="button"
+                  disabled={notifLoading}
+                  onClick={() => void desactivar()}
+                  className="flex-1 min-w-[140px] py-2.5 rounded-xl border-2 border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-70"
+                >
+                  Desactivar en este dispositivo
+                </button>
+              )}
+            </div>
             {(notifError || notifPendingRegister) && isWebPushEnvironment() && (
               <button
                 type="button"
                 disabled={notifResyncing || notifLoading || syncingDevice}
-                onClick={() => void resincronizarNotificaciones()}
+                onClick={() => void resincronizarNotificaciones().then(() => refreshServerTokenStatus())}
                 className="w-full py-2.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 disabled:opacity-60 shadow-sm"
               >
                 {notifResyncing ? 'Re-sincronizando…' : 'Re-sincronizar notificaciones'}

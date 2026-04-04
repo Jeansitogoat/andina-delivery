@@ -21,6 +21,7 @@ import {
 import type { MenuItem } from '@/lib/data';
 import { useCart } from '@/lib/useCart';
 import { useAuth } from '@/lib/useAuth';
+import { usePendingRiderClientBlock } from '@/lib/usePendingRiderClientBlock';
 import { useLocal } from '@/lib/useLocal';
 import { useAddresses } from '@/lib/addressesContext';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
@@ -35,6 +36,7 @@ import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl
 import { resolveIvaConfig } from '@/lib/order-money';
 
 export default function RestaurantePage({ params }: { params: Promise<{ id: string }> }) {
+  usePendingRiderClientBlock();
   const { id } = use(params);
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();

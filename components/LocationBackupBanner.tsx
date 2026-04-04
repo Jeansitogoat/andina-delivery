@@ -1,47 +1,51 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { MapPin, X } from 'lucide-react';
 import { useLaunchCount, isBackupLaunchEligible } from '@/lib/launchCount';
+import { useAuth } from '@/lib/useAuth';
+import { useGeolocationPermission } from '@/lib/useGeolocationPermission';
+import { isPostLoginWizardClearForBanners } from '@/lib/permWizardBanner';
+import type { NotificationPermission } from '@/lib/useNotifications';
 
 /**
  * Plan de respaldo: sugerir ubicación a partir de la 2.ª apertura si el permiso no está concedido.
  */
 export default function LocationBackupBanner() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const launchCount = useLaunchCount();
-  const [geoPerm, setGeoPerm] = useState<'loading' | PermissionState | 'unsupported'>('loading');
+  const geoState = useGeolocationPermission();
   const [dismissed, setDismissed] = useState(false);
+  const [permWizardDone, setPermWizardDone] = useState(false);
+
+  const runBannerGate = useCallback(() => {
+    const np =
+      typeof window !== 'undefined' && 'Notification' in window
+        ? (Notification.permission as NotificationPermission)
+        : ('default' as NotificationPermission);
+    setPermWizardDone(isPostLoginWizardClearForBanners(user?.uid ?? null, geoState, np, user?.rol));
+  }, [user?.uid, user?.rol, geoState]);
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.permissions?.query) {
-      setGeoPerm('unsupported');
-      return;
-    }
-    let cancelled = false;
-    navigator.permissions
-      .query({ name: 'geolocation' as PermissionName })
-      .then((r) => {
-        if (cancelled) return;
-        setGeoPerm(r.state);
-        r.addEventListener('change', () => {
-          if (!cancelled) setGeoPerm(r.state);
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setGeoPerm('unsupported');
-      });
+    runBannerGate();
+    window.addEventListener('andina-perm-wizard-done', runBannerGate);
+    const onVis = () => runBannerGate();
+    document.addEventListener('visibilitychange', onVis);
     return () => {
-      cancelled = true;
+      window.removeEventListener('andina-perm-wizard-done', runBannerGate);
+      document.removeEventListener('visibilitychange', onVis);
     };
-  }, []);
+  }, [runBannerGate]);
 
   if (pathname?.startsWith('/auth')) return null;
+  if (!permWizardDone) return null;
   if (!isBackupLaunchEligible(launchCount)) return null;
   if (dismissed) return null;
-  if (geoPerm === 'loading') return null;
-  if (geoPerm === 'granted') return null;
+  if (geoState === 'loading') return null;
+  if (geoState === 'unsupported') return null;
+  if (geoState === 'granted') return null;
 
   return (
     <div className="fixed bottom-20 left-4 right-4 z-40 max-w-md mx-auto animate-fade-in">
@@ -52,7 +56,7 @@ export default function LocationBackupBanner() {
         <div className="flex-1 min-w-0">
           <p className="font-bold text-gray-900 text-sm">Ubicación para distancias</p>
           <p className="text-xs text-gray-500">
-            {geoPerm === 'denied'
+            {geoState === 'denied'
               ? 'Activa la ubicación en Ajustes del navegador para ver tiempos y distancias más precisos.'
               : 'Permite el acceso a tu ubicación cuando el navegador lo solicite.'}
           </p>

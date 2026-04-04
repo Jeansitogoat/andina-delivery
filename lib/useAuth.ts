@@ -18,6 +18,9 @@ import {
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirestoreDb } from './firebase/client';
 import { getIdToken } from './authToken';
+import { clearAllFcmLocalStorageKeys, resolveFCMTokenForUnregister } from './fcmLogout';
+import { clearAllPermWizardLocalStorageKeys } from './permWizardStorage';
+import { effectiveNotificationRole } from './fcmEffectiveRole';
 
 export type UserRole = 'cliente' | 'central' | 'rider' | 'local' | 'maestro';
 
@@ -243,30 +246,20 @@ export function useAuth() {
     lastEnsureUidRef.current = null;
     lastAndinaUserRef.current = null;
     if (user) {
-      const fcmRole =
-        user.rol === 'cliente'
-          ? 'user'
-          : user.rol === 'maestro'
-            ? 'central'
-          : user.rol === 'local'
-            ? 'local'
-            : user.rol === 'central' || user.rol === 'rider'
-              ? user.rol
-              : null;
+      const fcmRole = effectiveNotificationRole(user);
       try {
         const idToken = await getIdToken();
-        if (idToken && fcmRole) {
+        if (idToken && fcmRole && typeof window !== 'undefined') {
           const storageKey = `andina_fcm_token_${fcmRole}`;
-          const currentToken =
-            typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
-          if (currentToken) {
+          const currentToken = await resolveFCMTokenForUnregister(storageKey);
+          if (currentToken?.trim()) {
             await fetch('/api/fcm/unregister', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${idToken}`,
               },
-              body: JSON.stringify({ role: fcmRole, token: currentToken }),
+              body: JSON.stringify({ role: fcmRole, token: currentToken.trim() }),
             }).catch(() => {});
           }
         }
@@ -280,16 +273,8 @@ export function useAuth() {
       try {
         localStorage.removeItem('andina_visitado');
         localStorage.removeItem('andina_usuario_nombre');
-        if (user) {
-          const roleToClean =
-            user.rol === 'cliente'
-              ? 'user'
-              : user.rol === 'maestro'
-                ? 'central'
-                : user.rol;
-          localStorage.removeItem(`andina_fcm_token_${roleToClean}`);
-          localStorage.removeItem(`andina_fcm_pending_${roleToClean}`);
-        }
+        clearAllFcmLocalStorageKeys();
+        clearAllPermWizardLocalStorageKeys();
       } catch {
         /* Silencioso en mÃ³vil (modo privado, WebView, etc.) */
       }
