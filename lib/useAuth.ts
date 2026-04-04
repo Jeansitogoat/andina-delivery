@@ -165,8 +165,12 @@ export function useAuth() {
       localId?: string;
     }): Promise<AndinaUser> => {
       const rol: UserRole = params.rol ?? 'cliente';
-      if (rol === 'rider' && !params.telefono?.trim()) {
-        throw new Error('El celular es obligatorio para registrarte como rider.');
+      if (!params.telefono?.trim()) {
+        throw new Error(
+          rol === 'rider'
+            ? 'El celular es obligatorio para registrarte como rider.'
+            : 'El celular es obligatorio para registrarte.'
+        );
       }
 
       // 1. Crear usuario en Auth

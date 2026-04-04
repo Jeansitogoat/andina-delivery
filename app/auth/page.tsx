@@ -4,21 +4,48 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getPanelPathForRole, isSafeInternalRedirectPath } from '@/lib/auth-routing';
-import { signInWithPopup, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  signInWithPopup,
+  getRedirectResult,
+  GoogleAuthProvider,
+  signOut,
+  updateProfile,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, Loader2, CheckCircle2, UserCircle, Bike, User, Mail, Lock, Phone } from 'lucide-react';
 import PasswordInput from '@/components/PasswordInput';
-import { useAuth } from '@/lib/useAuth';
+import { useAuth, type AndinaUser } from '@/lib/useAuth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { getFirestoreDb } from '@/lib/firebase/client';
 
-type Paso = 'login' | 'registro' | 'registro-rider' | 'registro-exitoso' | 'registro-exitoso-rider';
+type Paso =
+  | 'inicio'
+  | 'login'
+  | 'registro-menu'
+  | 'registro'
+  | 'registro-rider'
+  | 'completar-google'
+  | 'registro-exitoso'
+  | 'registro-exitoso-rider';
+
+const STORAGE_GOOGLE_INTENT = 'andina_google_intent';
+
+function profileNeedsCompletion(u: AndinaUser): boolean {
+  if (!u.telefono?.trim()) return true;
+  if (u.rol === 'rider' && !u.displayName?.trim()) return true;
+  return false;
+}
 
 export default function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading: authLoading, loginWithEmail, registerWithEmail, logout } = useAuth();
-  const [paso, setPaso] = useState<Paso>('login');
+  const { user, loading: authLoading, loginWithEmail, registerWithEmail, logout, refreshUser } = useAuth();
+  const [paso, setPaso] = useState<Paso>('inicio');
+  const [completarModo, setCompletarModo] = useState<'cliente' | 'rider'>('cliente');
+  const [completarCelular, setCompletarCelular] = useState('');
+  const [completarNombreUnidad, setCompletarNombreUnidad] = useState('');
+  const [completarEnviando, setCompletarEnviando] = useState(false);
   const [registro, setRegistro] = useState({
     nombres: '',
     correo: '',
@@ -37,9 +64,16 @@ export default function AuthPage() {
     registro.contraseña !== registro.confirmarContraseña && registro.confirmarContraseña.length > 0;
   const errorConfirmar = errorForm || (contraseñasNoCoinciden ? 'Las contraseñas no coinciden' : '');
 
-  // Si ya está logueado: ?redirect= tiene prioridad; si no, panel por rol (así Atrás no muestra login)
+  // Si ya está logueado: perfil incompleto → completar; si no, ?redirect= o panel por rol
   useEffect(() => {
     if (typeof window === 'undefined' || authLoading || !user) return;
+    if (profileNeedsCompletion(user)) {
+      setCompletarModo(user.rol === 'rider' ? 'rider' : 'cliente');
+      setCompletarCelular(user.telefono?.trim() ?? '');
+      setCompletarNombreUnidad('');
+      setPaso('completar-google');
+      return;
+    }
     const raw = searchParams.get('redirect');
     if (raw && isSafeInternalRedirectPath(raw)) {
       router.replace(raw);
@@ -55,28 +89,7 @@ export default function AuthPage() {
     getRedirectResult(auth)
       .then(async (result) => {
         if (cancelled || !result?.user) return;
-        const firebaseUser = result.user;
-        const db = getFirestoreDb();
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        let snap = await getDoc(userRef);
-        if (cancelled) return;
-        if (!snap.exists()) {
-          await setDoc(userRef, {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email ?? null,
-            displayName: firebaseUser.displayName ?? null,
-            photoURL: firebaseUser.photoURL ?? null,
-            rol: 'cliente',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          snap = await getDoc(userRef);
-        }
-        if (cancelled) return;
-        const data = snap.exists() ? snap.data() : null;
-        const rol = (data?.rol ?? 'cliente') as import('@/lib/useAuth').UserRole;
-        const localId = data?.localId;
-        redirigirPorRol(rol, localId);
+        await finalizeGoogleSignIn(result.user);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -84,7 +97,9 @@ export default function AuthPage() {
         if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') return;
         setErrorForm('Error al iniciar con Google. Intenta de nuevo.');
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -97,17 +112,29 @@ export default function AuthPage() {
     router.replace(getPanelPathForRole(rol, localId ?? undefined));
   }
 
-  async function handleGoogle() {
-    setErrorForm('');
-    setGoogleLoading(true);
-    try {
-      const auth = getFirebaseAuth();
-      const result = await signInWithPopup(auth, new GoogleAuthProvider());
-      const firebaseUser = result.user;
-      const db = getFirestoreDb();
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      let snap = await getDoc(userRef);
-      if (!snap.exists()) {
+  async function finalizeGoogleSignIn(firebaseUser: FirebaseUser) {
+    const intent =
+      (typeof window !== 'undefined' && sessionStorage.getItem(STORAGE_GOOGLE_INTENT)) || 'login';
+    if (typeof window !== 'undefined') sessionStorage.removeItem(STORAGE_GOOGLE_INTENT);
+
+    const auth = getFirebaseAuth();
+    const db = getFirestoreDb();
+    const userRef = doc(db, 'users', firebaseUser.uid);
+    let snap = await getDoc(userRef);
+
+    if (!snap.exists()) {
+      if (intent === 'registro-rider') {
+        await setDoc(userRef, {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email ?? null,
+          displayName: null,
+          photoURL: firebaseUser.photoURL ?? null,
+          rol: 'rider',
+          riderStatus: 'pending',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
         await setDoc(userRef, {
           uid: firebaseUser.uid,
           email: firebaseUser.email ?? null,
@@ -117,20 +144,125 @@ export default function AuthPage() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-        snap = await getDoc(userRef);
       }
-      const rol = (snap.exists() ? snap.data()?.rol : 'cliente') as import('@/lib/useAuth').UserRole;
-      const localId = snap.exists() ? snap.data()?.localId : undefined;
-      redirigirPorRol(rol, localId);
+      snap = await getDoc(userRef);
+    } else {
+      const prev = snap.data();
+      if (intent === 'registro-rider' && prev?.rol && prev.rol !== 'rider') {
+        await signOut(auth);
+        setErrorForm(
+          'Este correo ya tiene una cuenta. Inicia sesión o usa otro correo para registrarte como rider.'
+        );
+        return;
+      }
+    }
+
+    await refreshUser();
+
+    const data = snap.exists() ? snap.data() : null;
+    const rol = (data?.rol ?? 'cliente') as import('@/lib/useAuth').UserRole;
+    const localId = data?.localId;
+    const telefono = (data?.telefono as string | undefined) ?? '';
+    const nombreDoc = (data?.displayName as string | null | undefined) ?? '';
+
+    if (!telefono.trim() || (rol === 'rider' && !nombreDoc.trim())) {
+      setCompletarModo(rol === 'rider' ? 'rider' : 'cliente');
+      setCompletarCelular(telefono.trim());
+      setCompletarNombreUnidad('');
+      setPaso('completar-google');
+      return;
+    }
+
+    try {
+      const idToken = await firebaseUser.getIdToken();
+      await fetch('/api/users/sync-claims', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      await firebaseUser.getIdToken(true);
+    } catch {
+      /* claims opcional */
+    }
+
+    redirigirPorRol(rol, localId);
+  }
+
+  async function handleGoogle(intent: 'login' | 'registro-cliente' | 'registro-rider') {
+    setErrorForm('');
+    setGoogleLoading(true);
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(STORAGE_GOOGLE_INTENT, intent);
+      }
+      const auth = getFirebaseAuth();
+      const result = await signInWithPopup(auth, new GoogleAuthProvider());
+      await finalizeGoogleSignIn(result.user);
     } catch (err) {
+      if (typeof window !== 'undefined') sessionStorage.removeItem(STORAGE_GOOGLE_INTENT);
       const e = err as { code?: string; message?: string };
       if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') {
         setErrorForm('');
       } else {
-        setErrorForm(e?.message?.includes('email') ? 'Este correo ya está registrado con otro método. Inicia sesión con tu contraseña.' : 'Error al iniciar con Google. Intenta de nuevo.');
+        setErrorForm(
+          e?.message?.includes('email')
+            ? 'Este correo ya está registrado con otro método. Inicia sesión con tu contraseña.'
+            : 'Error al iniciar con Google. Intenta de nuevo.'
+        );
       }
     } finally {
       setGoogleLoading(false);
+    }
+  }
+
+  async function handleCompletarGoogle(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorForm('');
+    const tel = completarCelular.trim();
+    if (!tel) {
+      setErrorForm('El número de celular es obligatorio.');
+      return;
+    }
+    if (completarModo === 'rider') {
+      const label = completarNombreUnidad.trim();
+      if (!label) {
+        setErrorForm('Indica tu nombre y número de unidad (ej. Jean Pierre #01).');
+        return;
+      }
+    }
+    const auth = getFirebaseAuth();
+    const u = auth.currentUser;
+    if (!u) {
+      setErrorForm('Sesión no válida. Vuelve a iniciar sesión.');
+      return;
+    }
+    setCompletarEnviando(true);
+    try {
+      const db = getFirestoreDb();
+      const payload: Record<string, unknown> = {
+        telefono: tel,
+        updatedAt: serverTimestamp(),
+      };
+      if (completarModo === 'rider') {
+        const label = completarNombreUnidad.trim();
+        payload.displayName = label;
+        await updateProfile(u, { displayName: label });
+      }
+      await updateDoc(doc(db, 'users', u.uid), payload);
+      await refreshUser();
+      const idToken = await u.getIdToken();
+      await fetch('/api/users/sync-claims', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      await u.getIdToken(true);
+      const snap = await getDoc(doc(db, 'users', u.uid));
+      const d = snap.data();
+      const rol = (d?.rol ?? 'cliente') as import('@/lib/useAuth').UserRole;
+      redirigirPorRol(rol, d?.localId);
+    } catch {
+      setErrorForm('No se pudo guardar. Intenta de nuevo.');
+    } finally {
+      setCompletarEnviando(false);
     }
   }
 
@@ -142,6 +274,13 @@ export default function AuthPage() {
     loginWithEmail(login.correo.trim(), login.contraseña)
       .then((andinaUser) => {
         setLogueando(false);
+        if (profileNeedsCompletion(andinaUser)) {
+          setCompletarModo(andinaUser.rol === 'rider' ? 'rider' : 'cliente');
+          setCompletarCelular(andinaUser.telefono?.trim() ?? '');
+          setCompletarNombreUnidad('');
+          setPaso('completar-google');
+          return;
+        }
         redirigirPorRol(andinaUser.rol, andinaUser.localId ?? undefined);
       })
       .catch(() => {
@@ -286,18 +425,209 @@ export default function AuthPage() {
     setPaso('login');
   }
 
-  // Iniciar sesión: fondo dark premium (negros, amber-900, dorados oscuros)
-  if (paso === 'login') {
+  const bgGradient =
+    'linear-gradient(165deg, #0c0805 0%, #1a1008 20%, #2d1f0a 40%, #451a03 60%, #292019 80%, #0f0d0a 100%)';
+
+  // Entrada: dos caminos claros (después de instalar / primera visita)
+  if (paso === 'inicio') {
     return (
-      <main
-        className="min-h-screen flex flex-col"
-        style={{ background: 'linear-gradient(165deg, #0c0805 0%, #1a1008 20%, #2d1f0a 40%, #451a03 60%, #292019 80%, #0f0d0a 100%)' }}
-      >
+      <main className="min-h-screen flex flex-col" style={{ background: bgGradient }}>
         <div className="flex justify-end p-4">
           <button
             type="button"
             onClick={() => router.push('/?modo=cliente')}
             className="text-white/90 hover:text-white font-semibold text-sm py-2 px-4 rounded-xl hover:bg-white/10 transition-colors"
+          >
+            Omitir
+          </button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 pb-10">
+          <div className="w-28 h-28 relative mb-4">
+            <Image
+              src="/logo-andina.png"
+              alt="Andina"
+              fill
+              sizes="128px"
+              className="object-contain drop-shadow-lg"
+              priority
+            />
+          </div>
+          <h1 className="text-white font-black text-3xl text-center mb-1 tracking-tight">Andina</h1>
+          <p className="text-white/75 text-sm text-center mb-8">Delivery y mandados en Piñas</p>
+
+          <div className="w-full max-w-sm space-y-4">
+            <button
+              type="button"
+              onClick={() => {
+                setErrorForm('');
+                setPaso('login');
+              }}
+              className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold text-lg shadow-lg transition-colors touch-manipulation"
+            >
+              Iniciar sesión
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setErrorForm('');
+                setPaso('registro-menu');
+              }}
+              className="w-full py-4 rounded-2xl border-2 border-white/25 bg-white/10 backdrop-blur-sm text-white font-bold text-lg hover:bg-white/15 transition-colors touch-manipulation"
+            >
+              Registrarse
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Completar celular (y nombre/unidad rider) tras Google o si faltaba en la cuenta
+  if (paso === 'completar-google') {
+    return (
+      <main className="min-h-screen flex flex-col" style={{ background: bgGradient }}>
+        <header className="p-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              logout().then(() => {
+                setPaso('inicio');
+              });
+            }}
+            className="text-white/85 text-sm font-semibold hover:text-white py-2 px-3 rounded-xl hover:bg-white/10"
+          >
+            Cerrar sesión
+          </button>
+        </header>
+        <div className="flex-1 px-4 pb-8 max-w-md mx-auto w-full flex flex-col justify-center">
+          <div className="bg-white rounded-3xl shadow-2xl p-6">
+            <h1 className="text-xl font-black text-gray-900 mb-1">Completa tu perfil</h1>
+            <p className="text-gray-500 text-sm mb-5">
+              {completarModo === 'rider'
+                ? 'La Central validará tu cuenta de rider. El celular y cómo te identificas en ruta (nombre y unidad) son obligatorios.'
+                : 'Necesitamos tu número de celular para pedidos y avisos.'}
+            </p>
+            <form onSubmit={handleCompletarGoogle} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Celular <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <input
+                    type="tel"
+                    value={completarCelular}
+                    onChange={(e) => setCompletarCelular(e.target.value)}
+                    placeholder="09X XXX XXXX"
+                    className="w-full pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 text-base touch-manipulation"
+                    required
+                    autoComplete="tel"
+                  />
+                </div>
+              </div>
+              {completarModo === 'rider' ? (
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    Nombre y número de unidad <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={completarNombreUnidad}
+                    onChange={(e) => setCompletarNombreUnidad(e.target.value)}
+                    placeholder="Ej. Jean Pierre #01"
+                    className="w-full px-5 py-4 rounded-2xl border-2 border-gray-200 focus:outline-none focus:border-dorado-oro focus:ring-2 focus:ring-dorado-oro/20 text-base touch-manipulation"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Así te reconoce la Central y los locales. Sigue pendiente de aprobación hasta que validen tu
+                    registro.
+                  </p>
+                </div>
+              ) : null}
+              {errorForm ? <p className="text-xs text-red-500 font-medium">{errorForm}</p> : null}
+              <button
+                type="submit"
+                disabled={completarEnviando}
+                className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold disabled:opacity-70 flex items-center justify-center gap-2"
+              >
+                {completarEnviando ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                {completarEnviando ? 'Guardando...' : 'Continuar'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Elegir tipo de registro
+  if (paso === 'registro-menu') {
+    return (
+      <main className="min-h-screen flex flex-col" style={{ background: bgGradient }}>
+        <header className="p-4">
+          <button
+            type="button"
+            onClick={() => setPaso('inicio')}
+            className="flex items-center gap-2 text-white/90 hover:text-white font-semibold"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Volver
+          </button>
+        </header>
+        <div className="flex-1 flex flex-col items-center px-6 pb-10 pt-4">
+          <h1 className="text-white font-black text-2xl text-center mb-2">Crear cuenta</h1>
+          <p className="text-white/70 text-sm text-center mb-8 max-w-sm">
+            Elige cómo vas a usar Andina. Podrás iniciar sesión después con el mismo correo.
+          </p>
+          <div className="w-full max-w-sm space-y-4">
+            <button
+              type="button"
+              onClick={() => {
+                setErrorForm('');
+                setPaso('registro');
+              }}
+              className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl border-2 border-rojo-andino text-rojo-andino font-bold bg-white hover:bg-red-50 shadow-md transition-colors touch-manipulation"
+            >
+              <UserCircle className="w-6 h-6 flex-shrink-0" />
+              Registrarse como cliente
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setErrorForm('');
+                setPaso('registro-rider');
+              }}
+              className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl border-2 border-white/30 text-white font-bold bg-white/10 hover:bg-white/15 backdrop-blur-sm transition-colors touch-manipulation"
+            >
+              <Bike className="w-6 h-6 flex-shrink-0" />
+              Registrarse como motorizado
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Iniciar sesión: solo correo, contraseña, entrar y Google
+  if (paso === 'login') {
+    return (
+      <main className="min-h-screen flex flex-col" style={{ background: bgGradient }}>
+        <div className="flex justify-between items-center p-4 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setErrorForm('');
+              setPaso('inicio');
+            }}
+            className="flex items-center gap-2 text-white/90 hover:text-white font-semibold text-sm py-2 px-2 rounded-xl hover:bg-white/10 -ml-2"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Atrás
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/?modo=cliente')}
+            className="text-white/90 hover:text-white font-semibold text-sm py-2 px-4 rounded-xl hover:bg-white/10 transition-colors shrink-0"
           >
             Omitir
           </button>
@@ -319,7 +649,7 @@ export default function AuthPage() {
 
           <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6">
             <h2 className="text-lg font-black text-gray-900 mb-1">Iniciar sesión</h2>
-            <p className="text-gray-500 text-sm mb-5">Ingresa con tu correo y contraseña</p>
+            <p className="text-gray-500 text-sm mb-5">Correo, contraseña o Google</p>
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -350,14 +680,14 @@ export default function AuthPage() {
                 className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold disabled:opacity-70 flex items-center justify-center gap-2 transition-colors"
               >
                 {logueando ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                {logueando ? 'Iniciando sesión...' : 'Entrar'}
+                {logueando ? 'Iniciando sesión...' : 'Iniciar sesión'}
               </button>
             </form>
 
             <div className="mt-5 flex flex-col gap-3">
               <button
                 type="button"
-                onClick={() => handleGoogle()}
+                onClick={() => handleGoogle('login')}
                 disabled={googleLoading}
                 className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-white border-2 border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition-colors disabled:opacity-70 touch-manipulation"
               >
@@ -372,26 +702,6 @@ export default function AuthPage() {
                   </svg>
                 )}
                 {googleLoading ? 'Conectando...' : 'Continuar con Google'}
-              </button>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-3">
-              <p className="text-center text-gray-500 text-xs font-medium">¿No tienes cuenta?</p>
-              <button
-                type="button"
-                onClick={() => { setErrorForm(''); setPaso('registro'); }}
-                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-3xl border-2 border-rojo-andino text-rojo-andino font-bold bg-rojo-andino/5 hover:bg-rojo-andino/10 shadow-sm hover:shadow-md transition-colors transition-shadow touch-manipulation"
-              >
-                <UserCircle className="w-5 h-5 flex-shrink-0" />
-                Regístrate como cliente
-              </button>
-              <button
-                type="button"
-                onClick={() => { setErrorForm(''); setPaso('registro-rider'); }}
-                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-3xl border-2 border-gray-300 text-gray-600 font-semibold bg-gray-50 hover:bg-gray-100 shadow-sm hover:shadow-md transition-colors transition-shadow touch-manipulation"
-              >
-                <Bike className="w-5 h-5 flex-shrink-0" />
-                Soy motorizado / rider – crear cuenta
               </button>
             </div>
           </div>
@@ -410,7 +720,7 @@ export default function AuthPage() {
         <header className="p-4">
           <button
             type="button"
-            onClick={() => setPaso('login')}
+            onClick={() => setPaso('registro-menu')}
             className="flex items-center gap-2 text-white/90 hover:text-white font-semibold"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -521,8 +831,38 @@ export default function AuthPage() {
                 className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold disabled:opacity-70 flex items-center justify-center gap-2 transition-colors"
               >
                 {registrando ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                {registrando ? 'Creando cuenta...' : 'Crear cuenta de rider'}
+                {registrando ? 'Creando cuenta...' : 'Crear cuenta con correo'}
               </button>
+              <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="px-3 bg-white text-gray-400 font-medium">o</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleGoogle('registro-rider')}
+                disabled={googleLoading || registrando}
+                className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-white border-2 border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition-colors disabled:opacity-70 touch-manipulation"
+              >
+                {googleLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                )}
+                {googleLoading ? 'Conectando...' : 'Registrarse con Google'}
+              </button>
+              <p className="text-xs text-gray-500 text-center">
+                Con Google te pediremos el celular y tu nombre con número de unidad antes de continuar. La Central debe
+                aprobar tu cuenta de rider.
+              </p>
             </form>
           </div>
         </div>
@@ -605,7 +945,7 @@ export default function AuthPage() {
         <header className="p-4">
           <button
             type="button"
-            onClick={() => setPaso('login')}
+            onClick={() => setPaso('registro-menu')}
             className="flex items-center gap-2 text-white/90 hover:text-white font-semibold"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -713,8 +1053,37 @@ export default function AuthPage() {
               className="w-full py-4 rounded-2xl bg-rojo-andino hover:bg-rojo-andino/90 text-white font-bold disabled:opacity-70 flex items-center justify-center gap-2 transition-colors"
             >
               {registrando ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-              {registrando ? 'Creando cuenta...' : 'Registrarme'}
+              {registrando ? 'Creando cuenta...' : 'Registrarme con correo'}
             </button>
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="px-3 bg-white text-gray-400 font-medium">o</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleGoogle('registro-cliente')}
+              disabled={googleLoading || registrando}
+              className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-white border-2 border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition-colors disabled:opacity-70 touch-manipulation"
+            >
+              {googleLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+              )}
+              {googleLoading ? 'Conectando...' : 'Registrarse con Google'}
+            </button>
+            <p className="text-xs text-gray-500 text-center">
+              Con Google te pediremos tu número de celular antes de entrar (obligatorio para pedidos y avisos).
+            </p>
           </form>
           </div>
         </div>
