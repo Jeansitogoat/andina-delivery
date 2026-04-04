@@ -42,7 +42,7 @@ import { useAddresses } from '@/lib/addressesContext';
 import { useFullScreenModal } from '@/lib/FullScreenModalContext';
 import { getIdToken } from '@/lib/authToken';
 import { getEstadoAbierto } from '@/lib/abiertoAhora';
-import { haversineKm, formatDistanceKm } from '@/lib/geo';
+import { haversineKm } from '@/lib/geo';
 import { useTarifasEnvio } from '@/lib/useTarifasEnvio';
 import { usePublicConfig } from '@/lib/PublicConfigContext';
 import { getSafeImageSrc, shouldBypassImageOptimizer } from '@/lib/validImageUrl';
@@ -548,10 +548,6 @@ export default function Home() {
                 const estado = getEstadoAbierto(local);
                 const cerrado = !estado.abierto;
                 const badgeText = estado.motivo === 'ocupado' ? 'Ocupado' : 'Cerrado';
-                const distanceText =
-                  originLatLng && typeof local.lat === 'number' && typeof local.lng === 'number'
-                    ? formatDistanceKm(haversineKm(originLatLng.lat, originLatLng.lng, local.lat, local.lng))
-                    : '—';
                 const kmLocal = originLatLng && typeof local.lat === 'number' && typeof local.lng === 'number'
                   ? haversineKm(originLatLng.lat, originLatLng.lng, local.lat, local.lng)
                   : null;
@@ -610,12 +606,6 @@ export default function Home() {
                       <span className="font-semibold text-gray-700">{local.rating}</span>
                       <span>· {local.type.join(', ')}</span>
                     </p>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span className="inline-flex items-center gap-1 text-xs text-gray-500" title="Distancia">
-                        <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                        {originLatLng && typeof local.lat === 'number' && typeof local.lng === 'number' ? `A ${distanceText} de ti` : distanceText}
-                      </span>
-                    </div>
                     <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                       <span className="inline-flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" />

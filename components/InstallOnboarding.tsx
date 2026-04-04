@@ -139,6 +139,11 @@ export default function InstallOnboarding({ onDone }: { onDone: () => void }) {
             <strong className="text-white">Agregar a la pantalla de inicio</strong> o <strong className="text-white">Agregar al inicio</strong>.
           </p>
 
+          <p className="text-[12px] text-center text-white/90 mt-4 leading-relaxed px-1">
+            <strong className="text-white">3.</strong> Después de agregar el icono,{' '}
+            <strong className="text-white">cierra Safari por completo</strong> (desliza hacia arriba en el selector de apps y desliza Safari hacia arriba) y abre Andina desde el nuevo icono en tu pantalla de inicio. No sigas usando esta pestaña.
+          </p>
+
           <div className="flex items-center justify-center gap-2 sm:gap-4 mt-4 mb-1 flex-wrap">
             <div className="flex flex-col items-center gap-1 min-w-[4.5rem]">
               <div className="w-12 h-12 rounded-xl bg-white/12 flex items-center justify-center border border-white/18">

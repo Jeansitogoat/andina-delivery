@@ -24,7 +24,12 @@ type AddressesContextType = {
   /** Ubicación actual del dispositivo (si el usuario dio permiso). Fallback para distancia si no hay dirección con coords. */
   userLocationLatLng: { lat: number; lng: number } | null;
   /** Vuelve a solicitar GPS (p. ej. tras denegar permiso). maximumAge 0 para lectura fresca. */
-  requestUserLocation: (options?: { onSuccess?: () => void; onDenied?: () => void }) => void;
+  requestUserLocation: (options?: {
+    onSuccess?: (_pos: { lat: number; lng: number }) => void;
+    onDenied?: () => void;
+  }) => void;
+  /** Direcciones hidratadas desde Firestore o localStorage; evita UI (p. ej. onboarding) antes de tiempo. */
+  addressesReady: boolean;
   addDireccion: (_d: Omit<DireccionGuardada, 'id'>) => void;
   updateDirecciones: (_dirs: DireccionGuardada[]) => void;
   setPrincipal: (_id: string) => void;
@@ -167,27 +172,36 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     );
   }, [pathname]);
 
-  const requestUserLocation = useCallback((options?: { onSuccess?: () => void; onDenied?: () => void }) => {
-    if (typeof window === 'undefined' || !navigator?.geolocation) {
-      options?.onDenied?.();
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        if (typeof latitude === 'number' && typeof longitude === 'number' && !Number.isNaN(latitude) && !Number.isNaN(longitude)) {
-          setUserLocationLatLng({ lat: latitude, lng: longitude });
-          options?.onSuccess?.();
-        } else {
-          options?.onDenied?.();
-        }
-      },
-      () => {
+  const requestUserLocation = useCallback(
+    (options?: { onSuccess?: (_pos: { lat: number; lng: number }) => void; onDenied?: () => void }) => {
+      if (typeof window === 'undefined' || !navigator?.geolocation) {
         options?.onDenied?.();
-      },
-      { timeout: 20000, maximumAge: 0, enableHighAccuracy: true }
-    );
-  }, []);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          if (
+            typeof latitude === 'number' &&
+            typeof longitude === 'number' &&
+            !Number.isNaN(latitude) &&
+            !Number.isNaN(longitude)
+          ) {
+            const coords = { lat: latitude, lng: longitude };
+            setUserLocationLatLng(coords);
+            options?.onSuccess?.(coords);
+          } else {
+            options?.onDenied?.();
+          }
+        },
+        () => {
+          options?.onDenied?.();
+        },
+        { timeout: 20000, maximumAge: 0, enableHighAccuracy: true }
+      );
+    },
+    []
+  );
 
   const scheduleSaveAddresses = useCallback(
     (dirs: DireccionGuardada[]) => {
@@ -243,7 +257,8 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
       const id = `dir-${Date.now()}`;
       const nueva: DireccionGuardada = { ...d, id };
       setDirecciones((prev) => {
-        const next = [...prev, nueva];
+        const base = d.principal ? prev.map((x) => ({ ...x, principal: false })) : prev;
+        const next = [...base, nueva];
         scheduleSaveAddresses(next);
         return next;
       });
@@ -309,6 +324,7 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
     removeDireccion,
     estaLejos,
     saving,
+    addressesReady: hydrated,
   };
 
   return <AddressesContext.Provider value={value}>{children}</AddressesContext.Provider>;

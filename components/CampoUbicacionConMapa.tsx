@@ -3,14 +3,7 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { MapPin, ExternalLink } from 'lucide-react';
-
-/** Nominatim: min lon, max lat, max lon, min lat — área Piñas / sur de El Oro. */
-const NOMINATIM_VIEWBOX_PINAS = '-79.78,-3.62,-79.58,-3.74';
-
-const NOMINATIM_HEADERS = {
-  'Accept-Language': 'es',
-  'User-Agent': 'AndinaDelivery/1.0 (contact: https://andina-delivery.web.app)',
-} as const;
+import { buildNominatimQuery, NOMINATIM_HEADERS, VIEWBOX_EL_ORO } from '@/lib/nominatimElOro';
 
 const MapPicker = dynamic(() => import('./usuario/MapPicker'), { ssr: false });
 
@@ -69,7 +62,7 @@ export default function CampoUbicacionConMapa({
   }
 
   async function buscarEnMapa() {
-    const q = value.trim() || 'Piñas, El Oro, Ecuador';
+    const q = buildNominatimQuery(value.trim() || 'Piñas');
     if (!q) return;
     setBuscando(true);
     setSugerencias([]);
@@ -80,7 +73,7 @@ export default function CampoUbicacionConMapa({
         limit: '8',
         countrycodes: 'ec',
         addressdetails: '1',
-        viewbox: NOMINATIM_VIEWBOX_PINAS,
+        viewbox: VIEWBOX_EL_ORO,
         bounded: '1',
       });
       let res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {

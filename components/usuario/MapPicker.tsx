@@ -22,9 +22,20 @@ export interface MapPickerProps {
   lng?: number | null;
   onSelect: (_lat: number, _lng: number, _address?: string) => void;
   className?: string;
+  /** Contenedor Leaflet; por defecto h-48. Usar p. ej. h-[280px] en onboarding a pantalla completa. */
+  mapContainerClassName?: string;
+  /** Oculta el texto de ayuda bajo el mapa (p. ej. si hay otro banner encima). */
+  hideFooterHint?: boolean;
 }
 
-export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPickerProps) {
+export default function MapPicker({
+  lat,
+  lng,
+  onSelect,
+  className = '',
+  mapContainerClassName = 'w-full h-48 min-h-[192px]',
+  hideFooterHint = false,
+}: MapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -154,6 +165,16 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
           );
         }
 
+        if (!cancelled) {
+          map.invalidateSize();
+          requestAnimationFrame(() => {
+            if (!cancelled && mapRef.current) mapRef.current.invalidateSize();
+          });
+          window.setTimeout(() => {
+            if (!cancelled && mapRef.current) mapRef.current.invalidateSize();
+          }, 250);
+        }
+
         if (!cancelled) setLoading(false);
       } catch {
         if (!cancelled) {
@@ -186,7 +207,7 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
 
   return (
     <div className={`relative rounded-xl overflow-hidden bg-gray-100 ${className}`}>
-      <div ref={containerRef} className="w-full h-48 min-h-[192px]" />
+      <div ref={containerRef} className={mapContainerClassName} />
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 text-gray-500 text-sm">
           Cargando mapa...
@@ -197,7 +218,9 @@ export default function MapPicker({ lat, lng, onSelect, className = '' }: MapPic
           {error}
         </div>
       )}
-      <p className="text-xs text-gray-500 mt-1.5 px-1">Haz clic en el mapa para marcar tu ubicación</p>
+      {!hideFooterHint ? (
+        <p className="text-xs text-gray-500 mt-1.5 px-1">Haz clic en el mapa para marcar tu ubicación</p>
+      ) : null}
     </div>
   );
 }

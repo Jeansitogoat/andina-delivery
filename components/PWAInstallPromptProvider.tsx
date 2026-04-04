@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { detectIOS } from '@/hooks/useDevicePlatform';
+import PWAInstallSuccessWall from '@/components/PWAInstallSuccessWall';
 
 export type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -21,6 +22,8 @@ type Ctx = {
   /** Solo Android/Chromium con evento disponible. */
   promptInstall: () => Promise<{ outcome: 'accepted' | 'dismissed' } | null>;
   clearDeferred: () => void;
+  /** true tras `appinstalled` (Android/Desktop Chromium; iOS no dispara este evento). */
+  isJustInstalled: boolean;
 };
 
 const PWAInstallPromptContext = createContext<Ctx | null>(null);
@@ -32,6 +35,14 @@ function isAndroidChromeUA(): boolean {
 
 export function PWAInstallPromptProvider({ children }: { children: ReactNode }) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isJustInstalled, setIsJustInstalled] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleAppInstalled = () => setIsJustInstalled(true);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    return () => window.removeEventListener('appinstalled', handleAppInstalled);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -58,12 +69,15 @@ export function PWAInstallPromptProvider({ children }: { children: ReactNode }) 
   }, [deferredPrompt]);
 
   const value = useMemo(
-    () => ({ deferredPrompt, promptInstall, clearDeferred }),
-    [deferredPrompt, promptInstall, clearDeferred]
+    () => ({ deferredPrompt, promptInstall, clearDeferred, isJustInstalled }),
+    [deferredPrompt, promptInstall, clearDeferred, isJustInstalled]
   );
 
   return (
-    <PWAInstallPromptContext.Provider value={value}>{children}</PWAInstallPromptContext.Provider>
+    <PWAInstallPromptContext.Provider value={value}>
+      {isJustInstalled ? null : children}
+      <PWAInstallSuccessWall open={isJustInstalled} />
+    </PWAInstallPromptContext.Provider>
   );
 }
 
