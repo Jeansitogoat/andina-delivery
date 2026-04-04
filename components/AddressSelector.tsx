@@ -7,6 +7,7 @@ import { useAddresses } from '@/lib/addressesContext';
 import { useAuth } from '@/lib/useAuth';
 import { formatDireccionCorta } from '@/lib/formatDireccion';
 import type { DireccionGuardada } from '@/components/usuario/SeccionDirecciones';
+import { ANDINA_OPEN_ADDRESS_SELECTOR_EVENT } from '@/components/usuario/OutOfCoverageFallback';
 
 const AgregarDireccionModal = dynamic(() => import('@/components/usuario/AgregarDireccionModal'), { ssr: false });
 
@@ -38,6 +39,14 @@ export default function AddressSelector({ className = '', dark = false, compact 
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    function openFromOutOfCoverage() {
+      setOpen(true);
+    }
+    window.addEventListener(ANDINA_OPEN_ADDRESS_SELECTOR_EVENT, openFromOutOfCoverage);
+    return () => window.removeEventListener(ANDINA_OPEN_ADDRESS_SELECTOR_EVENT, openFromOutOfCoverage);
   }, []);
 
   function handleGuardar(d: Omit<DireccionGuardada, 'id'>) {

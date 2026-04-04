@@ -3,6 +3,11 @@
  * Respetar políticas de uso: User-Agent identificable; no más de ~1 req/s en producción.
  */
 
+import { haversineKm } from '@/lib/geo';
+
+/** Centro de referencia para ordenar resultados (Piñas). */
+export const PIÑAS_CENTER = { lat: -3.681, lng: -79.681 };
+
 export const VIEWBOX_EL_ORO = '-80.0,-4.0,-79.0,-3.0';
 
 const SUFFIX_EL_ORO = ', El Oro, Ecuador';
@@ -27,15 +32,51 @@ export type NominatimSearchHit = {
   displayName: string;
 };
 
+/** Ordena por distancia creciente a un punto de referencia (siempre PIÑAS_CENTER en ranking principal). */
+export function sortNominatimHitsByProximity(
+  hits: NominatimSearchHit[],
+  refLat: number,
+  refLng: number
+): NominatimSearchHit[] {
+  return [...hits].sort(
+    (a, b) =>
+      haversineKm(refLat, refLng, a.lat, a.lng) - haversineKm(refLat, refLng, b.lat, b.lng)
+  );
+}
+
+/** Prioridad por nombre local (evita homónimos en otras provincias). */
+function hasLocalTextBoost(displayName: string): boolean {
+  const lower = displayName.toLowerCase();
+  return (
+    lower.includes('piñas') ||
+    lower.includes('pinas') ||
+    lower.includes('zaruma') ||
+    lower.includes('portovelo')
+  );
+}
+
+/**
+ * Text boost: resultados que mencionan Piñas / Zaruma / Portovelo primero;
+ * dentro de cada grupo, orden por Haversine desde PIÑAS_CENTER (sin usar GPS del usuario).
+ */
+export function rankNominatimHitsForAndina(hits: NominatimSearchHit[]): NominatimSearchHit[] {
+  const boosted = hits.filter((h) => hasLocalTextBoost(h.displayName));
+  const rest = hits.filter((h) => !hasLocalTextBoost(h.displayName));
+  const byPiñas = (arr: NominatimSearchHit[]) =>
+    sortNominatimHitsByProximity(arr, PIÑAS_CENTER.lat, PIÑAS_CENTER.lng);
+  return [...byPiñas(boosted), ...byPiñas(rest)];
+}
+
 /**
  * Búsqueda con bounded=1 y viewbox regional; si no hay resultados, reintenta sin bounded.
+ * Orden: text boost local + distancia siempre anclada a PIÑAS_CENTER.
  */
 export async function searchNominatimElOro(query: string): Promise<NominatimSearchHit[]> {
   const q = buildNominatimQuery(query);
   const params = new URLSearchParams({
     q,
     format: 'json',
-    limit: '8',
+    limit: '15',
     countrycodes: 'ec',
     addressdetails: '1',
     viewbox: VIEWBOX_EL_ORO,
@@ -49,7 +90,7 @@ export async function searchNominatimElOro(query: string): Promise<NominatimSear
     const fallback = new URLSearchParams({
       q,
       format: 'json',
-      limit: '8',
+      limit: '15',
       countrycodes: 'ec',
       addressdetails: '1',
     });
@@ -59,13 +100,15 @@ export async function searchNominatimElOro(query: string): Promise<NominatimSear
     data = await res.json();
   }
   if (!Array.isArray(data)) return [];
-  return data
+  const mapped = data
     .map((row) => ({
       lat: parseFloat(row.lat),
       lng: parseFloat(row.lon),
       displayName: String(row.display_name ?? '').trim() || `${row.lat}, ${row.lon}`,
     }))
     .filter((r) => !Number.isNaN(r.lat) && !Number.isNaN(r.lng));
+  const ranked = rankNominatimHitsForAndina(mapped);
+  return ranked.slice(0, 8);
 }
 
 export async function reverseNominatimElOro(lat: number, lng: number): Promise<string | null> {

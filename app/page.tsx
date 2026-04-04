@@ -52,6 +52,8 @@ import {
   isDiscoveryCategoryKey,
   mapLegacyTypeToDiscoveryCategory,
 } from '@/lib/discovery-categorias';
+import { isWithinCoverage } from '@/lib/coverage';
+import OutOfCoverageFallback from '@/components/usuario/OutOfCoverageFallback';
 
 type CategoryKey = 'all' | DiscoveryCategoryKey;
 
@@ -126,6 +128,15 @@ export default function Home() {
     setLocalesCategoryFilter,
   } = useAndinaConfig();
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
+
+  const isClienteLike =
+    !user ||
+    user?.rol === 'cliente' ||
+    searchParams.get('modo') === 'cliente';
+  const blockHomeByCoverage =
+    isClienteLike &&
+    direccionEntregarLatLng != null &&
+    !isWithinCoverage(direccionEntregarLatLng.lat, direccionEntregarLatLng.lng);
   const { getTarifaEnvioPorDistancia, tarifaMinima } = useTarifasEnvio();
   const { isOpen: fullScreenModalOpen } = useFullScreenModal();
   const originLatLng = direccionEntregarLatLng ?? userLocationLatLng;
@@ -390,6 +401,10 @@ export default function Home() {
       </header>
 
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col safe-x pb-10">
+        {blockHomeByCoverage ? (
+          <OutOfCoverageFallback />
+        ) : (
+          <>
         {/* Categorías */}
         <section className="py-3 sm:py-4 -mt-1 bg-white rounded-t-[2rem] shadow-soft border-t border-gray-100">
           <div className="flex gap-2.5 sm:gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-px-1">
@@ -623,9 +638,12 @@ export default function Home() {
             </div>
           )}
         </section>
+          </>
+        )}
 
         {/* Barra flotante inferior: Ver seguimiento (si pedido activo) y Ver carrito (si hay items) */}
-        {(seguimientoOrderId && usuarioLogueado) || (cartCount > 0 && activeLocal && !fullScreenModalOpen) ? (
+        {((seguimientoOrderId && usuarioLogueado) ||
+          (!blockHomeByCoverage && cartCount > 0 && activeLocal && !fullScreenModalOpen)) ? (
           <div className="fixed bottom-4 left-4 right-4 z-50 max-w-lg mx-auto flex flex-col gap-3">
             {seguimientoOrderId && usuarioLogueado && (
               <Link
@@ -637,7 +655,7 @@ export default function Home() {
                 Ver seguimiento del pedido
               </Link>
             )}
-            {cartCount > 0 && activeLocal && !fullScreenModalOpen && (
+            {!blockHomeByCoverage && cartCount > 0 && activeLocal && !fullScreenModalOpen && (
               <Link
                 href="/carrito"
                 prefetch
