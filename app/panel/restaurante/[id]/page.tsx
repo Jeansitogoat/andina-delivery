@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   ShoppingBag,
@@ -124,6 +124,8 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: str
 export default function PanelRestauranteIdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pedidoDeepLink = searchParams.get('pedido')?.trim() ?? null;
   const { user, loading, logout } = useAuth();
   const { permission, requestPermission, loading: notifLoading } = useNotifications('local', { localId: id ?? user?.localId ?? '' });
   const [local, setLocal] = useState<Local | null>(null);
@@ -180,6 +182,28 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
       // ignorar
     }
   }
+
+  /** Abrir desde push FCM (?pedido=): scroll al pedido y limpiar la URL. */
+  useEffect(() => {
+    if (!pedidoDeepLink || ordersLoading) return;
+    const el = document.getElementById(`pedido-local-${pedidoDeepLink}`);
+    if (!el) return;
+    const raf = requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-rojo-andino', 'ring-offset-2', 'rounded-2xl');
+    });
+    const unring = window.setTimeout(() => {
+      el.classList.remove('ring-2', 'ring-rojo-andino', 'ring-offset-2', 'rounded-2xl');
+    }, 3500);
+    const cleanUrl = window.setTimeout(() => {
+      window.history.replaceState(null, '', `/panel/restaurante/${encodeURIComponent(id)}`);
+    }, 400);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(unring);
+      clearTimeout(cleanUrl);
+    };
+  }, [pedidoDeepLink, ordersLoading, id, orders.length, pendingTransfer.length]);
 
   useEffect(() => {
     if (!user || (user.rol !== 'local' && user.rol !== 'maestro') || !id) return;
@@ -657,8 +681,9 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
-              onClick={() => router.push('/?modo=cliente')}
+              onClick={() => router.push('/')}
               className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors active:scale-95"
+              title="Inicio (vuelve a tu panel)"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -871,6 +896,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
               {pendingTransfer.map((order) => (
                 <div
                   key={order.orderId}
+                  id={`pedido-local-${order.orderId}`}
                   className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-2"
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -1062,6 +1088,7 @@ export default function PanelRestauranteIdPage({ params }: { params: Promise<{ i
                       return (
                         <div
                           key={order.id}
+                          id={`pedido-local-${order.id}`}
                           className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden transition-all hover:shadow-md hover:border-gray-200 animate-fade-in"
                         >
                           <div className="p-4">

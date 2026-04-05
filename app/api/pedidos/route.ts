@@ -507,11 +507,18 @@ export async function POST(request: Request) {
 
     try {
       if (localId && String(localId).trim()) {
+        const lid = String(localId).trim();
         await sendFCMToRestaurantByLocalId(
           localId,
           'Nuevo pedido',
           `${bodyParsed.restaurante || 'Restaurante'} · ${bodyParsed.clienteNombre || 'Cliente'}`,
-          { localId, pedidoId: id, restaurante: bodyParsed.restaurante || '' }
+          {
+            localId: lid,
+            pedidoId: id,
+            restaurante: bodyParsed.restaurante || '',
+            /** Deep link panel local (evita /pedido/:id que es vista del cliente). */
+            openPath: `/panel/restaurante/${encodeURIComponent(lid)}?pedido=${encodeURIComponent(id)}`,
+          }
         );
       }
     } catch {

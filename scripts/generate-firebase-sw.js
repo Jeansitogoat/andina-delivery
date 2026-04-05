@@ -114,11 +114,24 @@ function attachMessaging() {
   }
 }
 
+function safeOpenPath(p) {
+  if (typeof p !== 'string' || !p.trim()) return null;
+  var t = p.trim();
+  if (t.indexOf('//') === 0) return null;
+  if (t.indexOf('://') !== -1) return null;
+  if (t.charAt(0) !== '/') return null;
+  if (t.length > 2048) return null;
+  return t;
+}
+
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
   var d = (event.notification.data && event.notification.data) || {};
   var path = '/';
-  if (d.mandadoId) {
+  var fromOpen = safeOpenPath(d.openPath);
+  if (fromOpen) {
+    path = fromOpen;
+  } else if (d.mandadoId) {
     path = '/mandado/' + d.mandadoId;
   } else if (d.pedidoId) {
     path = '/pedido/' + d.pedidoId;

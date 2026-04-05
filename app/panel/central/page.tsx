@@ -22,7 +22,6 @@ import {
   Check,
   Filter,
   RefreshCw,
-  ShoppingBag,
   LogOut,
   Trash2,
   Archive,
@@ -856,8 +855,9 @@ export default function PanelCentralPage() {
               <div className="flex items-center justify-between gap-3 mb-3">
                 <button
                   type="button"
-                  onClick={() => router.push('/?modo=cliente')}
+                  onClick={() => router.push('/')}
                   className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  title="Inicio (vuelve a tu panel)"
                 >
                   <ArrowLeft className="w-5 h-5 text-white" />
                 </button>
@@ -886,15 +886,6 @@ export default function PanelCentralPage() {
                 >
                   <UserCircle className="w-4 h-4" />
                   <span>Perfil</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push('/?modo=cliente')}
-                  className="flex-shrink-0 min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors"
-                  title="Ir como cliente"
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>Modo Cliente</span>
                 </button>
                 <button
                   type="button"

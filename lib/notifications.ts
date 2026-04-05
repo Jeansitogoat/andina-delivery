@@ -1,3 +1,5 @@
+import { isSafeInternalRedirectPath } from '@/lib/auth-routing';
+
 /**
  * Envía una solicitud al backend para que dispare una notificación push.
  * Requiere usuario autenticado (envía Bearer token).
@@ -37,6 +39,8 @@ export async function sendNotification({ target, title, body, data, uid }: SendN
 /** Ruta relativa para abrir seguimiento desde payload FCM (`data`). */
 export function getFcmDeepLinkPath(data?: Record<string, string | undefined> | null): string | null {
   if (!data) return null;
+  const openPath = typeof data.openPath === 'string' ? data.openPath.trim() : '';
+  if (openPath && isSafeInternalRedirectPath(openPath)) return openPath;
   const mid = typeof data.mandadoId === 'string' ? data.mandadoId.trim() : '';
   if (mid) return `/mandado/${encodeURIComponent(mid)}`;
   const pid = typeof data.pedidoId === 'string' ? data.pedidoId.trim() : '';
