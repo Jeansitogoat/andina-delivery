@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { Suspense } from 'react';
 import { SWRConfig } from 'swr';
 import './globals.css';
 import { AddressesProvider } from '@/lib/addressesContext';
@@ -20,8 +19,6 @@ import NotificationPromptBanner from '@/components/NotificationPromptBanner';
 import NotificationShield from '@/components/NotificationShield';
 import PostLoginPermissionsWizard from '@/components/PostLoginPermissionsWizard';
 import LocationBackupBanner from '@/components/LocationBackupBanner';
-import GlobalLocationPrompt from '@/components/GlobalLocationPrompt';
-
 export const metadata: Metadata = {
   title: 'Andina Delivery - Piñas',
   description: 'Delivery oficial - Restaurantes, Market y Farmacias',
@@ -70,9 +67,6 @@ export default function RootLayout({
                     <NotificationShield />
                     <PostLoginPermissionsWizard />
                     <LocationBackupBanner />
-                    <Suspense fallback={null}>
-                      <GlobalLocationPrompt />
-                    </Suspense>
                   </FullScreenModalProvider>
                 </CartProvider>
               </AddressesProvider>

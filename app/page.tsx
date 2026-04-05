@@ -129,10 +129,12 @@ export default function Home() {
   } = useAndinaConfig();
   const { direccionEntregarLatLng, userLocationLatLng } = useAddresses();
 
+  const modoClienteEnUrl = searchParams.get('modo') === 'cliente';
+  /** Central y local nunca consumen la tienda como cliente, aunque la URL lleve ?modo=cliente. */
   const isClienteLike =
     !user ||
     user?.rol === 'cliente' ||
-    searchParams.get('modo') === 'cliente';
+    (modoClienteEnUrl && user?.rol !== 'central' && user?.rol !== 'local');
   const blockHomeByCoverage =
     isClienteLike &&
     direccionEntregarLatLng != null &&
@@ -191,11 +193,15 @@ export default function Home() {
 
   // Primera visita → /auth: lo gestiona AuthSplashGate (evita flash de locales antes del login).
 
-  // Enrutador por rol: operativos van a su panel salvo ?modo=cliente (evita bucle si quieren pedir como cliente)
+  // Enrutador por rol: operativos a su panel. Central/local: siempre, ignorando ?modo=cliente (no son tienda).
   useEffect(() => {
     if (typeof window === 'undefined' || authLoading || !user) return;
-    if (searchParams.get('modo') === 'cliente') return;
     const target = getPanelPathForRole(user.rol, user.localId ?? undefined);
+    if (user.rol === 'central' || user.rol === 'local') {
+      if (target !== '/') router.replace(target);
+      return;
+    }
+    if (searchParams.get('modo') === 'cliente') return;
     if (target === '/') return;
     router.replace(target);
   }, [authLoading, user, router, searchParams]);

@@ -127,11 +127,28 @@ function safeOpenPath(p) {
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
   var d = (event.notification.data && event.notification.data) || {};
+  // Primero: payload.data.openPath (panel restaurante, etc.). Sin mezclar con /pedido/.
+  var openFirst = safeOpenPath(typeof d.openPath === 'string' ? d.openPath : '');
+  if (openFirst) {
+    var fullUrlOpen = new URL(openFirst, self.registration.scope).href;
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
+        for (var i = 0; i < clientList.length; i++) {
+          var client = clientList[i];
+          if (client.url.indexOf(self.registration.scope) === 0 && 'focus' in client) {
+            if (typeof client.navigate === 'function') {
+              client.navigate(fullUrlOpen);
+            }
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow ? self.clients.openWindow(fullUrlOpen) : undefined;
+      })
+    );
+    return;
+  }
   var path = '/';
-  var fromOpen = safeOpenPath(d.openPath);
-  if (fromOpen) {
-    path = fromOpen;
-  } else if (d.mandadoId) {
+  if (d.mandadoId) {
     path = '/mandado/' + d.mandadoId;
   } else if (d.pedidoId) {
     path = '/pedido/' + d.pedidoId;
@@ -139,16 +156,16 @@ self.addEventListener('notificationclick', function (event) {
   var fullUrl = new URL(path, self.registration.scope).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
-      for (var i = 0; i < clientList.length; i++) {
-        var client = clientList[i];
-        if (client.url.indexOf(self.registration.scope) === 0 && 'focus' in client) {
-          client.navigate(fullUrl);
-          return client.focus();
+      for (var j = 0; j < clientList.length; j++) {
+        var c2 = clientList[j];
+        if (c2.url.indexOf(self.registration.scope) === 0 && 'focus' in c2) {
+          if (typeof c2.navigate === 'function') {
+            c2.navigate(fullUrl);
+          }
+          return c2.focus();
         }
       }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(fullUrl);
-      }
+      return self.clients.openWindow ? self.clients.openWindow(fullUrl) : undefined;
     })
   );
 });

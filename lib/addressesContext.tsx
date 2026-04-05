@@ -90,6 +90,8 @@ export function AddressesProvider({ children }: { children: React.ReactNode }) {
   /* Carga inicial desde Firestore (getDoc una vez al montar con usuario). */
   useEffect(() => {
     if (!user?.uid) return;
+    /* Hasta tener direcciones del usuario en Firestore, no exponer addressesReady (evita onboarding/map antes de la cuenta). */
+    setHydrated(false);
     let cancelled = false;
     const db = getFirestoreDb();
     getDoc(doc(db, 'users', user.uid))

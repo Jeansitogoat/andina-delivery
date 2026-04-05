@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
+import GlobalLocationPrompt from '@/components/GlobalLocationPrompt';
 
 const MIN_SPLASH_MS = 1200;
 
@@ -77,5 +78,12 @@ export default function AuthSplashGate({ children }: { children: React.ReactNode
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Suspense fallback={null}>
+        <GlobalLocationPrompt />
+      </Suspense>
+    </>
+  );
 }

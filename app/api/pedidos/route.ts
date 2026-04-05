@@ -508,17 +508,17 @@ export async function POST(request: Request) {
     try {
       if (localId && String(localId).trim()) {
         const lid = String(localId).trim();
+        // FCM data: openPath obligatorio para el SW (no enviar pedidoId aquí: evita fallback a /pedido/:id en cliente).
+        const restauranteNotificationData: Record<string, string> = {
+          openPath: `/panel/restaurante/${encodeURIComponent(lid)}?pedido=${encodeURIComponent(id)}`,
+          localId: lid,
+          restaurante: bodyParsed.restaurante || '',
+        };
         await sendFCMToRestaurantByLocalId(
           localId,
           'Nuevo pedido',
           `${bodyParsed.restaurante || 'Restaurante'} · ${bodyParsed.clienteNombre || 'Cliente'}`,
-          {
-            localId: lid,
-            pedidoId: id,
-            restaurante: bodyParsed.restaurante || '',
-            /** Deep link panel local (evita /pedido/:id que es vista del cliente). */
-            openPath: `/panel/restaurante/${encodeURIComponent(lid)}?pedido=${encodeURIComponent(id)}`,
-          }
+          restauranteNotificationData
         );
       }
     } catch {
